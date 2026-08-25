@@ -1,0 +1,32 @@
+# Node / Rust / Python / Tauri
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/engine-payload/
+src-tauri/gen/
+__pycache__/
+*.pyc
+.venv/
+
+# 引擎与运行时资产（体积大，走 CNB Release 附件）
+Runtime/
+*.pth
+*.ckpt
+*.7z
+*.zip
+
+# 本地数据与产物
+User_Data/
+logs/
+auditions/
+TEMP/
+dist/
+out/
+.vite/
+
+# IDE / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
