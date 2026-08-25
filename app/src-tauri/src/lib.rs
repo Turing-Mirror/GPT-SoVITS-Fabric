@@ -2300,7 +2300,7 @@ pub fn run() {
                 "main",
                 tauri::WebviewUrl::CustomProtocol(url.parse().expect("fabric url")),
             )
-            .title("GPT-SoVITS Fabric")
+            .title("GPT-SoVITS Fabric · dev-0825c")
             .inner_size(1180.0, 780.0)
             .min_inner_size(880.0, 640.0)
             .resizable(true)
