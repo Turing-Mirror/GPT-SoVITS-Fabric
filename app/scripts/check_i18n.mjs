@@ -12,7 +12,7 @@
 //
 // 接在 `npm run build` 里，任何一条不过就构建失败，不给它上线的机会。
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -92,6 +92,44 @@ for (const loc of OTHERS) {
   }
 }
 
+// —— 第三道：代码里 t("…") 引用的 key，语言包里必须真的有 ——
+//
+// 前面两道只让八个语言包互相对齐，对不上「代码引用了一个谁都没有的 key」
+// 这种情况：八个包一致地缺同一条，校验照样通过，而界面上那一格会原样印出
+// `fps.settings.general` 这样的字符串。设置页整页的标签就是这么静默坏掉的
+// （fps.settings.* 十三条从来没进过语言包，八种语言下都在显示 key 本身）。
+const SRC_DIR = join(HERE, "..", "src");
+
+function walk(dir, out) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p, out);
+    else if (/\.tsx?$/.test(name)) out.push(p);
+  }
+  return out;
+}
+
+/** 去掉注释再找 t(…)：注释里成段引用过 `t("s.xxx")` 当例子，那些不是引用。 */
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}
+
+const REF = /\bt(?:Static)?\(\s*["'`]([\w.\-]+)["'`]/g;
+const refs = new Map();
+for (const file of walk(SRC_DIR, [])) {
+  const src = stripComments(readFileSync(file, "utf-8"));
+  for (const m of src.matchAll(REF)) {
+    if (!refs.has(m[1])) refs.set(m[1], file);
+    }
+}
+for (const [key, file] of refs) {
+  if (!(key in base)) {
+    problems.push(
+      `zh-CN: 代码引用了不存在的 key「${key}」（${file.replace(HERE + "/../", "")}）`,
+    );
+  }
+}
+
 if (problems.length) {
   console.error(`i18n 校验失败，共 ${problems.length} 处：\n`);
   for (const p of problems) console.error(`  - ${p}`);
@@ -99,4 +137,7 @@ if (problems.length) {
 }
 
 const nKeys = Object.keys(base).length;
-console.log(`i18n 校验通过：${OTHERS.length + 1} 个语言包 × ${nKeys} 条，结构与占位符一致`);
+console.log(
+  `i18n 校验通过：${OTHERS.length + 1} 个语言包 × ${nKeys} 条，结构与占位符一致；` +
+    `代码引用的 ${refs.size} 个 key 全部有着落`,
+);
