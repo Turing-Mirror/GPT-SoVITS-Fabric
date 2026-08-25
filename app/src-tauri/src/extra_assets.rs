@@ -30,7 +30,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::{catalog, download};
 
-const CNB_REPO: &str = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases";
+const CNB_REPO: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases";
 
 static BUSY: Mutex<bool> = Mutex::new(false);
 static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();

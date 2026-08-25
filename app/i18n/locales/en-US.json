@@ -2325,7 +2325,9 @@
     "role": "Current character: {name}",
     "noRole": "No character selected",
     "loading": "Starting engine…",
-    "openSynth": "Synthesize"
+    "openSynth": "Synthesize",
+    "idleTitle": "Synthesis engine: wiring in progress",
+    "idleSub": "M1 phase — UI first, inference core lands next"
   },
   "more": {
     "resTitle": "Resources & advanced",

@@ -2325,7 +2325,9 @@
     "role": "目前角色：{name}",
     "noRole": "未選擇角色",
     "loading": "引擎啟動中…",
-    "openSynth": "去合成"
+    "openSynth": "去合成",
+    "idleTitle": "合成引擎接入中",
+    "idleSub": "M1 開發階段：介面先行，推理核心隨後接通"
   },
   "more": {
     "resTitle": "資源與進階",

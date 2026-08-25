@@ -346,7 +346,7 @@ fn sweep_dir(dir: &Path, cutoff: std::time::SystemTime) -> usize {
 pub fn write(line: &str) {
     // Keep dev runs readable in the terminal; on Windows release this goes
     // nowhere, which is the whole reason the file below exists.
-    eprintln!("[rvc-fabric] {line}");
+    eprintln!("[gsv-fabric] {line}");
 
     let Some(p) = path() else {
         return;

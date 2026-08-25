@@ -2325,7 +2325,9 @@
     "role": "Personnage actuel : {name}",
     "noRole": "Aucun personnage",
     "loading": "Démarrage du moteur…",
-    "openSynth": "Synthétiser"
+    "openSynth": "Synthétiser",
+    "idleTitle": "Moteur de synthèse : connexion en cours",
+    "idleSub": "Phase M1 — l’UI d’abord, le moteur ensuite"
   },
   "more": {
     "resTitle": "Ressources et avancé",

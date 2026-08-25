@@ -995,11 +995,8 @@ export default function App() {
       <NativeDialogHint />
 
 <StatusBar
-        roleName={undefined}
-        statusTitle={engine.title}
-        statusSub={engine.sub}
-        progress={engine.progress}
-        loading={engine.starting && engine.progress == null}
+        statusTitle={t("statusbar.idleTitle")}
+        statusSub={t("statusbar.idleSub")}
         onOpenSynth={() => setPage("synth")}
       />
       {selfCheckOpen ? <LinkCheckDialog onClose={() => setSelfCheckOpen(false)} /> : null}

@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 
 use crate::{download, extract, paths};
 
-pub(crate) const CNB_REPO: &str = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases";
+pub(crate) const CNB_REPO: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases";
 
 /// 同一时刻只允许一个引擎资源包在下载。
 ///

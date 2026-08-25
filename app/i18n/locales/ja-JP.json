@@ -2325,7 +2325,9 @@
     "role": "現在のキャラクター：{name}",
     "noRole": "キャラクター未選択",
     "loading": "エンジン起動中…",
-    "openSynth": "合成へ"
+    "openSynth": "合成へ",
+    "idleTitle": "合成エンジン接続中",
+    "idleSub": "M1 フェーズ：UI 先行、推論コアは次段"
   },
   "more": {
     "resTitle": "リソースと詳細",

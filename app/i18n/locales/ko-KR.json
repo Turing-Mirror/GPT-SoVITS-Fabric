@@ -2325,7 +2325,9 @@
     "role": "현재 캐릭터: {name}",
     "noRole": "캐릭터 미선택",
     "loading": "엔진 시작 중…",
-    "openSynth": "합성하기"
+    "openSynth": "합성하기",
+    "idleTitle": "합성 엔진 연결 중",
+    "idleSub": "M1 단계: UI 먼저, 추론 코어는 다음"
   },
   "more": {
     "resTitle": "리소스 및 고급",

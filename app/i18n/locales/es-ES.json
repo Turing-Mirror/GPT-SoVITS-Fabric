@@ -2325,7 +2325,9 @@
     "role": "Personaje actual: {name}",
     "noRole": "Sin personaje",
     "loading": "Iniciando motor…",
-    "openSynth": "Sintetizar"
+    "openSynth": "Sintetizar",
+    "idleTitle": "Motor de síntesis: conectando",
+    "idleSub": "Fase M1 — primero la UI, el motor llega después"
   },
   "more": {
     "resTitle": "Recursos y avanzado",

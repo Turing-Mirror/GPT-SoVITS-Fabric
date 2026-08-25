@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 const CNB_HOST: &str = "https://cnb.cool";
-const CNB_ORG_REPO: &str = "Turing-Mirror/RVC-Fabric-Releases";
-const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/git/raw/main";
-const CNB_LFS_BASE: &str = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/lfs";
+const CNB_ORG_REPO: &str = "Turing-Mirror/GPT-SoVITS-Fabric-Releases";
+const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main";
+const CNB_LFS_BASE: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/lfs";
 const DEFAULT_RELEASE_TAG: &str = "RVC-runtime";
 
 /// 清单来源，按顺序试，第一个能解析成对象的就用。
@@ -23,8 +23,8 @@ const DEFAULT_RELEASE_TAG: &str = "RVC-runtime";
 ///
 /// 已经从发布仓删掉了。少一条 404 的退路，比多一条假的强。
 const MANIFEST_URLS: &[&str] = &[
-    "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/git/raw/main/index.json",
-    "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/git/raw/main/catalog/online_catalog.snippet.json",
+    "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/index.json",
+    "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/catalog/online_catalog.snippet.json",
 ];
 
 const UA: &str = "RVCFabric-Shell/1.3";

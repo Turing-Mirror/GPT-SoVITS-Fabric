@@ -194,7 +194,7 @@ fn combo_for(root: Option<&Path>, key: &str, fallback: &str) -> String {
 ///
 /// 默认 true —— 以前九个一律全局，改默认值等于悄悄拿走用户已经在用的功能。
 ///
-/// 关掉之后这个组合就只在 RVC Fabric 是当前窗口时有效（由前端的 keydown
+/// 关掉之后这个组合就只在 GPT-SoVITS Fabric 是当前窗口时有效（由前端的 keydown
 /// 兜着）。这件事有意义是因为全局快捷键是**独占**的：Ctrl+F7 被我们抢走之后，
 /// 用户在别的软件里就再也按不出它原本的功能了。有人只想在切回本软件时用一下，
 /// 不想为此把这个组合从整台机器上让出来。
@@ -966,7 +966,7 @@ pub fn summary_text(root: &Path) -> String {
     };
 
     let mut lines = vec![
-        format!("RVC Fabric {}", crate::update::APP_VERSION),
+        format!("GPT-SoVITS Fabric {}", crate::update::APP_VERSION),
         format!("{}: {} {}", crate::i18n::t("s.sumSystem"), std::env::consts::OS, std::env::consts::ARCH),
         format!(
             "{}: {}",
