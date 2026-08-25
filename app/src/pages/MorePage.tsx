@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Block, Btn, Group, ListItem, PageHead, PagePad } from "../components/ui";
-import { openTool } from "../components/ToolWindow";
 import { QrDialog } from "../components/QrDialog";
 import { MainGpuPicker, MAIN_GPU_AUTO, mainGpuTip } from "../components/MainGpuPicker";
 import { openExternal } from "../lib/plaza";
@@ -13,7 +12,6 @@ import { t } from "../i18n/t";
 import { askConfirm } from "../lib/webDialog";
 import { DiagnosticsDialog, type DiagReport } from "../components/DiagnosticsDialog";
 import { FindingList, type Finding } from "../components/FindingList";
-import { StorageSection } from "../components/StorageSection";
 
 /** 「申请专业优化」的开关。服务还没开放，先藏起来；后端命令仍然在。 */
 const SHOW_CONSULT = false;
@@ -379,35 +377,15 @@ export function MorePage({
           />
         </Group>
       </Block>
-      <Block title={t("s.21093d185d")}>
+      <Block title={t("more.resTitle")} note={t("more.resNote")}>
         <Group>
           <ListItem
-            title={t("s.8fd038283b")}
-            desc={t("s.be70b437af")}
-            right={<Btn onClick={() => openTool("separate")}>{t("s.65fc81e161")}</Btn>}
-          />
-          <ListItem
-            title={t("s.ba65bd5595")}
-            desc={t("s.6a71c2fde0")}
-            right={<Btn onClick={() => openTool("train")}>{t("s.65fc81e161")}</Btn>}
-          />
-          <ListItem
-            title={t("s.6f311c47fe")}
-            desc={t("s.ba7bd6e071")}
-            right={<Btn onClick={() => openTool("tts")}>{t("s.65fc81e161")}</Btn>}
-          />
-          {/* 入口留着（老用户是从这儿找它的），功能已经搬去广场了。 */}
-          <ListItem
             title={t("s.1252c81119")}
-            desc={t("s.e197a257da")}
-            right={
-              <Btn onClick={() => onOpenDownloadModels?.()}>{t("s.65fc81e161")}</Btn>
-            }
+            desc={t("more.resDesc")}
+            right={<Btn onClick={() => onOpenDownloadModels?.()}>{t("s.65fc81e161")}</Btn>}
           />
         </Group>
       </Block>
-
-      <StorageSection />
       <Block title={t("s.72527e2f0e")}>
         <Group>
           <ListItem

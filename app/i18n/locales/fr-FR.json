@@ -148,7 +148,19 @@
     "downloadModels": "Télécharger des modèles",
     "downloadModelsDesc": "Modèles de séparation et modèles de base d'entraînement",
     "missingModel": "Les fichiers du modèle de cette voix sont manquants ou incomplets",
-    "switchFail": "Échec du changement : {error}"
+    "switchFail": "Échec du changement : {error}",
+    "tagline": "Client de synthèse vocale prêt à l’emploi, basé sur GPT-SoVITS. Installez un pack de personnage, saisissez du texte et obtenez une voix naturelle immédiatement ; entraînez aussi votre propre personnage à partir de vos enregistrements.",
+    "qSynth": "Synthèse rapide",
+    "qSynthDesc": "Choisissez personnage et référence, tapez, c’est joué",
+    "qLibrary": "Bibliothèque",
+    "qLibraryDesc": "Importez et gérez des packs avec annotations .list",
+    "qTrain": "Entraînement",
+    "qTrainDesc": "Créez votre personnage depuis vos propres extraits",
+    "rolesTitle": "Personnages",
+    "allRoles": "Tout afficher",
+    "recentTitle": "Synthèses récentes",
+    "recentNote": "Du plus récent ; cliquez pour rééditer",
+    "recentEmpty": "Rien pour l’instant. Créez votre premier extrait dans Synthèse."
   },
   "glossary": {
     "sectionTitle": "Glossaire",
@@ -2308,5 +2320,36 @@
     "faqA3": "Les modèles chargés sont gérés en LRU. Sinon : désactivez le flux, réduisez les lots ou choisissez une version légère.",
     "faqQ4": "Comment partager un personnage ?",
     "faqA4": "Bibliothèque → Exporter le pack, puis envoyez le zip sur la Place. Après validation, installation en un clic."
+  },
+  "statusbar": {
+    "role": "Personnage actuel : {name}",
+    "noRole": "Aucun personnage",
+    "loading": "Démarrage du moteur…",
+    "openSynth": "Synthétiser"
+  },
+  "more": {
+    "resTitle": "Ressources et avancé",
+    "resNote": "Modèles de base et ressources préentraînées au même endroit",
+    "resDesc": "HuBERT, bases GPT/SoVITS et autres ressources requises"
+  },
+  "library": {
+    "title": "Bibliothèque",
+    "subtitle": "Importer, gérer et partager des packs",
+    "goPlaza": "Place",
+    "installTitle": "Installer un pack",
+    "installNote": "Packs .zip standards de la communauté",
+    "packName": "Importer depuis un fichier",
+    "packDesc": "Choisissez un .zip : le personnage est enregistré localement et ses annotations .list servent à la fois de références et de jeu d’entraînement.",
+    "import": "Importer le pack",
+    "demoImport": "Indisponible dans l’aperçu navigateur ; utilisez l’application de bureau.",
+    "importPending": "Import…",
+    "listTitle": "Personnages locaux",
+    "listNote": "Les personnages installés ou entraînés apparaissent ici",
+    "emptyTitle": "Aucun personnage pour l’instant",
+    "emptyDesc": "Installez des packs depuis la Place ou entraînez le vôtre avec votre propre audio.",
+    "emptyGoPlaza": "Chercher sur la Place",
+    "emptyImport": "Importer un pack",
+    "fmtTitle": "Structure d’un pack",
+    "fmtTip": "Chemins relatifs à la racine du pack ; chaque ligne .list comporte quatre colonnes séparées par des barres."
   }
 }

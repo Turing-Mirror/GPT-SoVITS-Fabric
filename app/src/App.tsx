@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dock, type OutputMode } from "./components/Dock";
+import { StatusBar } from "./components/StatusBar";
 import { LinkCheckDialog } from "./components/LinkCheckDialog";
 import { OnboardingBar } from "./components/OnboardingBar";
 import { Nudge } from "./components/Nudge";
@@ -16,10 +16,8 @@ import { LanguageGate } from "./components/LanguageGate";
 import { TitleBar } from "./components/TitleBar";
 import { useEngine } from "./hooks/useEngine";
 import { usePlaza } from "./hooks/usePlaza";
-import { getConfig, onConfigPatch, type Config } from "./lib/config";
-import { deactivateDsp, forceKillEngine, setHot, startVc, swapModel } from "./lib/engine";
+import { forceKillEngine } from "./lib/engine";
 import type { PageId } from "./lib/nav";
-import { currentVoice } from "./lib/voices";
 import { invoke } from "@tauri-apps/api/core";
 import { applyAppearance } from "./lib/appearance";
 import { listen } from "@tauri-apps/api/event";
@@ -84,8 +82,6 @@ export default function App() {
   void locale;
 
   const [page, setPage] = useState<PageId>("home");
-  const [modelsKind, setModelsKind] = useState<"rvc" | "dsp">("rvc");
-  const [modelsKindNonce, setModelsKindNonce] = useState(0);
   const [compactNav, setCompactNav] = useState(false);
   // 「下载模型」：用户主动打开，或音频工具缺引擎资源时跳转。
   const [extrasReason, setExtrasReason] = useState("");
@@ -234,9 +230,6 @@ export default function App() {
       setUpdateBusy(false);
     }
   };
-  const [pitch, setPitch] = useState(0);
-  const [formant, setFormant] = useState(0);
-  const [mode, setMode] = useState<OutputMode>("vc");
   /**
    * 空串 = 还没选音色，渲染时才去取那句占位文案。
    *
@@ -245,31 +238,9 @@ export default function App() {
    * 「未选择模型」会永远停在简体中文，用户把界面切成日文也不会变，除非他真的
    * 去选一个音色把这个 state 覆盖掉。占位文案不该进 state，它是渲染出来的。
    */
-  const [voiceName, setVoiceName] = useState("");
-  const [voiceId, setVoiceId] = useState("");
-  const [profileSummary, setProfileSummary] = useState("");
-  const [voiceTag, setVoiceTag] = useState("");
-  const [voicePos, setVoicePos] = useState("");
   /** 生效中的 DSP 预设 id；空 = 没开。底栏靠它画那条「音色 → 预设」的链。 */
-  const [dspId, setDspId] = useState("");
   /** id → 显示名。底栏要写「收音机」，不是写 radio。 */
-  const [dspNames, setDspNames] = useState<Record<string, string>>({});
-  const dspName = dspId ? dspNames[dspId] || dspId : "";
 
-  useEffect(() => {
-    let alive = true;
-    void invoke<{ presets: { id: string; name: string }[] }>("dsp_presets")
-      .then((r) => {
-        if (!alive) return;
-        const m: Record<string, string> = {};
-        for (const p of r.presets || []) m[p.id] = p.name;
-        setDspNames(m);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
   const [showProvision, setShowProvision] = useState(false);
   const [provisionDismissed, setProvisionDismissed] = useState(false);
   // 新装 ui_locale_picked===false 时先选语言，再走 Runtime 补全。
@@ -278,7 +249,7 @@ export default function App() {
 
   const engine = useEngine();
   const plaza = usePlaza();
-  const { syncParams, refreshProvision } = engine;
+  const { refreshProvision } = engine;
 
   // Telemetry consent: ask only after the user has actually got value out of
   // the product — 60 s of clean conversion — not at first launch.
@@ -512,94 +483,9 @@ export default function App() {
     return () => mq.removeEventListener("change", fn);
   }, []);
 
-  useEffect(() => {
-    void getConfig()
-      .then((c) => {
-        if (c.dsp_enabled) setDspId(String(c.dsp_preset || ""));
-      })
-      .catch(() => {});
-    void currentVoice()
-      .then((c) => {
-        if (c.model) {
-          setVoiceName(String(c.model.name || ""));
-          setVoiceId(String(c.model.path || c.model.dir || c.model.name || ""));
-          setVoiceTag(String(c.model.tag || ""));
-        }
-        setVoicePos(c.index && c.total ? `${c.index}/${c.total}` : "");
-        if (c.pitch != null) setPitch(Number(c.pitch));
-        if (c.formant != null) setFormant(Number(c.formant));
-        if (c.profile_summary) setProfileSummary(c.profile_summary);
-        syncParams({
-          pitch: c.pitch != null ? Number(c.pitch) : undefined,
-          formant: c.formant != null ? Number(c.formant) : undefined,
-        });
-      })
-      .catch(() => {
-        /* browser preview */
-      });
-    // Runs once on mount; syncParams is stable (useCallback with no deps).
-  }, [syncParams]);
 
   // 设置页 / 底栏 / 快捷键 / 切音色都会改配置。底栏自己的 state 以前只在
   // 挂载和切音色时读一次，设置里拖音高底栏数字不动。
-  const applyConfigPatch = useCallback(
-    (c: Config) => {
-      if (c.pitch != null && Number.isFinite(Number(c.pitch))) {
-        const v = Number(c.pitch);
-        setPitch(v);
-        syncParams({ pitch: v });
-      }
-      if (c.formant != null && Number.isFinite(Number(c.formant))) {
-        const v = Number(c.formant);
-        setFormant(v);
-        syncParams({ formant: v });
-      }
-      const fn = c.function;
-      if (fn === "im" || fn === "bypass") setMode("bypass");
-      else if (fn === "vc" || fn === "fx") setMode("vc");
-      // DSP 那一层从哪儿改的都行（模型页、设置页、别的窗口），底栏都得跟上。
-      if (c.dsp_enabled === false) {
-        setDspId("");
-        void currentVoice()
-          .then((cur) => {
-            if (!cur.model) return;
-            setVoiceName(String(cur.model.name || ""));
-            setVoiceId(
-              String(cur.model.path || cur.model.dir || cur.model.name || ""),
-            );
-            setVoiceTag(String((cur.model as { tag?: string }).tag || ""));
-            setVoicePos(
-              cur.index && cur.total ? `${cur.index}/${cur.total}` : "",
-            );
-          })
-          .catch(() => {});
-      } else if (c.dsp_enabled === true || c.dsp_preset != null) {
-        setDspId(String(c.dsp_preset || ""));
-      }
-    },
-    [syncParams],
-  );
-
-  useEffect(() => {
-    const off = onConfigPatch(applyConfigPatch);
-    let disposed = false;
-    let un: (() => void) | undefined;
-    void listen<{ config?: Config; hot?: Config }>("config-changed", (ev) => {
-      // 只跟热键走：主题/壁纸那类写入也会带完整 config，里面的音高可能
-      // 还是底栏 80ms 防抖还没落盘的旧值，拿来套会把滑块拽回去。
-      const hot = ev.payload?.hot;
-      if (hot && Object.keys(hot).length) applyConfigPatch(hot);
-    }).then((fn) => {
-      if (disposed) fn();
-      else un = fn;
-    });
-    return () => {
-      disposed = true;
-      off();
-      un?.();
-    };
-  }, [applyConfigPatch]);
-
   // The settings page reads only the device lists out of engine status, but the
   // whole status object changes every poll tick (mic level, latency), so
   // passing it straight through re-rendered that page 2.5x a second while
@@ -620,41 +506,6 @@ export default function App() {
     [deviceKey],
   );
 
-  const { onPitch, onFormant, onMode } = engine;
-  const handlePitch = useCallback(
-    (v: number) => {
-      setPitch(v);
-      onPitch(v);
-    },
-    [onPitch],
-  );
-  const handleFormant = useCallback(
-    (v: number) => {
-      setFormant(v);
-      onFormant(v);
-    },
-    [onFormant],
-  );
-  const handleMode = useCallback(
-    (m: OutputMode) => {
-      setMode(m);
-      onMode(m);
-    },
-    [onMode],
-  );
-
-  // One place where "the user picked a different voice" is applied, so the
-  // home page and the models page can never drift apart on what the dock shows.
-  const openModels = useCallback(() => {
-    setModelsKind("rvc");
-    setModelsKindNonce((n) => n + 1);
-    setPage("models");
-  }, []);
-  const openDsp = useCallback(() => {
-    setModelsKind("dsp");
-    setModelsKindNonce((n) => n + 1);
-    setPage("models");
-  }, []);
   // 「用不了？联系社区」的落点。仓库与社媒那张表只在「其他」页有一份，
   // 不在设置页和说明页各抄一遍 —— 抄了就得改三处，迟早对不上。
   // 加一 = 「再滚一次」：同一页反复点也要每次都滚过去。
@@ -733,32 +584,6 @@ export default function App() {
   }, [openHelp]);
   // 进广场同时把小红点消掉 —— 和顶栏点「广场」是同一件事，不能只有一条路
   // 清红点，否则从模型页进来的用户那个点永远亮着。
-  const stopDsp = useCallback(() => {
-    setDspId("");
-    void deactivateDsp()
-      .then(async () => {
-        try {
-          const c = await currentVoice();
-          if (c.model) {
-            setVoiceName(String(c.model.name || ""));
-            setVoiceId(String(c.model.path || c.model.dir || c.model.name || ""));
-            setVoiceTag(String((c.model as { tag?: string }).tag || ""));
-            setVoicePos(c.index && c.total ? `${c.index}/${c.total}` : "");
-            if (c.pitch != null) setPitch(Number(c.pitch));
-            if (c.formant != null) setFormant(Number(c.formant));
-            if (c.profile_summary) setProfileSummary(c.profile_summary);
-            syncParams({
-              pitch: c.pitch != null ? Number(c.pitch) : undefined,
-              formant: c.formant != null ? Number(c.formant) : undefined,
-            });
-          }
-        } catch {
-          /* 没有上次音色就保持未选择 */
-        }
-      })
-      .catch(() => {});
-  }, [syncParams]);
-
   const openPlaza = useCallback(() => {
     plaza.markSeen();
     setPage("plaza");
@@ -766,182 +591,27 @@ export default function App() {
   const { reload: plazaReload } = plaza;
   const reloadPlaza = useCallback(() => void plazaReload(), [plazaReload]);
 
-  const applyVoiceChange = useCallback(({
-    model,
-    pitch: p,
-    formant: f,
-    profileSummary: ps,
-  }: {
-    model: { name?: string; path?: string; dir?: string };
-    pitch?: number;
-    formant?: number;
-    profileSummary?: string;
-  }) => {
-    if (!model.path && !model.dir && !model.name) {
-      setVoiceName("");
-      setVoiceId("");
-      setVoiceTag("");
-      setVoicePos("");
-      return;
-    }
-    setDspId("");
-    setVoiceName(model.name || "");
-    setVoiceId(model.path || model.dir || model.name || "");
-    if (p != null) setPitch(Number(p));
-    if (f != null) setFormant(Number(f));
-    if (ps) setProfileSummary(ps);
-    setVoiceTag(String((model as { tag?: string }).tag || ""));
-    // Keep what a later start will send in step with what the dock shows.
-    syncParams({
-      pitch: p != null ? Number(p) : undefined,
-      formant: f != null ? Number(f) : undefined,
-    });
-    // The library position moves with the selection; only the shell knows it.
-    void currentVoice()
-      .then((c) => setVoicePos(c.index && c.total ? `${c.index}/${c.total}` : ""))
-      .catch(() => {
-        /* browser preview */
-      });
-    // 正在变声时热换模型：后台读新权重，旧音色继续出声；装上后只换指针。
-    // 采样率会变时引擎自己退回重开流。worker 没在跑时这里会失败，配置已是
-    // 新的，下次开启就对，所以吞掉。
-    // 纯 DSP worker 手里没有 RVC，热换会失败；改走完整 start（会切到 RVC worker）。
-    if (engine.running) {
-      const st = engine.status;
-      const dsp =
-        st?.dsp_only === true ||
-        st?.function === "fx" ||
-        st?.worker_kind === "dsp";
-      if (dsp) {
-        engine.noteSwap();
-        void startVc().catch(() => {});
-      } else {
-        engine.noteSwap();
-        void swapModel().catch(() => {});
-      }
-    }
-  }, [syncParams, engine.running, engine.noteSwap, engine.status]);
-
-  // —— 新手进度：两个历史事件的落盘点 ——
-  // 首次成功变声（running 一旦为真就记，之后不再写）。
-  const onboardConvertDone = useRef(false);
-  useEffect(() => {
-    if (!engine.running || onboardConvertDone.current) return;
-    onboardConvertDone.current = true;
-    void invoke("config_set", { patch: { onboard_convert: true } }).catch(() => {});
-    setOnboardTick((n) => n + 1);
-  }, [engine.running]);
-
-  // 开启过监听（勾选 monitor_self 即视为完成；取消勾选不回退——「做过」是事实）。
-  const onboardMonitorDone = useRef(false);
-  useEffect(() => {
-    const cfg = cfgRef.current;
-    if (cfg?.monitor_self === true) onboardMonitorDone.current = true;
-  }, [/* cfgRef 由下方 effect 维护 */]);
-  // cfgRef：让上面的检查能读到最新配置而不进依赖。
-  const cfgRef = useRef<Config | undefined>(undefined);
-  useEffect(() => {
-    const off = onConfigPatch((p) => {
-      cfgRef.current = { ...(cfgRef.current || {}), ...p };
-      if (p.monitor_self === true && !onboardMonitorDone.current) {
-        onboardMonitorDone.current = true;
-        void invoke("config_set", { patch: { onboard_monitor: true } }).catch(() => {});
-        setOnboardTick((n) => n + 1);
-      }
-      if (p.onboard_dismiss !== undefined) setOnboardTick((n) => n + 1);
-    });
-    return off;
-  }, []);
-
-  // —— 链路自检对话框：dock 错误态的「自检」入口 ——
-  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
-  // 新手进度条的刷新信号：两个历史事件落盘时 +1。
   const [onboardTick, setOnboardTick] = useState(0);
-
-  // Ctrl+F5 / F6 step through the catalog, same as the old shell.
-  const shiftVoice = useCallback(async (delta: number) => {
-    try {
-      const cat = await invoke<{
-        models?: Array<Record<string, unknown>>;
-        selected_idx?: number;
-      }>("voices_list");
-      const list = cat.models || [];
-      if (!list.length) return;
-      const cur = Number(cat.selected_idx ?? -1);
-      const next = ((cur < 0 ? 0 : cur) + delta + list.length) % list.length;
-      const m = list[next];
-      const res = await invoke<{
-        model?: Record<string, unknown>;
-        pitch?: number;
-        formant?: number;
-        profile_summary?: string;
-      }>("voices_select", {
-        path: String(m.path ?? ""),
-        dir: String(m.dir ?? ""),
-        name: String(m.name ?? ""),
-      });
-      // Through the shared handler: the hotkeys used to set only the name, so
-      // stepping voices with Ctrl+F5/F6 left the dock's tag, position, pitch
-      // and profile showing the previous voice — and never pushed the new
-      // voice's parameters to a running stream.
-      applyVoiceChange({
-        model: (res.model as { name?: string; path?: string; dir?: string }) || m,
-        pitch: res.pitch,
-        formant: res.formant,
-        profileSummary: res.profile_summary,
-      });
-      if (res.pitch != null || res.formant != null) {
-        try {
-          await setHot({
-            pitch: Number(res.pitch ?? 0),
-            formant: Number(res.formant ?? 0),
-          });
-        } catch {
-          /* worker may be idle */
-        }
-      }
-    } catch {
-      /* catalog unavailable */
-    }
-  }, [applyVoiceChange]);
-
-  // Tray menu and global hotkeys drive the same actions as the dock, so the
-  // shortcuts keep working while the window is hidden.
-  //
-  // The handlers close over `engine` and `shiftVoice`, and `useEngine` returns
-  // a fresh object on every render — which the status poll causes once a
-  // second. With those in the dependency array this effect re-ran that often,
-  // and because `listen()` is async its cleanup ran while the promises were
-  // still pending: it unregistered nothing. Six listeners leaked per second,
-  // each one a live IPC registration on the Rust side, for as long as the app
-  // stayed open. Register once and reach the current closures through a ref.
+  // 自检结论弹窗（引擎报错时底栏入口）。GSV 下保留机制，检查项由
+  // known_issues.rs 驱动。
+  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
+  // 底栏/快捷键共用的动作表。变声专属动作已随 Dock 移除；保留骨架给
+  // 合成相关的未来热键。
   const actionsRef = useRef({
     toggleRun: () => {},
-    shiftVoice: (_d: number) => {},
     toggleMode: () => {},
     shiftPitch: (_d: number) => {},
+    shiftVoice: (_d: number) => {},
     toggleCfgFlag: (_key: string) => {},
   });
+  void actionsRef.current;
+
   useEffect(() => {
     actionsRef.current = {
-      toggleRun: () => void engine.toggleRun(),
-      shiftVoice: (d: number) => void shiftVoice(d),
-      toggleMode: () =>
-        setMode((m) => {
-          const next: OutputMode = m === "vc" ? "bypass" : "vc";
-          void engine.onMode(next);
-          return next;
-        }),
-      // 底栏那根音高条的范围，两处必须一致 —— 快捷键推到 25 而条子最多 24，
-      // 界面和引擎就对不上了。
-      shiftPitch: (d: number) =>
-        setPitch((p) => {
-          const next = Math.min(24, Math.max(-24, p + d));
-          if (next !== p) onPitch(next);
-          return next;
-        }),
-      // 监听自己 / 音效总开关。两个都是布尔配置项，读一次翻一次写回去。
-      // config_set 那边会负责推给正在跑的引擎（监听是热推，音效本来就是热键）。
+      toggleRun: () => {},
+      toggleMode: () => {},
+      shiftPitch: () => {},
+      shiftVoice: () => {},
       toggleCfgFlag: (key: string) => {
         void (async () => {
           try {
@@ -964,19 +634,6 @@ export default function App() {
       if (disposed) un();
       else offs.push(un);
     };
-    void add("tray://toggle-vc", () => actionsRef.current.toggleRun());
-    void add("hotkey://toggle-vc", () => actionsRef.current.toggleRun());
-    void add("hotkey://prev-voice", () => actionsRef.current.shiftVoice(-1));
-    void add("hotkey://next-voice", () => actionsRef.current.shiftVoice(1));
-    void add("hotkey://toggle-mode", () => actionsRef.current.toggleMode());
-    void add("hotkey://pitch-up", () => actionsRef.current.shiftPitch(1));
-    void add("hotkey://pitch-down", () => actionsRef.current.shiftPitch(-1));
-    void add("hotkey://toggle-monitor", () =>
-      actionsRef.current.toggleCfgFlag("monitor_self"),
-    );
-    void add("hotkey://toggle-fx", () =>
-      actionsRef.current.toggleCfgFlag("fx_enabled"),
-    );
     // hotkey://toggle-window 没有前端处理：窗口藏起来时 webview 可能被系统
     // 挂起，事件根本到不了这里。那个动作在 Rust 里就地做完了。
     void add("app://close-requested", () => setCloseAsk(true));
@@ -1012,33 +669,8 @@ export default function App() {
       if (!action) return;
       e.preventDefault();
       const a = actionsRef.current;
+      void a;
       switch (action) {
-        case "toggle-vc":
-          a.toggleRun();
-          break;
-        case "toggle-mode":
-          a.toggleMode();
-          break;
-        case "prev-voice":
-          a.shiftVoice(-1);
-          break;
-        case "next-voice":
-          a.shiftVoice(1);
-          break;
-        case "pitch-up":
-          a.shiftPitch(1);
-          break;
-        case "pitch-down":
-          a.shiftPitch(-1);
-          break;
-        case "toggle-monitor":
-          a.toggleCfgFlag("monitor_self");
-          break;
-        case "toggle-fx":
-          a.toggleCfgFlag("fx_enabled");
-          break;
-        // toggle-window 非全局时没有意义：窗口就在眼前，用不着「显示」它，
-        // 而藏起来之后这个监听器也就收不到键了。忽略。
         default:
           break;
       }
@@ -1103,12 +735,7 @@ export default function App() {
           switch (id) {
             case "home":
               return (
-                <HomePage
-                  currentId={voiceId}
-                  onOpenModels={openModels}
-                  onOpenDsp={openDsp}
-                  onVoiceChange={applyVoiceChange}
-                />
+                <HomePage onNavigate={setPage} />
               );
             case "plaza":
               return (
@@ -1123,14 +750,7 @@ export default function App() {
               );
             case "models":
               return (
-                <ModelsPage
-                  banner={plaza.feed.banner}
-                  onVoiceChange={applyVoiceChange}
-                  onDspChange={(id) => setDspId(id)}
-                  onOpenPlaza={openPlaza}
-                  focusKind={modelsKind}
-                  focusNonce={modelsKindNonce}
-                />
+                <ModelsPage onOpenPlaza={openPlaza} />
               );
             case "synth":
               return <SynthPage />;
@@ -1374,29 +994,13 @@ export default function App() {
       <WebDialogHost />
       <NativeDialogHint />
 
-      <Dock
-        voiceName={voiceName}
-        dspName={dspName}
-        onStopDsp={stopDsp}
-        voiceTag={voiceTag}
-        voiceIndex={voicePos}
-        pitch={pitch}
-        formant={formant}
-        onPitch={handlePitch}
-        onFormant={handleFormant}
-        mode={mode}
-        onMode={handleMode}
-        running={engine.running || engine.starting}
-        onToggleRun={() => void engine.toggleRun({ dspId })}
-        profileSummary={profileSummary}
+<StatusBar
+        roleName={undefined}
         statusTitle={engine.title}
         statusSub={engine.sub}
         progress={engine.progress}
         loading={engine.starting && engine.progress == null}
-        micDb={engine.micDb}
-        thresholdDb={engine.thresholdDb}
-        showSelfCheck={engine.status?.state === "error"}
-        onSelfCheck={() => setSelfCheckOpen(true)}
+        onOpenSynth={() => setPage("synth")}
       />
       {selfCheckOpen ? <LinkCheckDialog onClose={() => setSelfCheckOpen(false)} /> : null}
       {page === "home" ? (

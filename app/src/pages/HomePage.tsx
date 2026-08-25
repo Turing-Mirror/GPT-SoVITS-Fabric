@@ -1,489 +1,113 @@
-import { useEffect, useState, memo } from "react";
-import { Btn, Block, HelpMark, PagePad } from "../components/ui";
-import { dspTips } from "../lib/dspTips";
-import { setHot } from "../lib/engine";
-import { getConfig, onConfigPatch } from "../lib/config";
-import { listVoices, selectVoice, type VoiceModel } from "../lib/voices";
-import { resolveCover, useCoverCache } from "../lib/cover";
-import { openTool } from "../components/ToolWindow";
-import emblem from "../assets/logo_ui.png";
+import { PagePad, Block, Btn } from "../components/ui";
+import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
+import type { PageId } from "../lib/nav";
+
+/**
+ * 首页。
+ *
+ * 三件事：一眼可用的入口（快速合成 / 角色库 / 训练台）、当前角色的最近合成、
+ * 社区入口。浏览器预览模式下角色网格使用内置演示数据。
+ */
 
 type Props = {
-  currentId?: string;
-  onOpenModels?: () => void;
-  onOpenDsp?: () => void;
-  /** Same payload the models page reports, so the dock agrees either way. */
-  onVoiceChange?: (info: {
-    model: VoiceModel;
-    pitch?: number;
-    formant?: number;
-    profileSummary?: string;
-  }) => void;
+  onNavigate: (id: PageId) => void;
 };
 
-const keyOf = (m: VoiceModel) => m.dir || m.path || m.name;
+const DEMO_ROLES = [
+  { id: "tendou_alice", name: "天童爱丽丝", version: "v2ProPlus", hue: 205 },
+  { id: "hoshino", name: "小鸟游星野", version: "v2ProPlus", hue: 45 },
+  { id: "serika", name: "黑见芹香", version: "v2ProPlus", hue: 300 },
+  { id: "mutsuki", name: "浅黄睦月", version: "v2ProPlus", hue: 160 },
+];
 
-/**
- * 最近使用三卡封面边长：随窗口宽自适应。
- *
- * - 基准 = 默认窗宽（tauri `inner_size` 1180）下的 176 / 122
- * - 窗比默认更大 → 线性放大，**最大 +25%**（220 / 152.5）
- * - 窗比默认更小 → 沿用原来的 1020 / 720 两档收缩
- */
-const DEFAULT_WIN_W = 1180;
-const BASE_CUR = 176;
-const BASE_SIDE = 122;
-const BASE_FONT_CUR = 30;
-const BASE_FONT_SIDE = 26;
-const MAX_GROW = 0.25;
-
-type RecentCardMetrics = {
-  cur: number;
-  side: number;
-  fontCur: number;
-  fontSide: number;
-};
-
-function recentCardMetrics(vw: number): RecentCardMetrics {
-  // 窄窗：回到原先断点尺寸（略做连续插值，避免跳变）
-  if (vw <= 720) {
-    return { cur: 130, side: 92, fontCur: 22, fontSide: 19 };
-  }
-  if (vw <= 1020) {
-    const t = (vw - 720) / (1020 - 720);
-    const cur = Math.round(130 + t * (158 - 130));
-    const side = Math.round(92 + t * (110 - 92));
-    return {
-      cur,
-      side,
-      fontCur: Math.round(BASE_FONT_CUR * (cur / BASE_CUR)),
-      fontSide: Math.round(BASE_FONT_SIDE * (side / BASE_SIDE)),
-    };
-  }
-  if (vw <= DEFAULT_WIN_W) {
-    const t = (vw - 1020) / (DEFAULT_WIN_W - 1020);
-    const cur = Math.round(158 + t * (BASE_CUR - 158));
-    const side = Math.round(110 + t * (BASE_SIDE - 110));
-    return {
-      cur,
-      side,
-      fontCur: Math.round(BASE_FONT_CUR * (cur / BASE_CUR)),
-      fontSide: Math.round(BASE_FONT_SIDE * (side / BASE_SIDE)),
-    };
-  }
-  // 宽于默认窗：向「默认 × 1.25」爬，到屏幕可用宽为止
-  const maxW = Math.max(
-    DEFAULT_WIN_W + 1,
-    typeof window !== "undefined" ? window.screen?.availWidth || 1920 : 1920,
-  );
-  const t = Math.min(1, (vw - DEFAULT_WIN_W) / (maxW - DEFAULT_WIN_W));
-  const grow = 1 + MAX_GROW * t;
-  return {
-    cur: Math.round(BASE_CUR * grow),
-    side: Math.round(BASE_SIDE * grow),
-    fontCur: Math.round(BASE_FONT_CUR * grow),
-    fontSide: Math.round(BASE_FONT_SIDE * grow),
-  };
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-function useRecentCardMetrics(): RecentCardMetrics {
-  const [m, setM] = useState<RecentCardMetrics>(() =>
-    recentCardMetrics(
-      typeof window !== "undefined" ? window.innerWidth : DEFAULT_WIN_W,
-    ),
-  );
-  useEffect(() => {
-    const onResize = () => setM(recentCardMetrics(window.innerWidth));
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return m;
-}
-
-/**
- * Brand mark in the hero band. Decorative, so no alt text and no pointer
- * target. Dropped below 720px, where it would land on top of the copy instead
- * of beside it.
- */
-function HeroEmblem() {
-  // 新竖向 LOGO 自带色（青字 + 黑底），不要套 dark 模式的 invert，否则会串色。
-  return (
-    <img
-      src={emblem}
-      alt=""
-      aria-hidden
-      draggable={false}
-      className="pointer-events-none select-none absolute right-[30px] top-1/2 -translate-y-1/2 h-[112px] w-auto opacity-[var(--emblem-opacity)] max-[1020px]:right-[22px] max-[1020px]:h-[96px] max-[720px]:hidden"
-    />
-  );
-}
-
-/**
- * Home — stage band + 3 recent cards, current voice in the centre (larger).
- *
- * Recency comes from `recent_keys` (app_config `recent_models`), which
- * `voices_select` maintains — the same ordering the Tk shell used.
- */
-/**
- * 首页顶部横幅的自定义标题（设置 → 外观）。留空 = 默认标题。
- *
- * 只在这一个组件里读：memo 化的 HomePage 不接收任何新 prop，配置变化走
- * onConfigPatch 触发内部 state 更新，别的页面完全感知不到。
- */
-function useBannerText(): string {
-  const [text, setText] = useState("");
-  useEffect(() => {
-    let alive = true;
-    void getConfig()
-      .then((c) => {
-        if (alive && typeof c.home_banner_text === "string") {
-          setText(c.home_banner_text);
-        }
-      })
-      .catch(() => {
-        /* 浏览器预览里没有 Tauri 后端，用默认标题 */
-      });
-    const off = onConfigPatch((p) => {
-      if (typeof p.home_banner_text === "string") setText(p.home_banner_text);
-    });
-    return () => {
-      alive = false;
-      off();
-    };
-  }, []);
-  return text.trim();
-}
-
-/**
- * 横幅底色。--banner-opacity 由 applyAppearance 写到 <html> 上（默认 1），
- * 只混这一格的背景色 —— 整块 div 上挂 opacity 会把文字和 LOGO 一起洗淡，
- * 那不是「横幅透明度」该有的行为。
- */
-const STAGE_BG =
-  "color-mix(in srgb, var(--stage) calc(var(--banner-opacity, 1) * 100%), transparent)";
-
-function HomePageImpl({ currentId, onOpenModels, onOpenDsp, onVoiceChange }: Props) {
-  const [models, setModels] = useState<VoiceModel[]>([]);
-  const [recentKeys, setRecentKeys] = useState<string[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState(-1);
-  // Distinguish "no voices installed" from "could not read the catalog" —
-  // showing 「还没有本地音色」 after a failed call sends the user off to import
-  // something they may already have.
-  const [loadError, setLoadError] = useState("");
-  const [msg, setMsg] = useState("");
-  const bannerText = useBannerText();
-  const cardPx = useRecentCardMetrics();
-  // 封面本地化：已装第三方音色的远程封面走本地缓存（见 lib/cover.ts）。
-  const coverCache = useCoverCache(
-    models.map((m) => m.cover || "").filter(Boolean),
-  );
-
-  const load = async () => {
-    try {
-      const cat = await listVoices();
-      setModels(cat.models || []);
-      setSelectedIdx(Number(cat.selected_idx ?? -1));
-      const rk = (cat as unknown as { recent_keys?: unknown }).recent_keys;
-      setRecentKeys(Array.isArray(rk) ? rk.map(String) : []);
-      setLoadError("");
-    } catch (e) {
-      setModels([]);
-      setLoadError(String(e));
-    }
-  };
-  useEffect(() => {
-    void load();
-  }, [currentId]);
-
-  const selected =
-    selectedIdx >= 0 ? models[selectedIdx] : undefined;
-  // 没选中就不要把库里第一条画成当前。以前回退到 models[0] 让中间
-  // 那张卡永远亮着，用户以为选了音色，一点开启却被拒（diag 26.8.16）。
-  const current = selected;
-  const hasSelection = Boolean(selected);
-
-  // Most-recent first, current excluded — it always takes the centre slot.
-  const rest = [...models]
-    .filter((m) => m !== current)
-    .sort((a, b) => {
-      const ia = recentKeys.indexOf(keyOf(a));
-      const ib = recentKeys.indexOf(keyOf(b));
-      return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib);
-    });
-  const ordered = current
-    ? ([rest[0], current, rest[1]].filter(Boolean) as VoiceModel[])
-    : rest.slice(0, 3);
-
-  const pick = async (m: VoiceModel) => {
-    if (m.missing) {
-      setMsg(t("s.314a72cba4"));
-      return;
-    }
-    try {
-      setMsg("");
-      const res = await selectVoice({ path: m.path, dir: m.dir, name: m.name });
-      // Picking here used to only record the selection: the voice's saved
-      // pitch / formant were never pushed to a running stream and the dock kept
-      // showing the previous voice's name and numbers. Same handling as the
-      // models page now.
-      try {
-        await setHot({
-          dsp_enabled: false,
-          dsp_preset: "",
-          dsp_params: {},
-          function: "vc",
-          ...(res.pitch != null || res.formant != null
-            ? {
-                pitch: Number(res.pitch ?? 0),
-                formant: Number(res.formant ?? 0),
-              }
-            : {}),
-        });
-      } catch {
-        /* worker may be idle */
-      }
-      onVoiceChange?.({
-        model: (res.model as VoiceModel) || m,
-        pitch: res.pitch as number | undefined,
-        formant: res.formant as number | undefined,
-        profileSummary: res.profile_summary,
-      });
-      await load();
-    } catch (e) {
-      // Clicking a card and having nothing happen is the worst outcome.
-      setMsg(t("home.switchFail", { error: String(e) }));
-    }
-  };
-
-  if (!models.length) {
-    return (
-      <div>
-        <div
-          className="relative overflow-hidden px-[30px] pt-8 pb-7 max-[1020px]:px-[22px] max-[720px]:px-4"
-          style={{ background: STAGE_BG }}
-        >
-          <h2 className="text-[27px] font-semibold tracking-tight m-0 mb-[15px] max-[860px]:text-2xl">{bannerText || t("s.9d835868b4")}</h2>
-          <p className="text-[12.5px] text-[var(--ink-muted)] m-0">
-            {loadError
-              ? t("s.c4a98bd0e6", { v0: loadError })
-              : t("s.2a26295b90")}
-          </p>
-          <HeroEmblem />
-        </div>
-        <PagePad>
-          <Block title={t("s.71265fc4cb")}>
-            <div className="flex justify-center gap-3 flex-wrap">
-              <Btn onClick={onOpenModels}>{t("s.3c12966a8c")}</Btn>
-              {onOpenDsp ? (
-                <span className="inline-flex items-center gap-[9px]">
-                  <Btn onClick={onOpenDsp}>{t("s.dspHomeOpen")}</Btn>
-                  <HelpMark title={dspTips().home} />
-                </span>
-              ) : null}
-            </div>
-          </Block>
-          <DspHomeEntry onOpen={onOpenDsp} />
-          <ToolShortcuts />
-        </PagePad>
-      </div>
-    );
-  }
+export function HomePage({ onNavigate }: Props) {
+  const { locale } = useI18n();
+  void locale;
+  const roles = DEMO_ROLES;
 
   return (
-    <div>
+    <PagePad>
+      {/* 主视觉 */}
       <div
-        className="relative overflow-hidden px-[30px] pt-8 pb-7 max-[1020px]:px-[22px] max-[1020px]:pt-7 max-[1020px]:pb-6 max-[720px]:px-4 max-[720px]:pt-[22px] max-[720px]:pb-5"
-        style={{ background: STAGE_BG }}
+        className="rounded-[var(--r)] p-6 mt-[26px] relative overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(120deg, var(--stage) 0%, color-mix(in srgb, var(--stage) 55%, var(--surface)) 100%)",
+          boxShadow: "var(--glass)",
+        }}
       >
-        <h2 className="text-[27px] font-semibold tracking-tight m-0 mb-[15px] max-[860px]:text-2xl">{bannerText || t("s.9d835868b4")}</h2>
-        <p className="text-[19px] font-semibold text-[var(--accent)] m-0 mb-1.5">
-          {selected ? selected.name : t("s.262d11e2d6")}
+        <img
+          src={new URL("../assets/logo_wordmark.png", import.meta.url).href}
+          alt="GPT-SoVITS Fabric"
+          className="h-[44px] w-auto max-w-full"
+          style={{ filter: "var(--logo-filter)" }}
+        />
+        <p className="text-[13px] text-[var(--ink-muted)] mt-3 max-w-[560px] leading-relaxed">
+          {t("home.tagline")}
         </p>
-        <p className="text-[12.5px] text-[var(--ink-muted)] m-0">
-          {selected
-            ? [
-                selected.tag,
-                selected.author ? t("s.7feea73fa3", { v0: selected.author }) : "",
-              ]
-                .filter(Boolean)
-                .join(" · ") +
-              (selected.tag || selected.author ? " · " : "") +
-              t("s.856b4d0ba9")
-            : t("s.856b4d0ba9")}
-        </p>
-        <HeroEmblem />
       </div>
 
-      <PagePad>
-        <Block
-          title={t("s.71265fc4cb")}
-          action={<Btn onClick={onOpenModels}>{t("s.35e4afb47d")}</Btn>}
-        >
-          {msg ? (
-            <p className="text-[12.5px] text-[#b8534f] m-0 mb-3">{msg}</p>
-          ) : null}
-          <div className="flex gap-5 items-center justify-center flex-wrap max-[520px]:flex-col max-[720px]:gap-3">
-            {ordered.map((v) => {
-              const cur = v === current;
-              const edge = cur ? cardPx.cur : cardPx.side;
-              const fontPx = cur ? cardPx.fontCur : cardPx.fontSide;
-              return (
-                <button
-                  key={keyOf(v)}
-                  type="button"
-                  onClick={() => void pick(v)}
-                  className="border-0 bg-transparent p-0 text-left cursor-pointer"
-                >
-                  <div
-                    style={{ width: edge, fontSize: fontPx }}
-                    className={[
-                      "rounded-[var(--r)] grid place-items-center relative overflow-hidden",
-                      // 只给宽度，高度交给 aspect-square。以前选中和未选中各写
-                      // 一组 w/h，三个断点下算出六种不同的长宽比 —— 同一张图在
-                      // 选中前后、拉窗口前后被裁掉的部分都不一样，看着就像图在
-                      // 乱缩放。比例由结构保证，就不会再飘。
-                      "aspect-square",
-                      "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)]",
-                      "text-[color-mix(in_srgb,var(--ink)_32%,transparent)]",
-                      // 封面按原色显示。以前未选中的一律去色、选中才恢复，
-                      // 那是拿画师的画当状态指示器用 —— 选中状态由描边和尺寸
-                      // 表达就够了。
-                      "transition-[width,font-size,transform,box-shadow] duration-300 ease-[var(--spring)]",
-                      "active:scale-[0.985]",
-                      cur
-                        ? "shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--ink)_26%,transparent)]"
-                        : "",
-                    ].join(" ")}
-                  >
-                    {v.cover ? (
-                      <img
-                        src={resolveCover(v.cover, coverCache)}
-                        alt=""
-                        draggable={false}
-                        // contain 而不是 cover：官方封面全是 1:1，在方形框里
-                        // 两者结果一样、都不裁；第三方是竖图（最极端 0.395），
-                        // cover 会切掉七成。宁可两边留出底色，也别把人裁没。
-                        className="absolute inset-0 w-full h-full object-contain"
-                      />
-                    ) : (
-                      <span>{(v.name || "?").slice(0, 4)}</span>
-                    )}
-                    {cur && hasSelection ? (
-                      <span className="absolute top-2.5 right-2.5 text-[11px] text-[var(--accent)]">{t("s.e6aa2cbd7b")}</span>
-                    ) : null}
-                    {v.has_index ? (
-                      <span className="absolute right-2.5 bottom-2 text-[11px] text-[var(--meta)]">{t("s.ec673c54d6")}</span>
-                    ) : null}
-                  </div>
-                  <div className="text-[11.5px] text-[var(--meta)] mt-3">
-                    {v.tag || t("s.c4301894a2")}
-                  </div>
-                  <div
-                    className={[
-                      "font-semibold mt-0.5 leading-snug",
-                      cur ? "text-[14.5px]" : "text-[13.5px]",
-                    ].join(" ")}
-                  >
-                    {v.name}
-                  </div>
-                  <div className="text-xs text-[var(--meta)] mt-0.5">
-                    {v.author ? t("s.7feea73fa3", { v0: v.author }) : "\u00a0"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Block>
-        <DspHomeEntry onOpen={onOpenDsp} />
-        <ToolShortcuts />
-      </PagePad>
-    </div>
-  );
-}
-
-function DspHomeEntry({ onOpen }: { onOpen?: () => void }) {
-  if (!onOpen) return null;
-  return (
-    <Block title={t("s.dspHomeTitle")} titleTip={dspTips().home}>
-      <button
-        type="button"
-        onClick={onOpen}
-        className={[
-          "w-full text-left border-0 cursor-pointer",
-          "rounded-[var(--r)] px-4 py-3.5",
-          "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
-          "transition-[transform,background] duration-200 ease-[var(--ease)]",
-          "hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)]",
-          "active:scale-[0.985]",
-        ].join(" ")}
-      >
-        <div className="text-[13.5px] font-semibold text-[var(--ink)]">
-          {t("s.dspHomeOpen")}
+      {/* 入口卡 */}
+      <Block>
+        <div className="grid grid-cols-3 max-[760px]:grid-cols-1 gap-[10px]">
+          {[
+            { id: "synth" as PageId, title: t("home.qSynth"), desc: t("home.qSynthDesc") },
+            { id: "models" as PageId, title: t("home.qLibrary"), desc: t("home.qLibraryDesc") },
+            { id: "train" as PageId, title: t("home.qTrain"), desc: t("home.qTrainDesc") },
+          ].map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onNavigate(c.id)}
+              className="text-left rounded-[var(--r)] bg-[var(--surface)] p-4 cursor-pointer border-0 shadow-[var(--glass)] hover:bg-[color-mix(in_srgb,var(--accent)_5%,var(--surface))] active:scale-[0.98] transition-all duration-200 ease-[var(--ease)]"
+            >
+              <div className="text-[14.5px] font-semibold">{c.title}</div>
+              <div className="text-[12.5px] text-[var(--help)] mt-1.5 leading-relaxed">{c.desc}</div>
+            </button>
+          ))}
         </div>
-        <div className="text-[12px] text-[var(--meta)] mt-1">{t("s.dspHomeDesc")}</div>
-      </button>
-    </Block>
+      </Block>
+
+      {/* 角色速选 */}
+      <Block
+        title={t("home.rolesTitle")}
+        note={!isTauri() ? t("synth.demoBadge") : undefined}
+        action={
+          <Btn onClick={() => onNavigate("models")}>{t("home.allRoles")}</Btn>
+        }
+      >
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-[10px]">
+          {roles.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onNavigate("synth")}
+              className="text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 shadow-[var(--glass)] bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] active:scale-[0.97] transition-all duration-200 ease-[var(--ease)]"
+            >
+              <div
+                className="w-full aspect-[5/3] rounded-[calc(var(--r)-4px)] mb-2"
+                style={{
+                  background: `linear-gradient(135deg, hsl(${r.hue} 62% 72%), hsl(${r.hue + 30} 55% 58%))`,
+                }}
+              />
+              <div className="text-[13px] font-medium leading-tight">{r.name}</div>
+              <div className="text-[11px] text-[var(--meta)] mt-0.5">{r.version}</div>
+            </button>
+          ))}
+        </div>
+      </Block>
+
+      {/* 最近合成 */}
+      <Block title={t("home.recentTitle")} note={t("home.recentNote")}>
+        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)]">
+          {t("home.recentEmpty")}
+        </div>
+      </Block>
+    </PagePad>
   );
 }
-
-/**
- * 首页底下那三个直达按钮。
- *
- * 这三件事以前只有一条路：「其他」页 → 往下翻到「音频工具」→ 点「打开」。
- * 分离 → 训练 → 合成是同一条「做音色」的链路，放在最近使用的正下方。
- * 下载模型仍在「其他」页，不占首页入口。
- */
-function ToolShortcuts() {
-  const items: Array<{ label: string; desc: string; go: () => void }> = [
-    {
-      label: t("s.8fd038283b"),
-      desc: t("s.2d5f93d547"),
-      go: () => openTool("separate"),
-    },
-    {
-      label: t("s.ba65bd5595"),
-      desc: t("s.30e91c9e4d"),
-      go: () => openTool("train"),
-    },
-    {
-      label: t("s.6f311c47fe"),
-      desc: t("s.3bf3d98458"),
-      go: () => openTool("tts"),
-    },
-  ];
-  return (
-    <Block title={t("s.21093d185d")}>
-      <div className="flex gap-3 flex-wrap max-[520px]:flex-col">
-        {items.map((it) => (
-          <button
-            key={it.label}
-            type="button"
-            onClick={it.go}
-            className={[
-              "flex-1 min-w-[180px] text-left border-0 cursor-pointer",
-              "rounded-[var(--r)] px-4 py-3.5",
-              "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
-              "transition-[transform,background] duration-200 ease-[var(--ease)]",
-              "hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)]",
-              "active:scale-[0.985]",
-            ].join(" ")}
-          >
-            <div className="text-[13.5px] font-semibold text-[var(--ink)]">
-              {it.label}
-            </div>
-            <div className="text-[12px] text-[var(--meta)] mt-1">{it.desc}</div>
-          </button>
-        ))}
-      </div>
-    </Block>
-  );
-}
-
-/**
- * Memoised: App re-renders on every engine status tick (2.5x a second while
- * converting). Without this the whole page tree was rebuilt each time for a
- * mic-level change that only the dock cares about.
- */
-export const HomePage = memo(HomePageImpl);

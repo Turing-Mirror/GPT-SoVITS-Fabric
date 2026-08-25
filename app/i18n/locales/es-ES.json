@@ -148,7 +148,19 @@
     "downloadModels": "Descargar modelos",
     "downloadModelsDesc": "Modelos de separación y modelos base de entrenamiento",
     "missingModel": "Faltan los archivos del modelo de esta voz o están incompletos",
-    "switchFail": "Error al cambiar: {error}"
+    "switchFail": "Error al cambiar: {error}",
+    "tagline": "Cliente de escritorio de síntesis de voz listo para usar, basado en GPT-SoVITS. Instala un paquete de personaje, escribe texto y obtén voz natural al instante; también puedes entrenar tu propio personaje.",
+    "qSynth": "Síntesis rápida",
+    "qSynthDesc": "Elige personaje y referencia, escribe y suena",
+    "qLibrary": "Biblioteca",
+    "qLibraryDesc": "Importa y gestiona paquetes con anotaciones .list",
+    "qTrain": "Entrenamiento",
+    "qTrainDesc": "Crea tu personaje desde audio original",
+    "rolesTitle": "Personajes",
+    "allRoles": "Ver todos",
+    "recentTitle": "Síntesis recientes",
+    "recentNote": "Más reciente primero; clic para reeditar",
+    "recentEmpty": "Aún no hay nada. Crea tu primer clip en Síntesis."
   },
   "glossary": {
     "sectionTitle": "Glosario",
@@ -2308,5 +2320,36 @@
     "faqA3": "La página gestiona los modelos cargados con expulsión LRU. Si aún falta: desactiva streaming, reduce lotes o usa una versión ligera.",
     "faqQ4": "¿Cómo comparto un personaje?",
     "faqA4": "Biblioteca → Exportar paquete y envía el zip a la Plaza. Tras revisión quedará instalable con un clic."
+  },
+  "statusbar": {
+    "role": "Personaje actual: {name}",
+    "noRole": "Sin personaje",
+    "loading": "Iniciando motor…",
+    "openSynth": "Sintetizar"
+  },
+  "more": {
+    "resTitle": "Recursos y avanzado",
+    "resNote": "Modelos base y recursos preentrenados en un solo lugar",
+    "resDesc": "HuBERT, modelos base GPT/SoVITS y otros recursos necesarios"
+  },
+  "library": {
+    "title": "Biblioteca",
+    "subtitle": "Importar, gestionar y compartir paquetes",
+    "goPlaza": "Plaza",
+    "installTitle": "Instalar un paquete",
+    "installNote": "Paquetes .zip estándar de la comunidad",
+    "packName": "Importar desde archivo",
+    "packDesc": "Elige un .zip; el personaje se registra localmente y sus anotaciones .list alimentan tanto la referencia como el entrenador.",
+    "import": "Importar paquete",
+    "demoImport": "No disponible en la vista previa del navegador; usa la app de escritorio.",
+    "importPending": "Importando…",
+    "listTitle": "Personajes locales",
+    "listNote": "Los instalados y entrenados aparecen aquí",
+    "emptyTitle": "Todavía no hay personajes",
+    "emptyDesc": "Instala paquetes desde la Plaza o entrena el tuyo con tu propio audio.",
+    "emptyGoPlaza": "Buscar en la Plaza",
+    "emptyImport": "Importar paquete",
+    "fmtTitle": "Estructura del paquete",
+    "fmtTip": "Rutas relativas a la raíz del paquete; cada línea .list tiene cuatro columnas separadas por barras."
   }
 }
