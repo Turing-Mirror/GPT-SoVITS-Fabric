@@ -1,11 +1,11 @@
 [package]
-name = "rvc-fabric"
-version = "1.5.5"
+name = "gpt-sovits-fabric"
+version = "0.1.0"
 description = "RVC Fabric desktop shell (Tauri + React)"
 authors = ["Turing Mirror"]
 edition = "2021"
 # Extra [[bin]] (catalog-check) requires an explicit default for tauri build.
-default-run = "rvc-fabric"
+default-run = "gpt-sovits-fabric"
 
 [lib]
 name = "app_lib"
@@ -15,7 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [[bin]]
-name = "rvc-fabric"
+name = "gpt-sovits-fabric"
 path = "src/main.rs"
 
 [[bin]]

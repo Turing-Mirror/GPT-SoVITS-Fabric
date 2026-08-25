@@ -44,7 +44,7 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         Menu::with_items(app, &[&show, &toggle, &quit]).map_err(|e| e.to_string())?;
 
     TrayIconBuilder::with_id("main")
-        .tooltip("RVC Fabric")
+        .tooltip("GPT-SoVITS Fabric")
         .icon(
             app.default_window_icon()
                 .cloned()

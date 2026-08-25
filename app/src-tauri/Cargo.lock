@@ -1704,6 +1704,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpt-sovits-fabric"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "hex",
+ "regex",
+ "reqwest 0.12.28",
+ "rfd",
+ "ripget",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tokio",
+ "windows-sys 0.59.0",
+ "zip 2.4.2",
+]
+
+[[package]]
 name = "gtk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3614,32 +3640,6 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
-
-[[package]]
-name = "rvc-fabric"
-version = "1.5.5"
-dependencies = [
- "chrono",
- "flate2",
- "hex",
- "regex",
- "reqwest 0.12.28",
- "rfd",
- "ripget",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tokio",
- "windows-sys 0.59.0",
- "zip 2.4.2",
-]
 
 [[package]]
 name = "ryu"

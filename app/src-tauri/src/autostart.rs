@@ -11,7 +11,7 @@ use serde::Serialize;
 
 /// Run 键路径。值名保持稳定：改掉会让已开启自启的用户悄悄失去自启。
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const VALUE_NAME: &str = "RVC Fabric";
+const VALUE_NAME: &str = "GPT-SoVITS Fabric";
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct AutostartStatus {
