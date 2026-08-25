@@ -1,4 +1,4 @@
-//! RVC Fabric shell (Tauri).
+//! GPT-SoVITS Fabric shell (Tauri).
 //!
 //! Stages 1–4: window/UI, worker bridge, Runtime provision, voice catalog & store.
 
@@ -2055,7 +2055,7 @@ pub fn run() {
     i18n::init_from_config(&root);
     // pid 在横幅里，是因为 shell.log 是跨启动追加的：报告「进程还在但看不见
     // 窗口」时，得先能确认手上这段日志和任务管理器里那个进程是同一次运行。
-    logging::shell_log!("=== RVC Fabric {} 启动（pid {}）===",
+    logging::shell_log!("=== GPT-SoVITS Fabric {} 启动（pid {}）===",
         update::APP_VERSION,
         std::process::id()
     );
@@ -2450,7 +2450,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running RVC Fabric")
+        .expect("error while running GPT-SoVITS Fabric")
         .run(|app, event| {
             // 退出时再清一遍，把本会话分离/下载留下的中间文件收掉。
             if let tauri::RunEvent::Exit = event {
