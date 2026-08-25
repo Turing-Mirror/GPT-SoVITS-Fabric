@@ -21,12 +21,15 @@
 - 变体仅 nvidia + cpu 两个（上游无 DirectML 路径）。
 - 首启补全复用 provision 管线；底模按版本组 extras（hubert/roberta/s1v3/v2Pro(+)/v4+vocoder/sv/UVR5/ASR）。
 
-## D4 角色包格式 [草案 v0.2 —— .list 为核心]
+## D4 角色包格式 [已定 v0.3 —— .list 为核心]
 
 ```
 <id>_voice.zip
 ├─ config.json        # id/name/author/author_url/date/cover/version(v2ProPlus…)
 │                     # lists: [{file, lang, note}] 声明包内标注文件
+│                     # params: {top_k, top_p, temperature, repetition_penalty, speed}
+│                     #         （作者推荐值；可整体省略；未知字段忽略；加载时范围钳制；
+│                     #          用户在 UI 改过则以用户本地持久化值为准）
 ├─ cover.jpg
 ├─ models/
 │  ├─ sovits.pth
@@ -39,7 +42,7 @@
 - `.list` 同时服务：合成台参考音频挑选器（行=候选参考，带文本稿+语种）、训练台数据集（直接喂格式化工具）。
 - 包内路径一律相对包根（禁止绝对路径）。
 - 支持语种子集命名约定 `<id>_JP.list` / `<id>_ZH.list`（沿用现有素材库习惯）。
-- [待定] params.json（top_k/top_p/temperature/speed 默认值）是否入包。
+- params 只收音质调校知识（采样类 + 可选 speed）；设备相关项（batch_size、流式阈值等）禁止入包。
 
 ## D5 版本矩阵 [草案]
 
@@ -53,3 +56,19 @@
 - M2 训练闭环：数据集工具链(UVR5→切片→ASR打标→校对) + 双微调 + 进度恢复
 - M3 广场：catalog 编译管线 + 角色包打包脚本 + 第三方源协议
 - M4 打磨发布：NSIS 薄包 + i18n + CNB 发布链路
+
+## D7 UI/UX 继承 [已定]
+
+从 RVC-Fabric 原样沿用（只读复制后改造，不回写）：
+
+- **设计令牌**（app/src/index.css）：Schale 浅蓝体系、`--accent #1289f0`、明暗双主题
+  （data-theme + prefers-color-scheme）、14/8px 圆角、玻璃拟态 --glass、原生控件
+  color-scheme 联动、换页缓动 --ease-nav。令牌注释文化一并保留。
+- **组件语言**：controls.tsx / ui.tsx / SegmentControl / Tooltip / TitleBar / Dock /
+  PageHost 全套复用。
+- **说明页模式**（HelpPage.tsx）：锚点 Block 手风琴（HELP_ANCHORS 深链）、首次运行
+  FAQ、功能分指南（合成/训练/角色包安装）、术语表 glossary、动态个性化内容
+  （RVC 版检测用户声卡画接线图；GSV 版对应=按显存/显卡推荐版本与默认参数）、
+  DonateNote。内容全部按 GPT-SoVITS 重写。
+- **引导体系**：OnboardingBar 新手进度、Nudge 提醒、FindingList 自检发现、
+  TuningWizard 调校向导思想 → 改造为合成/训练调优向导。

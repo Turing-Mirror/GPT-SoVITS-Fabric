@@ -1,0 +1,500 @@
+//! Product log book.
+//!
+//! Release builds have no console (`windows_subsystem = "windows"`), so
+//! diagnostics have to live on disk. Layout (same idea as VS Code / Chromium
+//! channel folders — not one ever-growing file, not a folder per click)::
+//!
+//! ```text
+//! User_Data/logs/
+//!   shell/2026-08-13.log     daily stream (window, IPC)
+//!   worker/2026-08-13.log    realtime worker
+//!   sts/sts_YYYYMMDD_HHMMSS.log   one file per conversion
+//!   tts/   separate/   train/   bench/
+//! ```
+//!
+//! Retention is 48 hours by file mtime, swept on startup. Job logs are
+//! always kept until they age out — deleting successes left diagnostics
+//! packs with no record that STS/TTS/separate/train had been used.
+
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use serde_json::{json, Value};
+
+static LOG_PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+/// Serialises appends. Writes are small and rare; contention is not a concern.
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Keep a single daily file readable. One previous sibling is enough.
+const MAX_BYTES: u64 = 2 * 1024 * 1024;
+/// User-facing policy: two days. Checked on every launch (and after job logs).
+pub const RETAIN: Duration = Duration::from_secs(2 * 24 * 3600);
+
+pub const CH_SHELL: &str = "shell";
+pub const CH_WORKER: &str = "worker";
+pub const CH_STS: &str = "sts";
+pub const CH_TTS: &str = "tts";
+pub const CH_SEPARATE: &str = "separate";
+pub const CH_TRAIN: &str = "train";
+pub const CH_BENCH: &str = "bench";
+
+/// Every channel the packer and the 48h sweeper should know about.
+pub const CHANNELS: &[&str] = &[
+    CH_SHELL, CH_WORKER, CH_STS, CH_TTS, CH_SEPARATE, CH_TRAIN, CH_BENCH,
+];
+
+/// Point the logger at the product root. Safe to call once; later calls are
+/// ignored so a stray caller cannot redirect the log mid-session.
+pub fn init(root: &Path) {
+    let dir = crate::paths::logs_dir(root);
+    let _ = fs::create_dir_all(dir.join(CH_SHELL));
+    let today = daily_path(root, CH_SHELL);
+    let _ = LOG_PATH.set(Some(today));
+    let _ = sweep(root);
+}
+
+/// Current shell daily file, if `init` has run.
+pub fn path() -> Option<PathBuf> {
+    LOG_PATH.get().cloned().flatten()
+}
+
+pub fn channel_dir(root: &Path, channel: &str) -> PathBuf {
+    crate::paths::logs_dir(root).join(channel)
+}
+
+pub fn daily_path(root: &Path, channel: &str) -> PathBuf {
+    let dir = channel_dir(root, channel);
+    let _ = fs::create_dir_all(&dir);
+    let day = chrono::Local::now().format("%Y-%m-%d");
+    dir.join(format!("{day}.log"))
+}
+
+/// One-shot job log (`sts/sts_20260813_220015.log`).
+pub fn run_path(root: &Path, channel: &str) -> PathBuf {
+    let dir = channel_dir(root, channel);
+    let _ = fs::create_dir_all(&dir);
+    let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let mut path = dir.join(format!("{channel}_{stamp}.log"));
+    if path.exists() {
+        path = dir.join(format!("{channel}_{stamp}_{}.log", std::process::id()));
+    }
+    path
+}
+
+fn rotate_if_huge(p: &Path) {
+    if fs::metadata(p).map(|m| m.len()).unwrap_or(0) > MAX_BYTES {
+        let _ = fs::rename(p, p.with_extension("log.1"));
+    }
+}
+
+/// Append one stamped line to a file. Never panics.
+pub fn append_file(path: &Path, line: &str) {
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    rotate_if_huge(path);
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
+pub fn append_daily(root: &Path, channel: &str, line: &str) {
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    append_file(&daily_path(root, channel), &format!("{stamp} {line}"));
+}
+
+/// Start a job log: header + pretty JSON request. Always created so a
+/// preflight failure still leaves a timestamped file (the old single `sts.log`
+/// missed those — UI said "see the log", file had nothing for that hour).
+pub fn begin_run(root: &Path, channel: &str, payload: &Value) -> PathBuf {
+    let path = run_path(root, channel);
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    let body = serde_json::to_string_pretty(payload).unwrap_or_else(|_| "{}".into());
+    append_file(
+        &path,
+        &format!("=== {channel} run {stamp} ===\n{body}\n=== stderr / notes ==="),
+    );
+    path
+}
+
+pub fn note_run(path: &Path, line: &str) {
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    append_file(path, &format!("{stamp} {line}"));
+}
+
+/// End a job log. Always keep the file; 48h sweep is the retention policy.
+/// `keep` is accepted so existing callers compile — it no longer deletes.
+pub fn finish_run(path: &Path, _keep: bool, summary: &str) {
+    note_run(path, &format!("=== done ({summary}) ==="));
+}
+
+/// 同一步骤里进度条会连打很多次。每次都 `open+write+close` 会拖慢热路径，
+/// 日志也会被百分比淹没。键变了（换文件 / 换步骤）立刻写；同一键至少隔
+/// 两秒才再写一行。
+const PROGRESS_GAP: Duration = Duration::from_secs(2);
+
+/// 一份任务日志的写入口。训练 / 转换 / 分离 / TTS / ckpt 共用。
+pub struct RunTrace {
+    pub path: PathBuf,
+    last_key: String,
+    last_at: Instant,
+}
+
+impl RunTrace {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            last_key: String::new(),
+            last_at: Instant::now(),
+        }
+    }
+
+    pub fn note(&self, line: &str) {
+        note_run(&self.path, line);
+    }
+
+    pub fn progress(&mut self, key: &str, line: &str) {
+        let now = Instant::now();
+        if !self.last_key.is_empty()
+            && key == self.last_key
+            && now.duration_since(self.last_at) < PROGRESS_GAP
+        {
+            return;
+        }
+        self.last_key.clear();
+        self.last_key.push_str(key);
+        self.last_at = now;
+        note_run(&self.path, line);
+    }
+
+    pub fn outcome(&self, outcome: &str, body: &str) {
+        note_run(&self.path, &format!("=== outcome ({outcome}) ===\n{body}"));
+    }
+}
+
+pub fn file_len(p: &Path) -> u64 {
+    fs::metadata(p)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .unwrap_or(0)
+}
+
+/// 给结论用：列出最多 `cap` 个文件的名字和体积，多出来的写 +N。
+pub fn describe_files(paths: &[impl AsRef<Path>], cap: usize) -> String {
+    if paths.is_empty() {
+        return "-".into();
+    }
+    let mut out = String::new();
+    for (i, p) in paths.iter().take(cap).enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let p = p.as_ref();
+        let name = p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_else(|| p.to_str().unwrap_or("?"));
+        out.push_str(&format!("  {name} {} bytes", file_len(p)));
+    }
+    if paths.len() > cap {
+        out.push_str(&format!("\n  +{} more", paths.len() - cap));
+    }
+    out
+}
+
+/// 只读文件尾巴。train.log 可以到几十 MB，不能整份 `read_to_string`。
+pub fn tail_lines(path: &Path, max_lines: usize, max_bytes: u64) -> String {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("log");
+    let Ok(meta) = fs::metadata(path) else {
+        return format!("--- {name} (missing) ---");
+    };
+    let size = meta.len();
+    let Ok(mut f) = fs::File::open(path) else {
+        return format!("--- {name} (unreadable) ---");
+    };
+    if size > max_bytes && f.seek(SeekFrom::Start(size - max_bytes)).is_err() {
+        return format!("--- {name} (seek failed, {size} bytes) ---");
+    }
+    let mut buf = String::new();
+    if f.read_to_string(&mut buf).is_err() {
+        return format!("--- {name} (read failed, {size} bytes) ---");
+    }
+    let lines: Vec<&str> = buf.lines().collect();
+    let start = lines.len().saturating_sub(max_lines);
+    format!(
+        "--- {name} ({size} bytes, last {} lines) ---\n{}",
+        lines.len() - start,
+        lines[start..].join("\n")
+    )
+}
+
+fn is_log_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.ends_with(".log") || n.ends_with(".log.1")
+}
+
+fn file_meta(p: &Path) -> Value {
+    let meta = fs::metadata(p).ok();
+    let bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+    let mtime = meta
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+    json!({
+        "name": p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string(),
+        "bytes": bytes,
+        "mtime": mtime,
+    })
+}
+
+fn list_log_files(dir: &Path) -> Vec<Value> {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && is_log_name(
+                    p.file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(""),
+                )
+        })
+        .collect();
+    files.sort();
+    files.iter().map(|p| file_meta(p)).collect()
+}
+
+/// What is actually on disk under `User_Data/logs/`. Goes into the
+/// diagnostics `info.json` so an empty STS folder is visible as "empty"
+/// rather than "packer forgot the channel".
+pub fn inventory(root: &Path) -> Value {
+    let dir = crate::paths::logs_dir(root);
+    let mut channels = serde_json::Map::new();
+    for ch in CHANNELS {
+        let p = dir.join(ch);
+        let files = list_log_files(&p);
+        channels.insert(
+            (*ch).into(),
+            json!({
+                "dir_exists": p.is_dir(),
+                "count": files.len(),
+                "files": files,
+            }),
+        );
+    }
+    let leftover = list_log_files(&dir);
+    json!({
+        "retain_hours": RETAIN.as_secs() / 3600,
+        "channels": channels,
+        "leftover": leftover,
+    })
+}
+
+/// Delete `*.log` / `*.log.1` under `User_Data/logs` older than [`RETAIN`].
+/// Leaves json sidecars (integrity probes) alone.
+pub fn sweep(root: &Path) -> usize {
+    let dir = crate::paths::logs_dir(root);
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(RETAIN)
+        .unwrap_or(std::time::UNIX_EPOCH);
+    sweep_dir(&dir, cutoff)
+}
+
+fn sweep_dir(dir: &Path, cutoff: std::time::SystemTime) -> usize {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut n = 0;
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            n += sweep_dir(&p, cutoff);
+            continue;
+        }
+        let name = p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !is_log_name(&name) {
+            continue;
+        }
+        let older = fs::metadata(&p)
+            .and_then(|m| m.modified())
+            .map(|t| t < cutoff)
+            .unwrap_or(false);
+        if older && fs::remove_file(&p).is_ok() {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// Append one line. Never panics and never blocks on failure — logging must not
+/// be able to take the app down.
+pub fn write(line: &str) {
+    // Keep dev runs readable in the terminal; on Windows release this goes
+    // nowhere, which is the whole reason the file below exists.
+    eprintln!("[rvc-fabric] {line}");
+
+    let Some(p) = path() else {
+        return;
+    };
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    append_file(&p, &format!("{stamp} {line}"));
+}
+
+/// `log!("…{x}")` — same formatting as `format!`.
+macro_rules! shell_log {
+    // Literal format (original style)
+    ($fmt:literal $($arg:tt)*) => {
+        $crate::logging::write(&format!($fmt $($arg)*))
+    };
+    // Runtime string (i18n::t / String / &str) — no extra format args
+    ($msg:expr) => {
+        $crate::logging::write(&format!("{}", $msg))
+    };
+}
+pub(crate) use shell_log;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn writing_without_init_is_a_no_op() {
+        // init() is never called in unit tests; this must not panic.
+        write("hello from a test");
+    }
+
+    #[test]
+    fn rotation_threshold_is_sane() {
+        assert!(MAX_BYTES >= 512 * 1024, "too small to hold a startup trace");
+    }
+
+    #[test]
+    fn retain_is_two_days() {
+        assert_eq!(RETAIN, Duration::from_secs(2 * 24 * 3600));
+    }
+
+    #[test]
+    fn finish_run_always_keeps_the_file() {
+        let td = std::env::temp_dir().join(format!(
+            "rvcf-log-keep-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&td);
+        fs::create_dir_all(&td).unwrap();
+        let p = td.join("sts_ok.log");
+        fs::write(&p, b"header\n").unwrap();
+        finish_run(&p, false, "ok");
+        assert!(p.exists(), "successful job logs must stay for diagnostics");
+        let body = fs::read_to_string(&p).unwrap();
+        assert!(body.contains("done (ok)"));
+        let _ = fs::remove_dir_all(&td);
+    }
+
+    #[test]
+    fn inventory_lists_empty_channels() {
+        let td = std::env::temp_dir().join(format!(
+            "rvcf-log-inv-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&td);
+        fs::create_dir_all(td.join("User_Data").join("logs").join("sts")).unwrap();
+        // inventory() joins user_data(root)/logs — fake a product root.
+        let root = &td;
+        fs::create_dir_all(root.join("User_Data").join("logs").join("sts")).unwrap();
+        fs::write(
+            root.join("User_Data").join("logs").join("sts").join("sts_1.log"),
+            b"x",
+        )
+        .unwrap();
+        let inv = inventory(root);
+        assert_eq!(inv["channels"]["sts"]["count"], 1);
+        assert_eq!(inv["channels"]["tts"]["count"], 0);
+        assert_eq!(inv["channels"]["tts"]["dir_exists"], false);
+        let _ = fs::remove_dir_all(&td);
+    }
+
+    #[test]
+    fn progress_throttles_the_same_key() {
+        let td = std::env::temp_dir().join(format!(
+            "rvcf-log-trace-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&td);
+        fs::create_dir_all(&td).unwrap();
+        let p = td.join("job.log");
+        fs::write(&p, b"").unwrap();
+        let mut t = RunTrace::new(p.clone());
+        t.progress("run:1", "a");
+        t.progress("run:1", "b"); // same key, too soon
+        t.progress("run:2", "c"); // key changed
+        t.note("always");
+        let body = fs::read_to_string(&p).unwrap();
+        assert!(body.contains("a"), "{body}");
+        assert!(!body.contains("b"), "throttled line leaked: {body}");
+        assert!(body.contains("c"), "{body}");
+        assert!(body.contains("always"), "{body}");
+        let _ = fs::remove_dir_all(&td);
+    }
+
+    #[test]
+    fn describe_files_caps_and_sizes() {
+        let td = std::env::temp_dir().join(format!(
+            "rvcf-log-files-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&td);
+        fs::create_dir_all(&td).unwrap();
+        let a = td.join("a.wav");
+        let b = td.join("b.wav");
+        fs::write(&a, b"12345").unwrap();
+        fs::write(&b, b"x").unwrap();
+        let text = describe_files(&[a.as_path(), b.as_path()], 1);
+        assert!(text.contains("a.wav 5 bytes"), "{text}");
+        assert!(text.contains("+1 more"), "{text}");
+        assert_eq!(describe_files(&[] as &[&Path], 8), "-");
+        let _ = fs::remove_dir_all(&td);
+    }
+
+    #[test]
+    fn tail_lines_says_missing_instead_of_panicking() {
+        let text = tail_lines(Path::new("/definitely/not/here.log"), 10, 1024);
+        assert!(text.contains("missing"), "{text}");
+    }
+
+    #[test]
+    fn sweep_keeps_fresh_logs_and_json() {
+        let td = std::env::temp_dir().join(format!(
+            "rvcf-log-sweep-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&td);
+        fs::create_dir_all(td.join("sts")).unwrap();
+        let fresh = td.join("sts").join("sts_new.log");
+        let json = td.join("runtime_integrity_last.json");
+        fs::write(&fresh, b"new").unwrap();
+        fs::write(&json, b"{}").unwrap();
+        // Cutoff far in the past: nothing is "old".
+        let n = sweep_dir(&td, SystemTime::UNIX_EPOCH);
+        assert_eq!(n, 0);
+        assert!(fresh.exists());
+        assert!(json.exists());
+        let _ = fs::remove_dir_all(&td);
+    }
+}

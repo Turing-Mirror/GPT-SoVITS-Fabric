@@ -1,0 +1,10 @@
+RVC Fabric · Setup 薄包
+========================================
+
+本包含：RVC Fabric 主程序、界面资源（frontend/）、引擎源码与配置。
+本包不含（首次运行时由程序从 CNB 下载）：
+  1. Runtime（绿色 Python，按显卡分版）
+  2. engine-core（hubert / rmvpe / ffmpeg / ffprobe，全卡共用）
+  3. VB-Cable 虚拟声卡安装包
+
+CNB：https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases

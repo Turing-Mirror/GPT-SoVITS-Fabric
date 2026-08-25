@@ -1,0 +1,213 @@
+import numpy as np
+from multiprocessing import Process, Value, Event
+from multiprocessing.shared_memory import SharedMemory
+import sounddevice as sd
+import signal
+
+
+def copy_and_consume_ring(ring, play_ptr, frames, outdata):
+    """Copy ``frames`` from a circular ring into ``outdata``, then zero them.
+
+    The audio callback used to keep playing whatever was last written. When
+    inference misses a deadline the play pointer wraps and the last syllable
+    loops — that is the stutter in diag 26.8.21/1 (underrun 28, Infer time
+    spikes to 17s). Consuming to zero makes a miss into a gap, not a loop.
+    Returns the new play pointer.
+    """
+    buf_size = int(ring.shape[0])
+    play_ptr = int(play_ptr)
+    frames = int(frames)
+    end_ptr = play_ptr + frames
+    if end_ptr <= buf_size:
+        outdata[:] = ring[play_ptr:end_ptr]
+        ring[play_ptr:end_ptr] = 0
+    else:
+        first = buf_size - play_ptr
+        second = end_ptr - buf_size
+        outdata[:first] = ring[play_ptr:]
+        outdata[first:] = ring[:second]
+        ring[play_ptr:] = 0
+        ring[:second] = 0
+    return end_ptr % buf_size
+
+
+class AudioIoProcess(Process):
+    def __init__(self,
+                 input_device,
+                 output_device,
+                 input_audio_block_size: int,
+                 sample_rate: int,
+                 channel_num: int = 2,
+                 is_device_combined: bool = True,
+                 is_input_wasapi_exclusive: bool = False,
+                 is_output_wasapi_exclusive: bool = False
+                 ):
+        super().__init__()
+        self.in_dev = input_device
+        self.out_dev = output_device
+        self.block_size: int = input_audio_block_size
+        self.buf_size: int = self.block_size << 1  # 双缓冲
+        self.sample_rate: int = sample_rate
+        self.channels: int = channel_num
+        self.is_device_combined: bool = is_device_combined
+        self.is_input_wasapi_exclusive: bool = is_input_wasapi_exclusive
+        self.is_output_wasapi_exclusive: bool = is_output_wasapi_exclusive
+
+        self.__rec_ptr = 0
+        self.in_ptr = Value('i', 0)  # 当收满一个block时由本进程设置
+        self.out_ptr = Value('i', 0)  # 由主进程设置，指示下一次预期写入位置
+        self.play_ptr = Value('i', 0)  # 由本进程设置，指示当前音频已经播放到哪里
+        self.in_evt = Event()  # 当收满一个block时由本进程设置
+        self.stop_evt = Event()  # 当主进程停止音频活动时由主进程设置
+
+        # -1 = not measured yet (was 114514 meme sentinel — UI showed 114514xxx ms)
+        self.latency = Value('d', -1.0)
+
+        self.buf_shape: tuple = (self.buf_size, self.channels)
+        self.buf_dtype: np.dtype = np.float32
+        self.buf_nbytes: int = int(
+            np.prod(self.buf_shape) * np.dtype(self.buf_dtype).itemsize)
+
+        self.in_mem = SharedMemory(create=True, size=self.buf_nbytes)
+        self.out_mem = SharedMemory(create=True, size=self.buf_nbytes)
+        self.in_mem_name: str = self.in_mem.name
+        self.out_mem_name: str = self.out_mem.name
+
+        self.in_buf = None
+        self.out_buf = None
+
+    def get_in_mem_name(self) -> str:
+        return self.in_mem_name
+
+    def get_out_mem_name(self) -> str:
+        return self.out_mem_name
+
+    def get_np_shape(self) -> tuple:
+        return self.buf_shape
+
+    def get_np_dtype(self) -> np.dtype:
+        return self.buf_dtype
+
+    def get_ptrs_and_events(self):
+        return self.in_ptr, \
+            self.out_ptr,\
+            self.play_ptr,\
+            self.in_evt, \
+            self.stop_evt\
+
+    def get_latency(self) -> float:
+        """Device stream latency in seconds, or -1 if not ready yet."""
+        try:
+            v = float(self.latency.value)
+        except Exception:
+            return -1.0
+        # Guard against stale meme sentinel if old process still running
+        if v < 0 or v > 5.0:
+            return -1.0
+        return v
+
+    def run(self):
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        try:
+            from tools.win_realtime import (
+                begin_timer_period,
+                boost_current_process,
+                boost_current_thread_audio,
+                end_timer_period,
+            )
+
+            boost_current_process(high=True)
+            _timer = begin_timer_period()
+        except Exception:
+            boost_current_thread_audio = lambda: None  # type: ignore[assignment]
+            end_timer_period = lambda _t: None  # type: ignore[assignment]
+            _timer = None
+
+        in_mem = SharedMemory(name=self.in_mem_name)
+        self.in_buf = np.ndarray(
+            self.buf_shape, dtype=self.buf_dtype, buffer=in_mem.buf, order='C')
+        self.in_buf.fill(0.0)
+
+        out_mem = SharedMemory(name=self.out_mem_name)
+        self.out_buf = np.ndarray(
+            self.buf_shape, dtype=self.buf_dtype, buffer=out_mem.buf, order='C')
+        self.out_buf.fill(0.0)
+
+        exclusive_settings = sd.WasapiSettings(exclusive=True)
+
+        sd.default.device = (self.in_dev, self.out_dev)
+
+        def output_callback(outdata, frames, time_info, status):
+            boost_current_thread_audio()
+            self.play_ptr.value = copy_and_consume_ring(
+                self.out_buf, self.play_ptr.value, frames, outdata
+            )
+
+        def input_callback(indata, frames, time_info, status):
+            boost_current_thread_audio()
+            # 收录输入数据
+            end_ptr = self.__rec_ptr + frames
+            if end_ptr <= self.buf_size:  # 整块拷贝
+                self.in_buf[self.__rec_ptr:end_ptr] = indata
+            else:  # 处理回绕
+                first = self.buf_size - self.__rec_ptr
+                second = end_ptr - self.buf_size
+                self.in_buf[self.__rec_ptr:] = indata[:first]
+                self.in_buf[:second] = indata[first:]
+            write_pos = self.__rec_ptr
+            self.__rec_ptr = end_ptr % self.buf_size
+
+            # 设置信号
+            if write_pos < self.block_size and self.__rec_ptr >= self.block_size:
+                self.in_ptr.value = 0
+                self.in_evt.set()  # 通知主线程来取甲缓冲
+            elif write_pos < self.buf_size and self.__rec_ptr < write_pos:
+                self.in_ptr.value = self.block_size
+                self.in_evt.set()  # 通知主线程来取乙缓冲
+
+        def combined_callback(indata, outdata, frames, time_info, status):
+            output_callback(outdata, frames, time_info, status)  # 优先出声
+            input_callback(indata, frames, time_info, status)
+
+        try:
+            if self.is_device_combined:
+                with sd.Stream(
+                    samplerate=self.sample_rate,
+                    channels=self.channels,
+                    dtype=self.buf_dtype,
+                    latency='low',
+                    extra_settings=exclusive_settings if
+                            self.is_input_wasapi_exclusive and
+                            self.is_output_wasapi_exclusive else None,
+                    callback=combined_callback
+                ) as s:
+                    self.latency.value = s.latency[-1]
+                    self.stop_evt.wait()
+                    self.out_buf.fill(0.0)
+            else:
+                with sd.InputStream(
+                    samplerate=self.sample_rate,
+                    channels=self.channels,
+                    dtype=self.buf_dtype,
+                    latency='low',
+                    extra_settings=exclusive_settings if self.is_input_wasapi_exclusive else None,
+                    callback=input_callback
+                ) as si, sd.OutputStream(
+                    samplerate=self.sample_rate,
+                    channels=self.channels,
+                    dtype=self.buf_dtype,
+                    latency='low',
+                    extra_settings=exclusive_settings if self.is_output_wasapi_exclusive else None,
+                    callback=output_callback
+                ) as so:
+                    self.latency.value = si.latency[-1] + so.latency[-1]
+                    self.stop_evt.wait()
+                    self.out_buf.fill(0.0)
+        finally:
+            end_timer_period(_timer)
+
+        # 清理共享内存
+        in_mem.close()
+        out_mem.close()
+        in_mem.unlink()
+        out_mem.unlink()

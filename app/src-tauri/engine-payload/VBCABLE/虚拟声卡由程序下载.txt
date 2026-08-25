@@ -1,0 +1,9 @@
+VB-Cable 安装包不随 Setup 安装。
+
+流程：
+1. 首次启动「补全运行环境」下载 Runtime
+2. 下载 engine-core（hubert/rmvpe/ffmpeg）
+3. 下载 VB-Cable 安装包到本目录
+4. 在「说明」页点「安装虚拟声卡」（需 UAC）
+
+CNB：https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases

@@ -1,0 +1,1411 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Dock, type OutputMode } from "./components/Dock";
+import { LinkCheckDialog } from "./components/LinkCheckDialog";
+import { OnboardingBar } from "./components/OnboardingBar";
+import { Nudge } from "./components/Nudge";
+import { Btn } from "./components/ui";
+import { followLinks } from "./lib/links";
+import { QrDialog } from "./components/QrDialog";
+import { WebDialogHost } from "./components/WebDialog";
+import { NativeDialogHint } from "./components/NativeDialogHint";
+import { openExternal } from "./lib/plaza";
+import { comboFromEvent, localHotkeyMap, typingInto } from "./lib/hotkeys";
+import { PageHost } from "./components/PageHost";
+import { ProvisionGate } from "./components/ProvisionGate";
+import { LanguageGate } from "./components/LanguageGate";
+import { TitleBar } from "./components/TitleBar";
+import { useEngine } from "./hooks/useEngine";
+import { usePlaza } from "./hooks/usePlaza";
+import { getConfig, onConfigPatch, type Config } from "./lib/config";
+import { deactivateDsp, forceKillEngine, setHot, startVc, swapModel } from "./lib/engine";
+import type { PageId } from "./lib/nav";
+import { currentVoice } from "./lib/voices";
+import { invoke } from "@tauri-apps/api/core";
+import { applyAppearance } from "./lib/appearance";
+import { listen } from "@tauri-apps/api/event";
+import { HelpPage } from "./pages/HelpPage";
+import { HomePage } from "./pages/HomePage";
+import { ModelsPage } from "./pages/ModelsPage";
+import { MorePage } from "./pages/MorePage";
+import { PlazaPage } from "./pages/PlazaPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { SynthPage } from "./pages/SynthPage";
+import { TrainPage } from "./pages/TrainPage";
+import { registerDownloadModelsOpener } from "./lib/downloadModels";
+import { registerHelpOpener } from "./lib/helpNav";
+import { useI18n } from "./i18n";
+import { t } from "./i18n/t";
+
+/**
+ * 变声多少次之后问一句「要不要关注」。
+ *
+ * 十次的意思是：这人已经把软件用起来了，不是打开看两眼就走的。太早问等于
+ * 拦路要东西，太晚问他早就忘了这软件是谁做的。
+ */
+const FOLLOW_AFTER_RUNS = 10;
+
+/** known_issues.rs 匹配出来的一条。文案已经在 Rust 那边按当前语言取好。 */
+type KnownIssue = {
+  id: string;
+  level: "error" | "warn" | "info";
+  title: string;
+  body: string;
+  /** 哪一版修好。空 = 还没修 —— 有值才给「更新到 x.y.z」按钮。 */
+  fixed_in?: string;
+};
+
+/** `update_check` 的返回。字段名和 `update::decide` 里那个 json! 一一对应。 */
+type UpdateInfo = {
+  local: string;
+  remote: string;
+  available: boolean;
+  blocked_by_min_version: boolean;
+  min_app_version: string;
+  package_type: string;
+  /** `external` = 换 exe，走签名更新器；否则是界面补丁。 */
+  action: string;
+  url: string;
+  sha256: string;
+  notes: string;
+};
+
+/** `14:07`。状态行里带个时间，才看得出这句话是刚查的还是上次留下的。 */
+function clockNow(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(
+    d.getMinutes(),
+  ).padStart(2, "0")}`;
+}
+
+export default function App() {
+  // Subscribe so locale change re-renders App (static t() labels) without
+  // remounting the tree / re-running useEngine.
+  const { locale } = useI18n();
+  void locale;
+
+  const [page, setPage] = useState<PageId>("home");
+  const [modelsKind, setModelsKind] = useState<"rvc" | "dsp">("rvc");
+  const [modelsKindNonce, setModelsKindNonce] = useState(0);
+  const [compactNav, setCompactNav] = useState(false);
+  // 「下载模型」：用户主动打开，或音频工具缺引擎资源时跳转。
+  const [extrasReason, setExtrasReason] = useState("");
+  const [extrasFilter, setExtrasFilter] = useState<"all" | "separate" | "train">(
+    "all",
+  );
+  const [scrollToDownloads, setScrollToDownloads] = useState(0);
+  // Self-update: check reports the catalog's latest; applying swaps the
+  // external frontend/ dir and takes effect on restart.
+  const [updateLine, setUpdateLine] = useState("");
+  // 检查更新唯一的反馈原来只有一行灰色小字，用户点完看不出点没点上，
+  // 会以为按钮坏了。按钮自己也要进入「检查中…」并禁用。
+  const [updateBusy, setUpdateBusy] = useState(false);
+
+  // 开机时把外观（配色 / 背景图 / 磨砂 / 不透明度）套上。之后用户在设置页
+  // 每改一下都由 useConfig 就地再套一次，所以这里只跑一次就够 —— 以前依赖数组
+  // 写的是 [page]，等于「换页才刷新外观」，改完当场毫无反应。
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const cfg = await invoke<Record<string, unknown>>("config_get");
+        if (alive) applyAppearance(cfg);
+      } catch {
+        /* config unavailable outside Tauri */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // 启动时自动查到的新版本。非空 = 弹一条「要不要现在装」。
+  const [updateOffer, setUpdateOffer] = useState<UpdateInfo | null>(null);
+
+  /** 只查，不装。返回后端那份原样的结果，顺手把状态行写好。 */
+  const probeUpdate = async (): Promise<UpdateInfo | null> => {
+    const r = (await invoke<Record<string, unknown>>(
+      "update_check",
+    )) as UpdateInfo;
+    if (r.blocked_by_min_version) {
+      setUpdateLine(
+        t("s.214fe7bcad", {
+          v0: String(r.local),
+          v1: String(r.min_app_version),
+        }),
+      );
+      return null;
+    }
+    if (!r.available) {
+      // 「已是最新」必须带上版本号和时间。只说一句「已是最新」，用户分不清
+      // 是真查过了还是根本没查动。
+      setUpdateLine(
+        t("s.7ccca92d5e", { v0: String(r.local), v1: clockNow() }),
+      );
+      return null;
+    }
+    setUpdateLine(
+      t("s.622a22349e", {
+        v0: String(r.remote),
+        v1: String(r.local),
+      }),
+    );
+    return r;
+  };
+
+  /** 真正下载并安装。整包走签名更新器，界面补丁走 update_apply。 */
+  const installUpdate = async (r: UpdateInfo) => {
+    if (r.action === "external") {
+      // Rust side changed → replace the exe through the signed updater.
+      setUpdateLine(t("s.b22f6e52ac", { v0: String(r.remote) }));
+      const b = await invoke<Record<string, unknown>>("update_app");
+      setUpdateLine(
+        b.installed
+          ? t("s.995e0f4c81", {
+              v0: String(b.version ?? r.remote),
+            })
+          : t("s.3d1fde4601"),
+      );
+      return;
+    }
+    setUpdateLine(t("s.5b3dc1999a", { v0: String(r.remote) }));
+    await invoke("update_apply", {
+      url: String(r.url),
+      sha256: String(r.sha256 || ""),
+    });
+    setUpdateLine(t("s.995e0f4c81", { v0: String(r.remote) }));
+  };
+
+  /** 设置页那个「立即检查」：查到了就直接装，这是用户主动点的。 */
+  const checkUpdate = async () => {
+    if (updateBusy) return;
+    setUpdateBusy(true);
+    setUpdateLine(t("s.481ee2d4bc"));
+    try {
+      const r = await probeUpdate();
+      if (r) await installUpdate(r);
+    } catch (e) {
+      setUpdateLine(t("s.ac3a85a9c1", { v0: String(e) }));
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  // 开机自动查一次。
+  //
+  // 查到了**不直接装** —— 用户刚点开软件多半是要马上用，后台自作主张占着网
+  // 下几 MB 到几十 MB，是别人的软件才干的事。弹一条问一句，他说装才装。
+  //
+  // 没查到也要把「已是最新（版本号 + 时间）」写进状态行：这样进设置页时那行
+  // 字已经在了，不用先点一下才知道自己是不是最新的。
+  //
+  // 延后 4 秒：启动那几秒 CPU 和磁盘都在忙着起引擎、扫音色，这一发网络请求
+  // 挤进去只会让开屏更卡，而更新这件事晚四秒没有任何损失。
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await probeUpdate();
+          if (!cancelled && r) setUpdateOffer(r);
+        } catch {
+          // 开机没网是常态，不要为此弹窗打扰。状态行留空，用户进设置页
+          // 手点「立即检查」时才会看到具体的失败原因。
+        }
+      })();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  // 答应更新之后，那条提示**留在原地**变成进度，不跳页也不换地方看。
+  // 把人扔到设置页去找进度条，等于让他自己去确认「我刚才点的那下算数了吗」。
+  const [updateWorking, setUpdateWorking] = useState(false);
+  const acceptUpdate = async () => {
+    const r = updateOffer;
+    if (!r) return;
+    setUpdateWorking(true);
+    setUpdateBusy(true);
+    try {
+      await installUpdate(r);
+    } catch (e) {
+      setUpdateLine(t("s.bac68ea7db", { v0: String(e) }));
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+  const [pitch, setPitch] = useState(0);
+  const [formant, setFormant] = useState(0);
+  const [mode, setMode] = useState<OutputMode>("vc");
+  /**
+   * 空串 = 还没选音色，渲染时才去取那句占位文案。
+   *
+   * 以前写的是 `useState(t("s.262d11e2d6"))`。`useState` 的初值只在首帧求值一次，
+   * 而那一帧语言包还没加载完，t() 拿到的是 DEFAULT_LOCALE —— 于是底栏那句
+   * 「未选择模型」会永远停在简体中文，用户把界面切成日文也不会变，除非他真的
+   * 去选一个音色把这个 state 覆盖掉。占位文案不该进 state，它是渲染出来的。
+   */
+  const [voiceName, setVoiceName] = useState("");
+  const [voiceId, setVoiceId] = useState("");
+  const [profileSummary, setProfileSummary] = useState("");
+  const [voiceTag, setVoiceTag] = useState("");
+  const [voicePos, setVoicePos] = useState("");
+  /** 生效中的 DSP 预设 id；空 = 没开。底栏靠它画那条「音色 → 预设」的链。 */
+  const [dspId, setDspId] = useState("");
+  /** id → 显示名。底栏要写「收音机」，不是写 radio。 */
+  const [dspNames, setDspNames] = useState<Record<string, string>>({});
+  const dspName = dspId ? dspNames[dspId] || dspId : "";
+
+  useEffect(() => {
+    let alive = true;
+    void invoke<{ presets: { id: string; name: string }[] }>("dsp_presets")
+      .then((r) => {
+        if (!alive) return;
+        const m: Record<string, string> = {};
+        for (const p of r.presets || []) m[p.id] = p.name;
+        setDspNames(m);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const [showProvision, setShowProvision] = useState(false);
+  const [provisionDismissed, setProvisionDismissed] = useState(false);
+  // 新装 ui_locale_picked===false 时先选语言，再走 Runtime 补全。
+  const [showLangGate, setShowLangGate] = useState(false);
+  const [langGateChecked, setLangGateChecked] = useState(false);
+
+  const engine = useEngine();
+  const plaza = usePlaza();
+  const { syncParams, refreshProvision } = engine;
+
+  // Telemetry consent: ask only after the user has actually got value out of
+  // the product — 60 s of clean conversion — not at first launch.
+  const [askTelemetry, setAskTelemetry] = useState(false);
+
+  // 这台机器有没有踩到我们已经知道的坑。判据和条目都在 Rust 那边
+  // （known_issues.json + known_issues.rs），这里只负责显示第一条。
+  const [knownIssue, setKnownIssue] = useState<KnownIssue | null>(null);
+  useEffect(() => {
+    let alive = true;
+    invoke<KnownIssue[]>("known_issues_check")
+      .then((v) => {
+        if (alive && Array.isArray(v) && v.length > 0) setKnownIssue(v[0]);
+      })
+      .catch(() => {
+        /* 查不到就不提示，这条本来就是锦上添花 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 「更新到 x.y.z」的回执。修复还没发布、没有新版本可装时进度条不会动，
+  // 这条得留在横幅里说清楚为什么按钮没起作用。
+  const [kiNote, setKiNote] = useState("");
+  const kiUpdate = async () => {
+    if (updateBusy) return;
+    // 开机 4 秒那次检查的结果还热着就复用，别再发一次请求。
+    const r = updateOffer ?? (await probeUpdate().catch(() => null));
+    if (!r) {
+      setKiNote(t("s.kiNoUpdateYet"));
+      return;
+    }
+    // 下载进度走下面那条更新横幅（两块 Nudge 各占一行，可以并存）——
+    // 用户按了按钮就得看得见它在动。
+    setUpdateOffer(r);
+    setUpdateWorking(true);
+    setUpdateBusy(true);
+    try {
+      await installUpdate(r);
+    } catch (e) {
+      setUpdateLine(t("s.bac68ea7db", { v0: String(e) }));
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  // The daily ping belongs to app start, not to every start/stop of the
+  // stream. The Rust side dedupes by day, but firing it on each toggle still
+  // meant a network attempt and a config write every time.
+  useEffect(() => {
+    void (async () => {
+      const cfg = await invoke<Record<string, unknown>>("config_get").catch(() => null);
+      if (cfg?.telemetry_opt_in === true) {
+        void invoke("telemetry_tick").catch(() => {});
+      }
+    })();
+  }, []);
+
+  // Ask only after the user has actually got value out of the product —
+  // 60 s of clean conversion — not at first launch.
+  useEffect(() => {
+    if (!engine.running) return;
+    let timer: number | null = null;
+    let cancelled = false;
+    void (async () => {
+      const cfg = await invoke<Record<string, unknown>>("config_get").catch(() => null);
+      if (!cfg || cancelled) return;
+      // null/undefined = never answered. false = declined, do not ask again.
+      if (cfg.telemetry_opt_in !== null && cfg.telemetry_opt_in !== undefined) return;
+      timer = window.setTimeout(() => !cancelled && setAskTelemetry(true), 60_000);
+    })();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [engine.running]);
+
+  const answerTelemetry = async (yes: boolean) => {
+    setAskTelemetry(false);
+    await invoke("config_set", { patch: { telemetry_opt_in: yes } }).catch(() => {});
+    if (yes) void invoke("telemetry_tick").catch(() => {});
+  };
+
+  // 「喜欢的话关注一下」——攒够 FOLLOW_AFTER_RUNS 次变声之后问一次。
+  //
+  // 数的是**完成**的次数（开启→停止算一次），不是点了几次开启：起了又立刻
+  // 报错停掉的不该算数，那种时候用户正在烦躁，问他要不要关注是最糟的时机。
+  const [askFollow, setAskFollow] = useState(false);
+  // 有二维码的社媒（QQ 群）点开的是图片，不是外链。
+  const [qr, setQr] = useState<{ src: string; label: string } | null>(null);
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    const was = wasRunning.current;
+    wasRunning.current = engine.running;
+    if (!was || engine.running) return; // 只在 running: true → false 那一下计数
+    void (async () => {
+      try {
+        const cfg = await invoke<Record<string, unknown>>("config_get");
+        if (cfg.follow_prompt_done === true) return;
+        const n = Number(cfg.vc_run_count ?? 0) + 1;
+        await invoke("config_set", { patch: { vc_run_count: n } });
+        if (n >= FOLLOW_AFTER_RUNS) setAskFollow(true);
+      } catch {
+        /* 配置读不到就算了，这不是要紧事 */
+      }
+    })();
+  }, [engine.running]);
+
+  // 第一次点「开启变声」时问一句要不要先看说明。
+  //
+  // 挂在 engine.userStarts 上，不是 engine.starting。starting 在开机预热引擎、
+  // 导入推理库的时候也会为真，界面上根本没人按过东西 —— 挂在它上面的结果是
+  // 软件一启动就弹说明，用户报的就是这个。userStarts 只在 toggleRun 真的走
+  // 开启分支时才加，是「有人按了那个按钮」的唯一凭据。
+  //
+  // 挑开启的那一刻而不是 running：引擎起来要好几秒，那几秒用户本来就在等，
+  // 是唯一不打扰人的空档；等 running 了他已经在说话了。
+  const [askGuide, setAskGuide] = useState(false);
+  const guideAsked = useRef(false);
+  useEffect(() => {
+    if (engine.userStarts === 0 || guideAsked.current) return;
+    guideAsked.current = true;
+    void (async () => {
+      try {
+        const cfg = await invoke<Record<string, unknown>>("config_get");
+        if (cfg.guide_prompt_done !== true) setAskGuide(true);
+      } catch {
+        /* 配置读不到就算了，这不是要紧事 */
+      }
+    })();
+  }, [engine.userStarts]);
+
+  // 「转到说明页」和「不了」都算表过态，都不再问第二次。
+  const closeGuide = (toHelp: boolean) => {
+    setAskGuide(false);
+    if (toHelp) setPage("help");
+    void invoke("config_set", { patch: { guide_prompt_done: true } }).catch(
+      () => {},
+    );
+  };
+
+  // 不管点的是哪个社媒还是「以后再说」，都不再问第二次。反复问一件用户
+  // 已经表过态的事，比不问更让人反感。
+  const closeFollow = () => {
+    setAskFollow(false);
+    void invoke("config_set", { patch: { follow_prompt_done: true } }).catch(
+      () => {},
+    );
+  };
+
+  // Close prompt (close_action = "ask"). Same two choices as the Tk shell,
+  // plus 「记住我的选择」 which writes close_action so we stop asking.
+  const [closeAsk, setCloseAsk] = useState(false);
+  const [closeRemember, setCloseRemember] = useState(false);
+  const answerClose = async (toTray: boolean) => {
+    setCloseAsk(false);
+    if (closeRemember) {
+      await invoke("config_set", {
+        patch: { close_action: toTray ? "tray" : "exit" },
+      }).catch(() => {});
+    }
+    await invoke("close_finish", { toTray }).catch(() => {});
+  };
+
+  // 「强制结束变声引擎」。
+  //
+  // 它现在会把正在跑的语音转换一起收掉（见 lib.rs 的 engine_force_kill）——
+  // 用户报的就是「结束了引擎，转换还在跑」。但转换可能是一批几小时的活，
+  // 不能闷声吃掉，所以按之前先查一下在不在跑，在跑就问一句。不在跑就直接执行，
+  // 不给已经卡死的人再加一道弹窗。
+  const [killAsk, setKillAsk] = useState(false);
+  const doForceKill = async () => {
+    setKillAsk(false);
+    await forceKillEngine();
+    await engine.refresh();
+  };
+  const requestForceKill = async () => {
+    try {
+      const st = await invoke<{ busy?: boolean }>("sts_status");
+      if (st?.busy) {
+        setKillAsk(true);
+        return;
+      }
+    } catch {
+      /* 问不到就当没在跑：这个按钮是用来解卡死的，不该被一次查询失败挡住 */
+    }
+    await doForceKill();
+  };
+
+
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const cfg = await invoke<Record<string, unknown>>("config_get");
+        // 仅新装默认 false 弹引导；老配置没有该键 → 不弹。
+        if (alive && cfg.ui_locale_picked === false) {
+          setShowLangGate(true);
+        }
+      } catch {
+        /* 预览 */
+      } finally {
+        if (alive) setLangGateChecked(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // 语言引导优先于 Runtime 补全，避免补全窗还是默认中文。
+    if (!langGateChecked || showLangGate) return;
+    if (engine.provision.need_provision && !provisionDismissed) {
+      setShowProvision(true);
+    }
+  }, [
+    engine.provision.need_provision,
+    provisionDismissed,
+    langGateChecked,
+    showLangGate,
+  ]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 520px)");
+    const fn = () => setCompactNav(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+
+  useEffect(() => {
+    void getConfig()
+      .then((c) => {
+        if (c.dsp_enabled) setDspId(String(c.dsp_preset || ""));
+      })
+      .catch(() => {});
+    void currentVoice()
+      .then((c) => {
+        if (c.model) {
+          setVoiceName(String(c.model.name || ""));
+          setVoiceId(String(c.model.path || c.model.dir || c.model.name || ""));
+          setVoiceTag(String(c.model.tag || ""));
+        }
+        setVoicePos(c.index && c.total ? `${c.index}/${c.total}` : "");
+        if (c.pitch != null) setPitch(Number(c.pitch));
+        if (c.formant != null) setFormant(Number(c.formant));
+        if (c.profile_summary) setProfileSummary(c.profile_summary);
+        syncParams({
+          pitch: c.pitch != null ? Number(c.pitch) : undefined,
+          formant: c.formant != null ? Number(c.formant) : undefined,
+        });
+      })
+      .catch(() => {
+        /* browser preview */
+      });
+    // Runs once on mount; syncParams is stable (useCallback with no deps).
+  }, [syncParams]);
+
+  // 设置页 / 底栏 / 快捷键 / 切音色都会改配置。底栏自己的 state 以前只在
+  // 挂载和切音色时读一次，设置里拖音高底栏数字不动。
+  const applyConfigPatch = useCallback(
+    (c: Config) => {
+      if (c.pitch != null && Number.isFinite(Number(c.pitch))) {
+        const v = Number(c.pitch);
+        setPitch(v);
+        syncParams({ pitch: v });
+      }
+      if (c.formant != null && Number.isFinite(Number(c.formant))) {
+        const v = Number(c.formant);
+        setFormant(v);
+        syncParams({ formant: v });
+      }
+      const fn = c.function;
+      if (fn === "im" || fn === "bypass") setMode("bypass");
+      else if (fn === "vc" || fn === "fx") setMode("vc");
+      // DSP 那一层从哪儿改的都行（模型页、设置页、别的窗口），底栏都得跟上。
+      if (c.dsp_enabled === false) {
+        setDspId("");
+        void currentVoice()
+          .then((cur) => {
+            if (!cur.model) return;
+            setVoiceName(String(cur.model.name || ""));
+            setVoiceId(
+              String(cur.model.path || cur.model.dir || cur.model.name || ""),
+            );
+            setVoiceTag(String((cur.model as { tag?: string }).tag || ""));
+            setVoicePos(
+              cur.index && cur.total ? `${cur.index}/${cur.total}` : "",
+            );
+          })
+          .catch(() => {});
+      } else if (c.dsp_enabled === true || c.dsp_preset != null) {
+        setDspId(String(c.dsp_preset || ""));
+      }
+    },
+    [syncParams],
+  );
+
+  useEffect(() => {
+    const off = onConfigPatch(applyConfigPatch);
+    let disposed = false;
+    let un: (() => void) | undefined;
+    void listen<{ config?: Config; hot?: Config }>("config-changed", (ev) => {
+      // 只跟热键走：主题/壁纸那类写入也会带完整 config，里面的音高可能
+      // 还是底栏 80ms 防抖还没落盘的旧值，拿来套会把滑块拽回去。
+      const hot = ev.payload?.hot;
+      if (hot && Object.keys(hot).length) applyConfigPatch(hot);
+    }).then((fn) => {
+      if (disposed) fn();
+      else un = fn;
+    });
+    return () => {
+      disposed = true;
+      off();
+      un?.();
+    };
+  }, [applyConfigPatch]);
+
+  // The settings page reads only the device lists out of engine status, but the
+  // whole status object changes every poll tick (mic level, latency), so
+  // passing it straight through re-rendered that page 2.5x a second while
+  // converting. Narrow it to the parts that actually change rarely.
+  const st = engine.status as unknown as Record<string, unknown> | undefined;
+  const deviceKey = JSON.stringify([
+    st?.input_devices,
+    st?.output_devices,
+    st?.hostapis,
+  ]);
+  const deviceStatus = useMemo(
+    () => ({
+      input_devices: st?.input_devices,
+      output_devices: st?.output_devices,
+      hostapis: st?.hostapis,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content, not identity
+    [deviceKey],
+  );
+
+  const { onPitch, onFormant, onMode } = engine;
+  const handlePitch = useCallback(
+    (v: number) => {
+      setPitch(v);
+      onPitch(v);
+    },
+    [onPitch],
+  );
+  const handleFormant = useCallback(
+    (v: number) => {
+      setFormant(v);
+      onFormant(v);
+    },
+    [onFormant],
+  );
+  const handleMode = useCallback(
+    (m: OutputMode) => {
+      setMode(m);
+      onMode(m);
+    },
+    [onMode],
+  );
+
+  // One place where "the user picked a different voice" is applied, so the
+  // home page and the models page can never drift apart on what the dock shows.
+  const openModels = useCallback(() => {
+    setModelsKind("rvc");
+    setModelsKindNonce((n) => n + 1);
+    setPage("models");
+  }, []);
+  const openDsp = useCallback(() => {
+    setModelsKind("dsp");
+    setModelsKindNonce((n) => n + 1);
+    setPage("models");
+  }, []);
+  // 「用不了？联系社区」的落点。仓库与社媒那张表只在「其他」页有一份，
+  // 不在设置页和说明页各抄一遍 —— 抄了就得改三处，迟早对不上。
+  // 加一 = 「再滚一次」：同一页反复点也要每次都滚过去。
+  const [communityNonce, setCommunityNonce] = useState(0);
+  const openCommunity = useCallback(() => {
+    setCommunityNonce((n) => n + 1);
+    setPage("more");
+  }, []);
+  const [helpFocus, setHelpFocus] = useState("");
+  const [helpFocusNonce, setHelpFocusNonce] = useState(0);
+  const openHelp = useCallback((section?: string) => {
+    setHelpFocus(section || "");
+    setHelpFocusNonce((n) => n + 1);
+    setPage("help");
+  }, []);
+  // 「下载模型」现在住在广场，「其他」页和工具入口都是跳过来。
+  //
+  // 以前它是「其他」页上弹的一个框。同一件事在两个地方各有一份实现，改一个
+  // 忘一个是迟早的；而且用户在弹框里下完东西，关掉之后回到的还是「其他」页，
+  // 跟他刚做的事没有任何关系。
+  const openDownloadModels = useCallback(
+    (reason?: string, filter?: "all" | "separate" | "train") => {
+      plaza.markSeen();
+      setPage("plaza");
+      setExtrasReason(reason || "");
+      setExtrasFilter(filter === "train" || filter === "separate" ? filter : "all");
+      // 加一 = 「再滚一次」。广场很长，不滚过去用户看不见自己被带到哪了。
+      setScrollToDownloads((n) => n + 1);
+    },
+    [plaza],
+  );
+
+  useEffect(() => {
+    registerDownloadModelsOpener((opts) => {
+      const f = opts?.filter;
+      openDownloadModels(
+        opts?.reason,
+        f === "train" || f === "separate" ? f : "all",
+      );
+    });
+    return () => registerDownloadModelsOpener(null);
+  }, [openDownloadModels]);
+
+  // 工具窗口（人声分离 / 训练音色）点「下载模型」时发过来的。那边是独立的
+  // webview，没有广场可去，只能把主窗口叫到前面再让它跳。
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    void listen<{ reason?: string; filter?: string }>(
+      "open-download-models",
+      (e) => {
+        const f = e.payload?.filter;
+        openDownloadModels(
+          e.payload?.reason || "",
+          f === "train" || f === "separate" ? f : "all",
+        );
+      },
+    ).then((f) => {
+      un = f;
+    });
+    return () => un?.();
+  }, [openDownloadModels]);
+
+  useEffect(() => {
+    registerHelpOpener((section) => openHelp(section));
+    return () => registerHelpOpener(null);
+  }, [openHelp]);
+
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    void listen<{ section?: string }>("open-help", (e) => {
+      openHelp(e.payload?.section || "");
+    }).then((f) => {
+      un = f;
+    });
+    return () => un?.();
+  }, [openHelp]);
+  // 进广场同时把小红点消掉 —— 和顶栏点「广场」是同一件事，不能只有一条路
+  // 清红点，否则从模型页进来的用户那个点永远亮着。
+  const stopDsp = useCallback(() => {
+    setDspId("");
+    void deactivateDsp()
+      .then(async () => {
+        try {
+          const c = await currentVoice();
+          if (c.model) {
+            setVoiceName(String(c.model.name || ""));
+            setVoiceId(String(c.model.path || c.model.dir || c.model.name || ""));
+            setVoiceTag(String((c.model as { tag?: string }).tag || ""));
+            setVoicePos(c.index && c.total ? `${c.index}/${c.total}` : "");
+            if (c.pitch != null) setPitch(Number(c.pitch));
+            if (c.formant != null) setFormant(Number(c.formant));
+            if (c.profile_summary) setProfileSummary(c.profile_summary);
+            syncParams({
+              pitch: c.pitch != null ? Number(c.pitch) : undefined,
+              formant: c.formant != null ? Number(c.formant) : undefined,
+            });
+          }
+        } catch {
+          /* 没有上次音色就保持未选择 */
+        }
+      })
+      .catch(() => {});
+  }, [syncParams]);
+
+  const openPlaza = useCallback(() => {
+    plaza.markSeen();
+    setPage("plaza");
+  }, [plaza]);
+  const { reload: plazaReload } = plaza;
+  const reloadPlaza = useCallback(() => void plazaReload(), [plazaReload]);
+
+  const applyVoiceChange = useCallback(({
+    model,
+    pitch: p,
+    formant: f,
+    profileSummary: ps,
+  }: {
+    model: { name?: string; path?: string; dir?: string };
+    pitch?: number;
+    formant?: number;
+    profileSummary?: string;
+  }) => {
+    if (!model.path && !model.dir && !model.name) {
+      setVoiceName("");
+      setVoiceId("");
+      setVoiceTag("");
+      setVoicePos("");
+      return;
+    }
+    setDspId("");
+    setVoiceName(model.name || "");
+    setVoiceId(model.path || model.dir || model.name || "");
+    if (p != null) setPitch(Number(p));
+    if (f != null) setFormant(Number(f));
+    if (ps) setProfileSummary(ps);
+    setVoiceTag(String((model as { tag?: string }).tag || ""));
+    // Keep what a later start will send in step with what the dock shows.
+    syncParams({
+      pitch: p != null ? Number(p) : undefined,
+      formant: f != null ? Number(f) : undefined,
+    });
+    // The library position moves with the selection; only the shell knows it.
+    void currentVoice()
+      .then((c) => setVoicePos(c.index && c.total ? `${c.index}/${c.total}` : ""))
+      .catch(() => {
+        /* browser preview */
+      });
+    // 正在变声时热换模型：后台读新权重，旧音色继续出声；装上后只换指针。
+    // 采样率会变时引擎自己退回重开流。worker 没在跑时这里会失败，配置已是
+    // 新的，下次开启就对，所以吞掉。
+    // 纯 DSP worker 手里没有 RVC，热换会失败；改走完整 start（会切到 RVC worker）。
+    if (engine.running) {
+      const st = engine.status;
+      const dsp =
+        st?.dsp_only === true ||
+        st?.function === "fx" ||
+        st?.worker_kind === "dsp";
+      if (dsp) {
+        engine.noteSwap();
+        void startVc().catch(() => {});
+      } else {
+        engine.noteSwap();
+        void swapModel().catch(() => {});
+      }
+    }
+  }, [syncParams, engine.running, engine.noteSwap, engine.status]);
+
+  // —— 新手进度：两个历史事件的落盘点 ——
+  // 首次成功变声（running 一旦为真就记，之后不再写）。
+  const onboardConvertDone = useRef(false);
+  useEffect(() => {
+    if (!engine.running || onboardConvertDone.current) return;
+    onboardConvertDone.current = true;
+    void invoke("config_set", { patch: { onboard_convert: true } }).catch(() => {});
+    setOnboardTick((n) => n + 1);
+  }, [engine.running]);
+
+  // 开启过监听（勾选 monitor_self 即视为完成；取消勾选不回退——「做过」是事实）。
+  const onboardMonitorDone = useRef(false);
+  useEffect(() => {
+    const cfg = cfgRef.current;
+    if (cfg?.monitor_self === true) onboardMonitorDone.current = true;
+  }, [/* cfgRef 由下方 effect 维护 */]);
+  // cfgRef：让上面的检查能读到最新配置而不进依赖。
+  const cfgRef = useRef<Config | undefined>(undefined);
+  useEffect(() => {
+    const off = onConfigPatch((p) => {
+      cfgRef.current = { ...(cfgRef.current || {}), ...p };
+      if (p.monitor_self === true && !onboardMonitorDone.current) {
+        onboardMonitorDone.current = true;
+        void invoke("config_set", { patch: { onboard_monitor: true } }).catch(() => {});
+        setOnboardTick((n) => n + 1);
+      }
+      if (p.onboard_dismiss !== undefined) setOnboardTick((n) => n + 1);
+    });
+    return off;
+  }, []);
+
+  // —— 链路自检对话框：dock 错误态的「自检」入口 ——
+  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
+  // 新手进度条的刷新信号：两个历史事件落盘时 +1。
+  const [onboardTick, setOnboardTick] = useState(0);
+
+  // Ctrl+F5 / F6 step through the catalog, same as the old shell.
+  const shiftVoice = useCallback(async (delta: number) => {
+    try {
+      const cat = await invoke<{
+        models?: Array<Record<string, unknown>>;
+        selected_idx?: number;
+      }>("voices_list");
+      const list = cat.models || [];
+      if (!list.length) return;
+      const cur = Number(cat.selected_idx ?? -1);
+      const next = ((cur < 0 ? 0 : cur) + delta + list.length) % list.length;
+      const m = list[next];
+      const res = await invoke<{
+        model?: Record<string, unknown>;
+        pitch?: number;
+        formant?: number;
+        profile_summary?: string;
+      }>("voices_select", {
+        path: String(m.path ?? ""),
+        dir: String(m.dir ?? ""),
+        name: String(m.name ?? ""),
+      });
+      // Through the shared handler: the hotkeys used to set only the name, so
+      // stepping voices with Ctrl+F5/F6 left the dock's tag, position, pitch
+      // and profile showing the previous voice — and never pushed the new
+      // voice's parameters to a running stream.
+      applyVoiceChange({
+        model: (res.model as { name?: string; path?: string; dir?: string }) || m,
+        pitch: res.pitch,
+        formant: res.formant,
+        profileSummary: res.profile_summary,
+      });
+      if (res.pitch != null || res.formant != null) {
+        try {
+          await setHot({
+            pitch: Number(res.pitch ?? 0),
+            formant: Number(res.formant ?? 0),
+          });
+        } catch {
+          /* worker may be idle */
+        }
+      }
+    } catch {
+      /* catalog unavailable */
+    }
+  }, [applyVoiceChange]);
+
+  // Tray menu and global hotkeys drive the same actions as the dock, so the
+  // shortcuts keep working while the window is hidden.
+  //
+  // The handlers close over `engine` and `shiftVoice`, and `useEngine` returns
+  // a fresh object on every render — which the status poll causes once a
+  // second. With those in the dependency array this effect re-ran that often,
+  // and because `listen()` is async its cleanup ran while the promises were
+  // still pending: it unregistered nothing. Six listeners leaked per second,
+  // each one a live IPC registration on the Rust side, for as long as the app
+  // stayed open. Register once and reach the current closures through a ref.
+  const actionsRef = useRef({
+    toggleRun: () => {},
+    shiftVoice: (_d: number) => {},
+    toggleMode: () => {},
+    shiftPitch: (_d: number) => {},
+    toggleCfgFlag: (_key: string) => {},
+  });
+  useEffect(() => {
+    actionsRef.current = {
+      toggleRun: () => void engine.toggleRun(),
+      shiftVoice: (d: number) => void shiftVoice(d),
+      toggleMode: () =>
+        setMode((m) => {
+          const next: OutputMode = m === "vc" ? "bypass" : "vc";
+          void engine.onMode(next);
+          return next;
+        }),
+      // 底栏那根音高条的范围，两处必须一致 —— 快捷键推到 25 而条子最多 24，
+      // 界面和引擎就对不上了。
+      shiftPitch: (d: number) =>
+        setPitch((p) => {
+          const next = Math.min(24, Math.max(-24, p + d));
+          if (next !== p) onPitch(next);
+          return next;
+        }),
+      // 监听自己 / 音效总开关。两个都是布尔配置项，读一次翻一次写回去。
+      // config_set 那边会负责推给正在跑的引擎（监听是热推，音效本来就是热键）。
+      toggleCfgFlag: (key: string) => {
+        void (async () => {
+          try {
+            const cfg = await invoke<Record<string, unknown>>("config_get");
+            await invoke("config_set", { patch: { [key]: cfg[key] !== true } });
+          } catch {
+            /* 引擎没起来时按了也不该炸 */
+          }
+        })();
+      },
+    };
+  });
+
+  useEffect(() => {
+    let disposed = false;
+    const offs: Array<() => void> = [];
+    const add = async (event: string, fn: () => void) => {
+      const un = await listen(event, fn);
+      // Cleanup may have already run while this was in flight.
+      if (disposed) un();
+      else offs.push(un);
+    };
+    void add("tray://toggle-vc", () => actionsRef.current.toggleRun());
+    void add("hotkey://toggle-vc", () => actionsRef.current.toggleRun());
+    void add("hotkey://prev-voice", () => actionsRef.current.shiftVoice(-1));
+    void add("hotkey://next-voice", () => actionsRef.current.shiftVoice(1));
+    void add("hotkey://toggle-mode", () => actionsRef.current.toggleMode());
+    void add("hotkey://pitch-up", () => actionsRef.current.shiftPitch(1));
+    void add("hotkey://pitch-down", () => actionsRef.current.shiftPitch(-1));
+    void add("hotkey://toggle-monitor", () =>
+      actionsRef.current.toggleCfgFlag("monitor_self"),
+    );
+    void add("hotkey://toggle-fx", () =>
+      actionsRef.current.toggleCfgFlag("fx_enabled"),
+    );
+    // hotkey://toggle-window 没有前端处理：窗口藏起来时 webview 可能被系统
+    // 挂起，事件根本到不了这里。那个动作在 Rust 里就地做完了。
+    void add("app://close-requested", () => setCloseAsk(true));
+    return () => {
+      disposed = true;
+      offs.forEach((f) => f());
+    };
+  }, []);
+
+  // 取消了「全局」的那些快捷键，在这里接。
+  //
+  // Rust 只注册勾了「全局」的组合 —— 全局快捷键是独占的，被抢走的组合用户在
+  // 别的软件里就按不出原本的功能了，所以每个都可以单独关掉。关掉的那些改由
+  // 本窗口的 keydown 接住：只在 RVC Fabric 是当前窗口时生效，正好是用户要的。
+  //
+  // 不会和全局的重复触发：localHotkeyMap 只收 `_global` 为 false 的。
+  useEffect(() => {
+    let map = new Map<string, string>();
+    let alive = true;
+    const reload = () => {
+      void invoke<Record<string, unknown>>("config_get")
+        .then((cfg) => {
+          if (alive) map = localHotkeyMap(cfg);
+        })
+        .catch(() => {
+          /* 浏览器预览下没有配置 */
+        });
+    };
+    reload();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || typingInto(e.target)) return;
+      const action = map.get(comboFromEvent(e));
+      if (!action) return;
+      e.preventDefault();
+      const a = actionsRef.current;
+      switch (action) {
+        case "toggle-vc":
+          a.toggleRun();
+          break;
+        case "toggle-mode":
+          a.toggleMode();
+          break;
+        case "prev-voice":
+          a.shiftVoice(-1);
+          break;
+        case "next-voice":
+          a.shiftVoice(1);
+          break;
+        case "pitch-up":
+          a.shiftPitch(1);
+          break;
+        case "pitch-down":
+          a.shiftPitch(-1);
+          break;
+        case "toggle-monitor":
+          a.toggleCfgFlag("monitor_self");
+          break;
+        case "toggle-fx":
+          a.toggleCfgFlag("fx_enabled");
+          break;
+        // toggle-window 非全局时没有意义：窗口就在眼前，用不着「显示」它，
+        // 而藏起来之后这个监听器也就收不到键了。忽略。
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    // 设置页改完会重新注册一次全局快捷键；借同一个时机把这份表也重读。
+    const un = listen("hotkeys://changed", reload);
+    return () => {
+      alive = false;
+      window.removeEventListener("keydown", onKey);
+      void un.then((f) => f());
+    };
+  }, []);
+
+  return (
+    // 根容器不铺底色：底色在 html 上，壁纸层夹在中间。这里再铺一层不透明的
+    // --bg 会把壁纸盖死 —— 这正是「背景图设了没反应」的另一半原因。
+    <div className="h-full flex flex-col text-[var(--ink)] overflow-hidden relative">
+      <TitleBar
+        page={page}
+        onPage={(id) => {
+          // Opening the plaza is what clears its dot — it used to be hardcoded
+          // on, so it meant nothing.
+          if (id === "plaza") plaza.markSeen();
+          setPage(id);
+        }}
+        plazaUnread={plaza.unread}
+        compactNav={compactNav}
+      />
+
+      <LanguageGate
+        open={showLangGate}
+        onDone={() => setShowLangGate(false)}
+      />
+
+      <ProvisionGate
+        open={showProvision && !showLangGate}
+        initial={engine.provision}
+        onDone={async () => {
+          setShowProvision(false);
+          setProvisionDismissed(false);
+          // 这里以前调的是 getProvisionStatus()，**结果直接扔掉** —— 问了等于
+          // 没问，engine.provision 还是补全之前那份 runtime_ready: false。
+          // 于是运行时装好了，「开启变声」照样被 toggleRun 开头那道闸拦下来
+          // 说「运行时未就绪」，只能重启软件。refreshProvision 会把结果写回
+          // 状态，并且在 false → true 的那一下顺手把引擎拉起来。
+          try {
+            await refreshProvision();
+          } catch {
+            /* 轮询兜底 */
+          }
+          await engine.refresh();
+        }}
+        onDismiss={() => {
+          setShowProvision(false);
+          setProvisionDismissed(true);
+        }}
+      />
+
+      <PageHost page={page}>
+        {(id) => {
+          switch (id) {
+            case "home":
+              return (
+                <HomePage
+                  currentId={voiceId}
+                  onOpenModels={openModels}
+                  onOpenDsp={openDsp}
+                  onVoiceChange={applyVoiceChange}
+                />
+              );
+            case "plaza":
+              return (
+                <PlazaPage
+                  feed={plaza.feed}
+                  loading={plaza.loading}
+                  onReload={reloadPlaza}
+                  downloadReason={extrasReason}
+                  extrasFilter={extrasFilter}
+                  scrollToDownloads={scrollToDownloads}
+                />
+              );
+            case "models":
+              return (
+                <ModelsPage
+                  banner={plaza.feed.banner}
+                  onVoiceChange={applyVoiceChange}
+                  onDspChange={(id) => setDspId(id)}
+                  onOpenPlaza={openPlaza}
+                  focusKind={modelsKind}
+                  focusNonce={modelsKindNonce}
+                />
+              );
+            case "synth":
+              return <SynthPage />;
+            case "train":
+              return <TrainPage />;
+            case "settings":
+              return (
+                <SettingsPage
+                  status={deviceStatus as never}
+                  onReloadDevices={() => void engine.reloadDevices()}
+                  devicesBusy={engine.devicesBusy}
+                  workerAlive={Boolean(engine.status.worker_alive)}
+                  onCheckUpdate={() => void checkUpdate()}
+                  updateLine={updateLine}
+                  updateBusy={updateBusy}
+                  onOpenHelp={openHelp}
+                  onOpenCommunity={openCommunity}
+                />
+              );
+            case "help":
+              // 说明页要按用户真实的设备列表判断他装没装声卡，所以吃的是同一份
+              // 收窄过的 deviceStatus（原始 status 每秒变两次半，会把页面刷爆）。
+              return (
+                <HelpPage
+                  status={deviceStatus}
+                  focus={helpFocus}
+                  focusNonce={helpFocusNonce}
+                  onOpenCommunity={openCommunity}
+                />
+              );
+            case "more":
+              return (
+                <MorePage
+                  status={engine.status}
+                  provision={engine.provision}
+                  onForceKill={requestForceKill}
+                  onOpenProvision={() => {
+                    setProvisionDismissed(false);
+                    setShowProvision(true);
+                  }}
+                  onOpenDownloadModels={openDownloadModels}
+                  focusCommunityNonce={communityNonce}
+                />
+              );
+          }
+        }}
+      </PageHost>
+
+      {killAsk ? (
+        <div className="absolute inset-0 z-[60] grid place-items-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
+          <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] p-6">
+            <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
+            <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">{t("s.killStsAskBody")}</p>
+            <div className="flex gap-2.5 justify-end">
+              <button
+                type="button"
+                onClick={() => setKillAsk(false)}
+                className="text-[13px] px-3.5 py-2 rounded-[var(--rs)] bg-transparent text-[var(--ink-muted)] border-0 cursor-pointer shadow-[inset_0_0_0_1px_var(--line)]"
+              >{t("s.killStsAskKeep")}</button>
+              <button
+                type="button"
+                onClick={() => void doForceKill()}
+                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent)] text-[var(--accent-ink)] border-0 cursor-pointer"
+              >{t("s.killStsAskGo")}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {closeAsk ? (
+        <div className="absolute inset-0 z-[60] grid place-items-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
+          <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] p-6">
+            <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
+            <p className="text-[13px] text-[var(--help)] m-0 mb-4 leading-relaxed">{t("s.bc19958103")}</p>
+            <label className="flex items-center gap-2.5 text-[13px] cursor-pointer mb-5 select-none">
+              <input
+                type="checkbox"
+                checked={closeRemember}
+                onChange={(e) => setCloseRemember(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />{t("s.f75c86ad46")}</label>
+            <div className="flex gap-2.5 justify-end">
+              <button
+                type="button"
+                onClick={() => void answerClose(false)}
+                className="text-[13px] px-3.5 py-2 rounded-[var(--rs)] bg-transparent text-[var(--ink-muted)] border-0 cursor-pointer shadow-[inset_0_0_0_1px_var(--line)]"
+              >{t("s.3a070016e2")}</button>
+              <button
+                type="button"
+                onClick={() => void answerClose(true)}
+                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent)] text-[var(--accent-ink)] border-0 cursor-pointer"
+              >{t("s.aea56dcdfe")}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 撕裂这两条排在所有 Nudge 前面：用户正卡着，别让「要不要更新」
+          「要不要开统计」挡在他前面。 */}
+      {engine.tearAsk ? (
+        <Nudge
+          title={t("s.tearTitle")}
+          actions={
+            <>
+              <Btn onClick={engine.dismissTearAsk}>{t("s.tearKeep")}</Btn>
+              <Btn primary onClick={() => void engine.applyTearAsk()}>
+                {t("s.tearApply")}
+              </Btn>
+            </>
+          }
+        >
+          {engine.tearAsk.message}
+        </Nudge>
+      ) : engine.notice ? (
+        <Nudge
+          title={t("s.tearTitle")}
+          actions={<Btn onClick={engine.dismissNotice}>{t("s.cb63c62e50")}</Btn>}
+        >
+          {engine.notice}
+        </Nudge>
+      ) : null}
+
+      {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么用不了），
+          但比撕裂靠后（那条是正在发生的卡顿）。一个会话里关掉就不再出现 ——
+          不落配置，因为坑没填之前下次启动本来就该再说一次。 */}
+      {knownIssue ? (
+        <Nudge
+          title={knownIssue.title}
+          actions={
+            <>
+              <Btn onClick={() => setKnownIssue(null)}>{t("s.kiDismiss")}</Btn>
+              {/* 有修复版本才给这个按钮：它说的「更新到 x.y.z」必须是真的。 */}
+              {knownIssue.fixed_in ? (
+                <Btn
+                  primary
+                  busy={updateBusy}
+                  disabled={updateBusy}
+                  onClick={() => void kiUpdate()}
+                >
+                  {t("s.kiUpdate", { v0: knownIssue.fixed_in })}
+                </Btn>
+              ) : null}
+            </>
+          }
+        >
+          {knownIssue.body}
+          {kiNote ? <span className="block mt-1">{kiNote}</span> : null}
+        </Nudge>
+      ) : null}
+
+      {/* 同时最多出现一条。更新排最前 —— 它是开机 4 秒就出来的，那会儿另外
+          两条的触发条件（用满 60 秒 / 变声十次）都还远没到。
+          统计邀请次之，两条撞在一起会把底栏顶掉半个屏。 */}
+      {/* 首次引导排在最前：更新提示是开机 4 秒就出来的，统计和关注更靠后，
+          而这条只在用户第一次点「开启变声」的那几秒里有意义，错过就没了。
+          它关掉之后被它压住的那条会自己顶上来。 */}
+      {askGuide ? (
+        <Nudge
+          title={t("s.guideFirstTitle")}
+          actions={
+            <>
+              <Btn onClick={() => closeGuide(false)}>{t("s.guideFirstSkip")}</Btn>
+              <Btn primary onClick={() => closeGuide(true)}>
+                {t("s.guideFirstGo")}
+              </Btn>
+            </>
+          }
+        >{t("s.guideFirstBody")}</Nudge>
+      ) : updateOffer ? (
+        <Nudge
+          title={
+            updateWorking
+              ? t("s.87c1bc6fe6")
+              : t("s.a462205ca5", { v0: updateOffer.remote })
+          }
+          actions={
+            updateWorking ? (
+              <Btn onClick={() => setUpdateOffer(null)} disabled={updateBusy}>
+                {updateBusy ? t("s.65188d08a2") : t("s.cb63c62e50")}
+              </Btn>
+            ) : (
+              <>
+                <Btn onClick={() => setUpdateOffer(null)}>{t("s.479fcc1cc0")}</Btn>
+                <Btn primary onClick={() => void acceptUpdate()}>{t("s.f4df9977ea")}</Btn>
+              </>
+            )
+          }
+        >
+          {updateWorking
+            ? updateLine
+            : t("s.3956a2d8bb", {
+                v0: updateOffer.local,
+                v1:
+                  updateOffer.notes ||
+                  t("s.58941d30b7"),
+              })}
+        </Nudge>
+      ) : askTelemetry ? (
+        <Nudge
+          title={t("s.b9feeeb3a8")}
+          actions={
+            <>
+              <Btn onClick={() => void answerTelemetry(false)}>{t("s.206f264868")}</Btn>
+              <Btn primary onClick={() => void answerTelemetry(true)}>{t("s.d9702f047c")}</Btn>
+            </>
+          }
+        >{t("s.9546e0b7e2")}</Nudge>
+      ) : askFollow ? (
+        <Nudge
+          title={t("s.d359cf1384")}
+          actions={
+            <>
+              <Btn onClick={closeFollow}>{t("s.6aa652ccb5")}</Btn>
+              {followLinks().map((l) => (
+                <Btn
+                  key={l.url}
+                  onClick={() => {
+                    // 二维码那条（QQ 群）没有能跳的地址，点开是图片。
+                    // 浮层留着不关：关掉它这条邀请就不会再出现，用户扫完码
+                    // 想再看一眼群名都没地方看了。
+                    if (l.qr) {
+                      setQr({ src: l.qr, label: l.title });
+                      return;
+                    }
+                    void openExternal(l.url);
+                    closeFollow();
+                  }}
+                >
+                  {l.short}
+                </Btn>
+              ))}
+            </>
+          }
+        >{t("s.7f3ebfb67b")}</Nudge>
+      ) : null}
+
+      {qr ? (
+        <QrDialog src={qr.src} label={qr.label} onClose={() => setQr(null)} />
+      ) : null}
+
+      <WebDialogHost />
+      <NativeDialogHint />
+
+      <Dock
+        voiceName={voiceName}
+        dspName={dspName}
+        onStopDsp={stopDsp}
+        voiceTag={voiceTag}
+        voiceIndex={voicePos}
+        pitch={pitch}
+        formant={formant}
+        onPitch={handlePitch}
+        onFormant={handleFormant}
+        mode={mode}
+        onMode={handleMode}
+        running={engine.running || engine.starting}
+        onToggleRun={() => void engine.toggleRun({ dspId })}
+        profileSummary={profileSummary}
+        statusTitle={engine.title}
+        statusSub={engine.sub}
+        progress={engine.progress}
+        loading={engine.starting && engine.progress == null}
+        micDb={engine.micDb}
+        thresholdDb={engine.thresholdDb}
+        showSelfCheck={engine.status?.state === "error"}
+        onSelfCheck={() => setSelfCheckOpen(true)}
+      />
+      {selfCheckOpen ? <LinkCheckDialog onClose={() => setSelfCheckOpen(false)} /> : null}
+      {page === "home" ? (
+        <OnboardingBar
+          tick={onboardTick}
+          onDismissed={() => setOnboardTick((n) => n + 1)}
+          onNavigate={setPage}
+        />
+      ) : null}
+    </div>
+  );
+}

@@ -1,0 +1,16 @@
+{
+  "product": "RVC Fabric",
+  "package_kind": "setup_payload",
+  "includes_runtime": false,
+  "includes_vbcable": false,
+  "includes_engine_assets": false,
+  "includes_engine_core": false,
+  "runtime_channel": "cnb_release",
+  "runtime_release_tag": "RVC-runtime",
+  "engine_core_channel": "cnb_lfs",
+  "engine_core_path": "assets/core/engine-core-*.zip",
+  "vbcable_channel": "cnb_lfs",
+  "cnb_repo": "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases",
+  "installer": "tauri_nsis",
+  "note": "薄包：壳+源码。Runtime（分版）+ engine-core（共用）+ VB-Cable 均从 CNB 补全"
+}

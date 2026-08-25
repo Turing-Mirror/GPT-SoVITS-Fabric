@@ -1,0 +1,317 @@
+//! Anonymous daily usage ping (opt-in).
+//!
+//! Design constraints, decided 2026-07-30:
+//!
+//! * The download path stays **direct to CNB** — putting Cloudflare in front of
+//!   a domestic origin makes things slower for the users we actually have. Only
+//!   this tiny ping goes to CF.
+//! * Fire and forget: background thread, short timeout, **never retried inline**
+//!   and never surfaced as an error. It must not affect any feature.
+//! * **Backfill.** CF from the mainland fails sometimes; dropping those days
+//!   would under-count DAU systematically. We report *which days this install
+//!   launched*, so catching up later is accurate rather than a guess.
+//! * No behaviour events, no IP stored client-side, endpoint hard-coded (never
+//!   read from plaza.json or any other editable feed).
+
+use std::path::Path;
+
+use serde_json::{json, Map, Value};
+
+use crate::config;
+
+/// Hard-coded on purpose. A feed-supplied endpoint would mean handing the
+/// telemetry destination to whoever can edit the catalog.
+const ENDPOINT: &str = "https://cdn.turingmirror.com/p";
+
+/// Days kept when the endpoint is unreachable. Beyond this the oldest are
+/// dropped — an install offline for two weeks is not worth unbounded state.
+const MAX_QUEUE: usize = 14;
+
+fn today() -> String {
+    // UTC day bucket without pulling in a date crate.
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = secs / 86_400;
+    let (y, m, d) = civil_from_days(days as i64);
+    format!("{y:04}{m:02}{d:02}")
+}
+
+/// days since 1970-01-01 -> (y, m, d). Howard Hinnant's civil_from_days.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn random_id() -> String {
+    let a = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let b = std::process::id() as u64;
+    let mut x = a ^ (b << 32) ^ 0x9E37_79B9_7F4A_7C15;
+    // splitmix64 — no rand dependency needed for one identifier.
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^= x >> 31;
+    format!("{x:016x}")
+}
+
+/// Queue today, then try to flush everything queued. Returns what was sent.
+pub fn tick(root: &Path, app_version: &str, accel: &str) -> Value {
+    let cfg = config::read(root);
+    if cfg.get("telemetry_opt_in").and_then(|v| v.as_bool()) != Some(true) {
+        return json!({"sent": false, "reason": "opt-out"});
+    }
+
+    // Generated here but persisted in the single write at the end — telemetry
+    // must not rewrite the engine config, and two writes per tick was waste.
+    let id = match cfg.get("telemetry_id").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => random_id(),
+    };
+
+    let t = today();
+    // Already counted for today and nothing is queued — the day bucket is the
+    // unit, so restarting the app five times must not mean five requests and
+    // five config writes.
+    let last_sent = cfg
+        .get("telemetry_last_sent")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let queued_empty = cfg
+        .get("telemetry_pending_days")
+        .and_then(|v| v.as_array())
+        .map(|a| a.is_empty())
+        .unwrap_or(true);
+    // 今天已经报过、也没有积压 —— 重启五次不该变成五个请求五次写盘。
+    // 但攒了下载成败就还得走一趟：那份数据没搭上今天的车，就得等到明天。
+    let dl_pending = download_summary(&cfg)
+        .as_array()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false);
+    if last_sent == t && queued_empty && !dl_pending {
+        return json!({"sent": false, "reason": "already-counted-today"});
+    }
+
+    let mut days: Vec<String> = cfg
+        .get("telemetry_pending_days")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    if !days.contains(&t) {
+        days.push(t.clone());
+    }
+    days.sort();
+    days.dedup();
+    if days.len() > MAX_QUEUE {
+        let cut = days.len() - MAX_QUEUE;
+        days.drain(0..cut);
+    }
+
+    // 下载源成败搭这趟车走，不单开请求。
+    let dl = download_summary(&cfg);
+    let has_dl = dl.as_array().map(|a| !a.is_empty()).unwrap_or(false);
+    let mut body = json!({ "id": id, "days": days, "ver": app_version, "accel": accel });
+    if has_dl {
+        body["dl"] = dl;
+    }
+    let ok = post(&body);
+
+    let mut patch = Map::new();
+    patch.insert("telemetry_id".into(), json!(id));
+    patch.insert(
+        "telemetry_pending_days".into(),
+        if ok { json!([]) } else { json!(days) },
+    );
+    if ok {
+        patch.insert("telemetry_last_sent".into(), json!(t));
+        // 报出去了才清。没报成就留着下次一起 —— 跟补报那几天同一个道理。
+        if has_dl {
+            patch.insert("download_stats".into(), json!({}));
+        }
+    }
+    let _ = config::update(root, patch);
+
+    json!({"sent": ok, "days": body["days"].clone()})
+}
+
+// ---------------------------------------------------------------------------
+// 下载源健康度
+// ---------------------------------------------------------------------------
+//
+// 「哪个镜像在哪些地区已经不行了」这件事，现在只写在用户自己机器的日志里 ——
+// 等他来群里骂我们才知道。而 `mirrors::hf_endpoints` 那份下发列表要改成什么，
+// 总得有个依据。
+//
+// 设计跟日活 ping 一样克制：
+//
+// * **不新开请求**。每条下载都发一次遥测，既是多余的流量，也是一个能拿来
+//   对时序做指纹的面。这里只在本地攒计数，跟着那条每天一次的 ping 一起走。
+// * **只有主机名**。没有文件名、没有音色 id、没有耗时 —— 「谁下了什么」不是
+//   我们要的信息，「哪个源连不上」才是。
+// * 同样受 `telemetry_opt_in` 管：没开就一个字节都不攒。
+
+/// 最多记这么多个源。清单被改坏或者用户填了一堆自定义端点时，别让配置文件
+/// 无限长。
+const MAX_HOSTS: usize = 12;
+
+/// 把五花八门的错误串归成几类。原文里有 URL、有路径、有系统语言的句子，
+/// 那些都不该出门。
+fn error_kind(err: &str) -> &'static str {
+    let e = err.to_ascii_lowercase();
+    if e.contains("sha256") {
+        "hash"
+    } else if e.contains("timed out") || e.contains("timeout") || e.contains("10060") {
+        "timeout"
+    } else if e.contains("dns") || e.contains("11001") {
+        "dns"
+    } else if e.contains("tls") || e.contains("handshake") || e.contains("certificate") {
+        "tls"
+    } else if e.contains("status 4") {
+        "http4xx"
+    } else if e.contains("status 5") || e.contains("bad gateway") || e.contains("unavailable") {
+        "http5xx"
+    } else if e.contains("reset") || e.contains("connection") || e.contains("10054") {
+        "reset"
+    } else {
+        "other"
+    }
+}
+
+/// 记一次下载结果。`err` 为 None = 成功。
+pub fn note_download(root: &Path, url: &str, err: Option<&str>) {
+    let cfg = config::read(root);
+    if cfg.get("telemetry_opt_in").and_then(|v| v.as_bool()) != Some(true) {
+        return;
+    }
+    let host = crate::mirrors::host_of(url);
+    if host.is_empty() || host.len() > 64 {
+        return;
+    }
+    let mut stats = cfg
+        .get("download_stats")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    if !stats.contains_key(&host) && stats.len() >= MAX_HOSTS {
+        return;
+    }
+    let entry = stats.entry(host).or_insert_with(|| json!({}));
+    let Some(obj) = entry.as_object_mut() else {
+        return;
+    };
+    let field = if err.is_some() { "fail" } else { "ok" };
+    let n = obj.get(field).and_then(|v| v.as_u64()).unwrap_or(0);
+    obj.insert(field.into(), json!(n.saturating_add(1)));
+    if let Some(e) = err {
+        obj.insert("err".into(), json!(error_kind(e)));
+    }
+
+    let mut patch = Map::new();
+    patch.insert("download_stats".into(), Value::Object(stats));
+    let _ = config::update(root, patch);
+}
+
+/// 攒下来的计数整理成上报格式：`[["host", ok, fail, "err"], ...]`。
+fn download_summary(cfg: &Map<String, Value>) -> Value {
+    let Some(stats) = cfg.get("download_stats").and_then(|v| v.as_object()) else {
+        return json!([]);
+    };
+    let mut rows: Vec<Value> = Vec::new();
+    for (host, v) in stats.iter().take(MAX_HOSTS) {
+        let ok = v.get("ok").and_then(|x| x.as_u64()).unwrap_or(0);
+        let fail = v.get("fail").and_then(|x| x.as_u64()).unwrap_or(0);
+        if ok == 0 && fail == 0 {
+            continue;
+        }
+        let err = v.get("err").and_then(|x| x.as_str()).unwrap_or("");
+        rows.push(json!([host, ok, fail, err]));
+    }
+    json!(rows)
+}
+
+fn post(body: &Value) -> bool {
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    else {
+        return false;
+    };
+    let Ok(text) = serde_json::to_string(body) else {
+        return false;
+    };
+    client
+        .post(ENDPOINT)
+        .header("Content-Type", "application/json")
+        .body(text)
+        .send()
+        .map(|r: reqwest::blocking::Response| r.status().is_success())
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn day_bucket_is_yyyymmdd() {
+        let t = today();
+        assert_eq!(t.len(), 8);
+        assert!(t.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn civil_conversion_matches_known_dates() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(19_723), (2024, 1, 1));
+    }
+
+    #[test]
+    fn ids_are_not_all_the_same() {
+        let a = random_id();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let b = random_id();
+        assert_ne!(a, b);
+        assert_eq!(a.len(), 16);
+    }
+
+    #[test]
+    fn endpoint_is_hard_coded_https() {
+        assert!(ENDPOINT.starts_with("https://"));
+    }
+
+    #[test]
+    fn a_second_start_on_the_same_day_does_not_ping_again() {
+        let root = std::env::temp_dir().join("rvcf-telemetry-test");
+        let _ = std::fs::remove_dir_all(&root);
+        let mut patch = serde_json::Map::new();
+        patch.insert("telemetry_opt_in".into(), json!(true));
+        patch.insert("telemetry_last_sent".into(), json!(today()));
+        patch.insert("telemetry_pending_days".into(), json!([]));
+        config::update(&root, patch).unwrap();
+
+        let out = tick(&root, "1.3.0", "nvidia");
+        assert_eq!(out["sent"], json!(false));
+        assert_eq!(out["reason"], json!("already-counted-today"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn opting_out_never_pings() {
+        let root = std::env::temp_dir().join("rvcf-telemetry-optout");
+        let _ = std::fs::remove_dir_all(&root);
+        let out = tick(&root, "1.3.0", "nvidia");
+        assert_eq!(out["reason"], json!("opt-out"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
