@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StatusBar } from "./components/StatusBar";
-import { LinkCheckDialog } from "./components/LinkCheckDialog";
 import { OnboardingBar } from "./components/OnboardingBar";
 import { Nudge } from "./components/Nudge";
 import { Btn } from "./components/ui";
@@ -9,7 +8,6 @@ import { QrDialog } from "./components/QrDialog";
 import { WebDialogHost } from "./components/WebDialog";
 import { NativeDialogHint } from "./components/NativeDialogHint";
 import { openExternal } from "./lib/plaza";
-import { comboFromEvent, localHotkeyMap, typingInto } from "./lib/hotkeys";
 import { PageHost } from "./components/PageHost";
 import { ProvisionGate } from "./components/ProvisionGate";
 import { LanguageGate } from "./components/LanguageGate";
@@ -22,6 +20,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { applyAppearance } from "./lib/appearance";
 import { listen } from "@tauri-apps/api/event";
 import { HelpPage } from "./pages/HelpPage";
+import { AnnotPage } from "./pages/AnnotPage";
 import { HomePage } from "./pages/HomePage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { MorePage } from "./pages/MorePage";
@@ -592,39 +591,6 @@ export default function App() {
   const reloadPlaza = useCallback(() => void plazaReload(), [plazaReload]);
 
   const [onboardTick, setOnboardTick] = useState(0);
-  // 自检结论弹窗（引擎报错时底栏入口）。GSV 下保留机制，检查项由
-  // known_issues.rs 驱动。
-  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
-  // 底栏/快捷键共用的动作表。变声专属动作已随 Dock 移除；保留骨架给
-  // 合成相关的未来热键。
-  const actionsRef = useRef({
-    toggleRun: () => {},
-    toggleMode: () => {},
-    shiftPitch: (_d: number) => {},
-    shiftVoice: (_d: number) => {},
-    toggleCfgFlag: (_key: string) => {},
-  });
-  void actionsRef.current;
-
-  useEffect(() => {
-    actionsRef.current = {
-      toggleRun: () => {},
-      toggleMode: () => {},
-      shiftPitch: () => {},
-      shiftVoice: () => {},
-      toggleCfgFlag: (key: string) => {
-        void (async () => {
-          try {
-            const cfg = await invoke<Record<string, unknown>>("config_get");
-            await invoke("config_set", { patch: { [key]: cfg[key] !== true } });
-          } catch {
-            /* 引擎没起来时按了也不该炸 */
-          }
-        })();
-      },
-    };
-  });
-
   useEffect(() => {
     let disposed = false;
     const offs: Array<() => void> = [];
@@ -640,48 +606,6 @@ export default function App() {
     return () => {
       disposed = true;
       offs.forEach((f) => f());
-    };
-  }, []);
-
-  // 取消了「全局」的那些快捷键，在这里接。
-  //
-  // Rust 只注册勾了「全局」的组合 —— 全局快捷键是独占的，被抢走的组合用户在
-  // 别的软件里就按不出原本的功能了，所以每个都可以单独关掉。关掉的那些改由
-  // 本窗口的 keydown 接住：只在 RVC Fabric 是当前窗口时生效，正好是用户要的。
-  //
-  // 不会和全局的重复触发：localHotkeyMap 只收 `_global` 为 false 的。
-  useEffect(() => {
-    let map = new Map<string, string>();
-    let alive = true;
-    const reload = () => {
-      void invoke<Record<string, unknown>>("config_get")
-        .then((cfg) => {
-          if (alive) map = localHotkeyMap(cfg);
-        })
-        .catch(() => {
-          /* 浏览器预览下没有配置 */
-        });
-    };
-    reload();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || typingInto(e.target)) return;
-      const action = map.get(comboFromEvent(e));
-      if (!action) return;
-      e.preventDefault();
-      const a = actionsRef.current;
-      void a;
-      switch (action) {
-        default:
-          break;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    // 设置页改完会重新注册一次全局快捷键；借同一个时机把这份表也重读。
-    const un = listen("hotkeys://changed", reload);
-    return () => {
-      alive = false;
-      window.removeEventListener("keydown", onKey);
-      void un.then((f) => f());
     };
   }, []);
 
@@ -754,6 +678,8 @@ export default function App() {
               );
             case "synth":
               return <SynthPage />;
+            case "annot":
+              return <AnnotPage />;
             case "train":
               return <TrainPage />;
             case "settings":
@@ -999,7 +925,6 @@ export default function App() {
         statusSub={t("statusbar.idleSub")}
         onOpenSynth={() => setPage("synth")}
       />
-      {selfCheckOpen ? <LinkCheckDialog onClose={() => setSelfCheckOpen(false)} /> : null}
       {page === "home" ? (
         <OnboardingBar
           tick={onboardTick}

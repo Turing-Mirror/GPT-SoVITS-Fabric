@@ -2,6 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import {  tStatic as t, tStatic  } from "../i18n";
 
 /** Mirrors User_Data/runtime_control/status.json + shell extras. */
+/** 输出模式：变声 / 直通。worker 协议里的字段，界面上没有对应开关。 */
+export type OutputMode = "vc" | "bypass";
+
 export type EngineStatus = {
   state?: string;
   error?: string;

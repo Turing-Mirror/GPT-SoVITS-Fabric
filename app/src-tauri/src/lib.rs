@@ -3,11 +3,11 @@
 //! Stages 1–4: window/UI, worker bridge, Runtime provision, voice catalog & store.
 
 pub mod catalog;
+mod annot;
 mod asset_scope;
 mod audio_probe;
 mod autostart;
 mod link_check;
-mod ckpt;
 mod config;
 mod crash;
 mod download;
@@ -1276,6 +1276,36 @@ fn sts_reveal(
     sts::reveal_output(&root, path.as_deref().unwrap_or(""))
 }
 
+
+// --- .list 标注管理 --------------------------------------------------------
+//
+// 标注是这个软件里最贵的东西：一句一句校出来的。所以读、写、选三条命令
+// 各自独立，写那条自己做备份和原子替换（见 annot.rs）。
+
+#[tauri::command]
+fn annot_pick(window: tauri::WebviewWindow) -> Option<String> {
+    annot::pick(Some(&window))
+}
+
+#[tauri::command]
+async fn annot_load(path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || annot::load(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn annot_save(path: String, rows: Vec<annot::Row>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || annot::save(&path, &rows))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn annot_reveal(path: String) -> Result<(), String> {
+    sts::reveal_path(&path)
+}
+
 // --- 文字合成 TTS（文字 → SAPI → 可选 RVC）--------------------------------
 
 #[tauri::command]
@@ -1475,28 +1505,6 @@ async fn train_start(
 #[tauri::command]
 fn train_cancel() {
     train::cancel();
-}
-
-#[tauri::command]
-fn ckpt_pick(window: tauri::WebviewWindow, kind: Option<String>) -> Option<String> {
-    ckpt::pick(Some(&window), kind.as_deref().unwrap_or("pth"))
-}
-
-#[tauri::command]
-async fn ckpt_run(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    req: Value,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || ckpt::run(&app, &root, req))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn ckpt_cancel() {
-    ckpt::cancel();
 }
 
 #[tauri::command]
@@ -2247,9 +2255,10 @@ pub fn run() {
             train_pick_output_dir,
             train_output_dir,
             train_cancel,
-            ckpt_pick,
-            ckpt_run,
-            ckpt_cancel,
+            annot_pick,
+            annot_load,
+            annot_save,
+            annot_reveal,
         ])
         .setup(move |app| {
             // 原生对话框要认父窗口，先把句柄存下来（见 shell_extras::dialog）。

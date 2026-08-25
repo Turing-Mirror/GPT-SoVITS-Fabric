@@ -66,27 +66,16 @@ struct Spec {
 /// 路径被挤成两个字。宽度按内容排出来的最窄可用宽给。
 fn spec_for(kind: &str) -> Option<Spec> {
     Some(match kind {
-        "separate" => Spec {
-            title: crate::i18n::t("s.8fd038283b"),
-            w: 660.0,
-            h: 540.0,
-            min_w: 520.0,
-            min_h: 420.0,
-        },
-        "train" => Spec {
-            title: crate::i18n::t("s.ba65bd5595"),
-            w: 720.0,
-            h: 640.0,
-            min_w: 560.0,
+        // 标注校对是坐下来做几个小时的活，而且多半要一边对着文件管理器、
+        // 一边听音频。给它一扇自己的窗，用户就能把它摊在半个屏幕上，主窗口
+        // 那边照样能去合成台试听。宽度按表格排出来的最窄可用宽给：再窄，
+        // 「说话人 / 语种 / 文本」三列就要挤成两行。
+        "annot" => Spec {
+            title: crate::i18n::t("s.annot.title"),
+            w: 900.0,
+            h: 700.0,
+            min_w: 680.0,
             min_h: 480.0,
-        },
-        "tts" => Spec {
-            // 标签仍用 tts 兼容旧入口；窗体标题是「语音转换」（含音频变声 + 文字合成）。
-            title: crate::i18n::t("s.6f311c47fe"),
-            w: 720.0,
-            h: 780.0,
-            min_w: 560.0,
-            min_h: 560.0,
         },
         _ => return None,
     })
@@ -225,23 +214,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_the_three_known_tools_have_a_window() {
-        for k in ["separate", "train", "tts"] {
-            assert!(spec_for(k).is_some());
-        }
+    fn only_a_registered_tool_gets_a_window() {
+        assert!(spec_for("annot").is_some());
         // 前端传什么过来都可能，没登记的一律拒绝 —— 否则一个拼错的名字会开出
         // 一扇加载 `#/tool/whatever` 的空白窗，用户以为软件坏了。
         assert!(spec_for("").is_none());
-        assert!(spec_for("separate ").is_none());
+        assert!(spec_for("annot ").is_none());
         assert!(spec_for("../main").is_none());
     }
 
     #[test]
     fn each_tool_gets_its_own_label_and_fragment() {
-        assert_eq!(label_for("tts"), "tool-tts");
-        assert!(url_for("tts").ends_with("#/tool/tts"));
-        // 三个工具的 label 必须互不相同，否则第二个工具会「复用」第一个的窗口。
-        let labels: Vec<String> = ["separate", "train", "tts"].iter().map(|k| label_for(k)).collect();
+        assert_eq!(label_for("annot"), "tool-annot");
+        assert!(url_for("annot").ends_with("#/tool/annot"));
+        // 每个工具的 label 必须互不相同，否则第二个工具会「复用」第一个的窗口。
+        let labels: Vec<String> = ["annot"].iter().map(|k| label_for(k)).collect();
         let mut uniq = labels.clone();
         uniq.sort();
         uniq.dedup();
@@ -273,7 +260,7 @@ mod tests {
 
     #[test]
     fn a_tool_window_is_never_smaller_than_its_content_needs() {
-        for k in ["separate", "train", "tts"] {
+        for k in ["annot"] {
             let s = spec_for(k).unwrap();
             assert!(s.min_w <= s.w && s.min_h <= s.h);
         }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  ensureEngine,
   getEngineStatus,
   getProvisionStatus,
   isLoadPhase,
@@ -13,9 +12,9 @@ import {
   statusTitle,
   stopVc,
   type EngineStatus,
+  type OutputMode,
   type ProvisionStatus,
 } from "../lib/engine";
-import type { OutputMode } from "../components/Dock";
 import { getConfig } from "../lib/config";
 import { t } from "../i18n/t";
 
@@ -65,11 +64,11 @@ export function useEngine() {
       setProvision(p);
       const wasReady = runtimeReadyRef.current;
       runtimeReadyRef.current = p.runtime_ready;
-      // false → true 的那一下：worker 还从来没起来过，现在可以起了。
+      // false → true 的那一下：运行时刚补全，把「运行时未就绪」那句错误撤掉。
+      // 同样不在这儿拉 worker —— 见下面挂载那段的说明。
       if (wasReady === false && p.runtime_ready !== false) {
         setLastError("");
-        const st = await ensureEngine();
-        setStatus(st);
+        setStatus(await getEngineStatus());
       }
       return p;
     } catch {
@@ -128,9 +127,14 @@ export function useEngine() {
         if (!cancelled) setProvision(p);
         // 记下开局状态。refresh 的轮询靠它决定要不要继续盯着运行时。
         runtimeReadyRef.current = p.runtime_ready;
-        // Only ensure worker when Runtime is complete
+        // 启动时**不**把 worker 拉起来。
+        //
+        // engine_ensure 会起一个 RVC 实时 worker，导 torch、枚举声卡，最多
+        // 等 90 秒。这个产品没有实时链路，界面上也不再有任何一处读设备列表
+        // （设置页只剩外观 / 通用 / 更新三页），等于开机白等一分半、白占一份
+        // 显存。合成走的是自己的常驻 worker（见 synth.rs），跟这个无关。
         if (p.runtime_ready !== false) {
-          const st = await ensureEngine();
+          const st = await getEngineStatus();
           if (!cancelled) setStatus(st);
         } else {
           const st = await getEngineStatus();

@@ -2,24 +2,20 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { SeparatePanel } from "./SeparatePanel";
-import { TrainPanel } from "./TrainPanel";
-import { TtsPanel } from "./TtsPanel";
+import { AnnotPage } from "../pages/AnnotPage";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { WebDialogHost } from "./WebDialog";
 import { NativeDialogHint } from "./NativeDialogHint";
 
 /** 地址里带的 `#/tool/<kind>` —— 主窗口和工具窗口用的是同一份前端。 */
-export type ToolKind = "separate" | "train" | "tts";
+export type ToolKind = "annot";
 
-function toolTitle(kind: ToolKind): string {
-  if (kind === "separate") return t("s.8fd038283b");
-  if (kind === "train") return t("s.ba65bd5595");
-  return t("s.6f311c47fe");
+function toolTitle(_kind: ToolKind): string {
+  return t("s.annot.title");
 }
 
-const TOOL_KINDS = new Set<string>(["separate", "train", "tts"]);
+const TOOL_KINDS = new Set<string>(["annot"]);
 
 /**
  * 这个 webview 是不是一扇工具窗口，是的话是哪一个。
@@ -36,22 +32,12 @@ export function toolFromHash(hash: string): ToolKind | null {
 
 /** 从主窗口把某个工具窗口开起来（已经开着就拉到前面）。 */
 export function openTool(kind: ToolKind): void {
-  void (async () => {
-    try {
-      // 音频工具需要引擎资源（hubert/rmvpe/ffmpeg）。缺了就打开「下载模型」
-      // 弹窗：先下基础依赖，再下分离/训练附加包。底栏「开启变声」不走这里。
-      const { ensureEngineCoreOrPrompt } = await import("../lib/downloadModels");
-      const ok = await ensureEngineCoreOrPrompt(
-        t("s.toolNeedEngine", { name: toolTitle(kind) }),
-      );
-      if (!ok) return;
-    } catch {
-      /* 浏览器预览或 assets_status 失败：仍尝试打开，由工具内再拦 */
-    }
-    void invoke("tools_open", { kind }).catch(() => {
-      /* 浏览器预览里没有 shell */
-    });
-  })();
+  // 标注校对不碰引擎，所以这里不再拦一道「先下模型」—— 那道闸是给分离/
+  // 训练那些真的要 hubert/ffmpeg 的工具准备的。一个只读写文本文件的窗口
+  // 因为「引擎资源缺失」打不开，用户完全无法理解。
+  void invoke("tools_open", { kind }).catch(() => {
+    /* 浏览器预览里没有 shell */
+  });
 }
 
 /**
@@ -78,9 +64,7 @@ export function ToolWindow({ kind }: { kind: ToolKind }) {
       <ToolTitleBar title={toolTitle(kind)} />
       <ToolFooterSlot.Provider value={footer}>
         <div className="flex-1 overflow-y-auto">
-          {kind === "separate" ? <SeparatePanel /> : null}
-          {kind === "train" ? <TrainPanel /> : null}
-          {kind === "tts" ? <TtsPanel /> : null}
+          {kind === "annot" ? <AnnotPage /> : null}
         </div>
       </ToolFooterSlot.Provider>
       <div ref={setFooter} className="flex-none" />

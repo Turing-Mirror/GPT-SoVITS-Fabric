@@ -57,7 +57,7 @@ function isCancelError(e: unknown): boolean {
 }
 
 /**
- * First-run / missing-Runtime gate: Runtime + VB-Cable 安装包。
+ * First-run / missing-Runtime gate: Runtime + VC 运行库 + 引擎资源。
  *
  * 引擎资源（hubert / rmvpe / ffmpeg）不在这里下，改到「广场 → 下载模型」按需补。
  * Only shown when need_provision; does not change everyday VC flow once ready.
@@ -77,25 +77,20 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   // down the whole tree — a blank window on exactly the machines that need the
   // gate (a fresh install with no Runtime yet).
   const [extra, setExtra] = useState("");
-  // Runtime 下完后准备 VB-Cable：ready=可点安装，installed=装完了，
-  // failed=下载或安装失败，仍可跳过。
-  // 运行库这一步排在虚拟声卡前面：没有它变声根本起不来，比"游戏里听不到"更基础。
+  // VC 运行库：ready=可点安装，installing=装着，installed=装完了，
+  // failed=下载或安装失败（仍可跳过，用户可能自己装过）。
   const [vcr, setVcr] = useState<
     null | "ready" | "installing" | "installed" | "failed"
   >(null);
   const [vcrMsg, setVcrMsg] = useState("");
-  const [vbcable, setVbcable] = useState<
-    null | "ready" | "installing" | "installed" | "failed"
-  >(null);
-  const [vbcableMsg, setVbcableMsg] = useState("");
   /**
    * 引擎资源（hubert / rmvpe / ffmpeg，约 720MB）这一步。
    *
    * `null` = 不用问（已经有了）；`ask` = 摆在补全后面让用户自己决定；
    * 之后是下载中 / 好了 / 失败。
    *
-   * 刻意不并进首次补全：DSP 变声和人声分离都用不到这三个文件，无条件下载
-   * 等于让这两类用户白等 720MB。摆成「下一步」，跳过也能直接去变声。
+   * 刻意不并进首次补全：不是每个人一上来就要训练，无条件下载等于让只想
+   * 试合成的人白等 720MB。摆成「下一步」，跳过也能先用起来。
    */
   const [core, setCore] = useState<
     null | "ask" | "downloading" | "done" | "failed"
@@ -241,34 +236,11 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
     }
   }
 
-  /** Runtime 之后：下 VB-Cable 安装包（软失败可跳过），再让用户点安装。 */
-  async function prepareVbcable() {
-    setExtra(t("s.094beaeab9"));
-    setProgress({
-      phase: "vbcable",
-      done: 0,
-      total: 1,
-      percent: 0,
-      message: t("s.094beaeab9"),
-    });
-    try {
-      await invoke("assets_ensure_vbcable");
-      setExtra("");
-      setVbcable("ready");
-    } catch (e) {
-      setExtra("");
-      setVbcableMsg(String(e));
-      setVbcable("failed");
-    }
-  }
-
   const start = async () => {
     setBusy(true);
     setError("");
     setVcr(null);
     setVcrMsg("");
-    setVbcable(null);
-    setVbcableMsg("");
     setCore(null);
     setCoreMsg("");
     startedAt.current = Date.now();
@@ -287,8 +259,6 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
           /* 预览模式：拿不到状态就不问 */
         }
         await prepareVcredist();
-        // VB-Cable 仍随首次补全准备，否则游戏里听不到变声。
-        await prepareVbcable();
       } else if (isCancelError(r.message)) {
         finishCancel();
       } else {
@@ -515,21 +485,6 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
           </div>
         ) : null}
 
-        {vbcable ? (
-          <div className="rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-3.5 py-3 mb-4">
-            <div className="text-[13.5px] mb-1">{t("s.3d4e683008")}</div>
-            <div className="text-[12.5px] text-[var(--help)] leading-relaxed">
-              {vbcable === "failed"
-                ? t("s.d80c650a49", { v0: vbcableMsg })
-                : vbcable === "installing"
-                  ? t("s.vbcableInstalling")
-                  : vbcable === "installed"
-                    ? t("s.vbcableDone")
-                    : t("s.c946d45a63")}
-            </div>
-          </div>
-        ) : null}
-
         {core ? (
           <div className="rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-3.5 py-3 mb-4">
             <div className="text-[13.5px] mb-1">{t("extras.engineTitle")}</div>
@@ -588,26 +543,6 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
             </>
           ) : vcr === "installing" ? (
             <Btn disabled>{t("s.vcrInstalling")}</Btn>
-          ) : vbcable ? (
-            <>
-              <Btn onClick={onDone}>{vbcable === "ready" ? t("s.31a98593f1") : t("s.33246f6a5e")}</Btn>
-              {vbcable === "ready" ? (
-                <Btn
-                  primary
-                  onClick={() => {
-                    setVbcable("installing");
-                    // 静默安装，装完才 resolve —— 状态得跟到底，否则界面会
-                    // 一直停在「正在安装」，用户不知道能不能关。
-                    void invoke("assets_install_vbcable")
-                      .then(() => setVbcable("installed"))
-                      .catch((e) => {
-                        setVbcableMsg(String(e));
-                        setVbcable("failed");
-                      });
-                  }}
-                >{t("s.087db63ab1")}</Btn>
-              ) : null}
-            </>
           ) : busy ? (
             <Btn onClick={onCancelClick}>{t("s.4d0b4688c7")}</Btn>
           ) : (

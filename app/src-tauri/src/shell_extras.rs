@@ -30,18 +30,9 @@ use crate::{config, paths, worker};
 pub fn install_tray(app: &AppHandle) -> Result<(), String> {
     let show = MenuItem::with_id(app, "show", &crate::i18n::t("tray.show"), true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let toggle = MenuItem::with_id(
-        app,
-        "toggle",
-        &crate::i18n::t("tray.toggle"),
-        true,
-        None::<&str>,
-    )
-    .map_err(|e| e.to_string())?;
     let quit = MenuItem::with_id(app, "quit", &crate::i18n::t("tray.quit"), true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let menu =
-        Menu::with_items(app, &[&show, &toggle, &quit]).map_err(|e| e.to_string())?;
+    let menu = Menu::with_items(app, &[&show, &quit]).map_err(|e| e.to_string())?;
 
     TrayIconBuilder::with_id("main")
         .tooltip("GPT-SoVITS Fabric")
@@ -54,9 +45,6 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => focus_main(app),
-            "toggle" => {
-                let _ = app.emit("tray://toggle-vc", ());
-            }
             "quit" => {
                 // Stop the stream before leaving, otherwise the worker keeps
                 // holding the audio device after the UI is gone.
@@ -143,18 +131,9 @@ fn root_of(app: &AppHandle) -> Option<PathBuf> {
 /// 正在游戏、正在直播、主界面缩在托盘里的人用的。改设置、翻音色库这些非得看着
 /// 界面才能做的事，给它配快捷键没有意义。
 pub const HOTKEYS: &[(&str, &str, &str)] = &[
-    ("hotkey_toggle_vc", "toggle-vc", "CmdOrCtrl+F2"),
-    ("hotkey_toggle_mode", "toggle-mode", "CmdOrCtrl+F3"),
-    ("hotkey_prev_voice", "prev-voice", "CmdOrCtrl+F5"),
-    ("hotkey_next_voice", "next-voice", "CmdOrCtrl+F6"),
-    // 音高一次一个半音。开着黑发现音色偏高偏低，不用退出游戏调。
-    ("hotkey_pitch_up", "pitch-up", "CmdOrCtrl+F7"),
-    ("hotkey_pitch_down", "pitch-down", "CmdOrCtrl+F8"),
-    // 监听自己。队友说你声音怪，想立刻听一耳朵自己现在是什么效果。
-    ("hotkey_toggle_monitor", "toggle-monitor", "CmdOrCtrl+F9"),
-    // 后期音效总开关。怀疑是压缩/均衡把声音搞糊了，一键旁路对比。
-    ("hotkey_toggle_fx", "toggle-fx", "CmdOrCtrl+F10"),
-    // 显示 / 隐藏主界面。缩在托盘里时这是唯一不用去点托盘图标的入口。
+    // 显示 / 隐藏主界面。缩在托盘里时这是唯一不用去点托盘图标的入口，
+    // 也是目前唯一在这个产品里成立的全局键 —— 抢一个系统级组合是有代价的
+    // （被抢走的组合用户在别的软件里就按不出来了），所以只留真的有动作的。
     ("hotkey_toggle_window", "toggle-window", "CmdOrCtrl+F11"),
 ];
 
@@ -1536,17 +1515,12 @@ mod tests {
     }
 
     #[test]
-    fn the_original_four_hotkeys_keep_their_combos() {
-        let combos: Vec<&str> = HOTKEYS.iter().take(4).map(|(_, _, d)| *d).collect();
-        assert_eq!(
-            combos,
-            vec!["CmdOrCtrl+F2", "CmdOrCtrl+F3", "CmdOrCtrl+F5", "CmdOrCtrl+F6"]
-        );
-        let actions: Vec<&str> = HOTKEYS.iter().take(4).map(|(_, a, _)| *a).collect();
-        assert_eq!(
-            actions,
-            vec!["toggle-vc", "toggle-mode", "prev-voice", "next-voice"]
-        );
+    fn every_registered_hotkey_has_something_to_do() {
+        // 这张表是「会被抢走的系统级组合」的清单。表里多一条没有动作的，
+        // 就是白白占掉用户一个组合键。
+        let actions: Vec<&str> = HOTKEYS.iter().map(|(_, a, _)| *a).collect();
+        assert_eq!(actions, vec!["toggle-window"]);
+        assert_eq!(HOTKEYS[0].2, "CmdOrCtrl+F11");
     }
 
     /// 配置里存的组合键要先筛一道再交给系统注册。

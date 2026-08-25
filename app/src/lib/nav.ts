@@ -6,6 +6,7 @@ export type PageId =
   | "home"
   | "models"
   | "synth"
+  | "annot"
   | "train"
   | "plaza"
   | "settings"
@@ -23,6 +24,7 @@ const NAV_DEFS: readonly NavDef[] = [
   { id: "home", labelKey: "nav.home" },
   { id: "models", labelKey: "nav.models" },
   { id: "synth", labelKey: "nav.synth" },
+  { id: "annot", labelKey: "nav.annot" },
   { id: "train", labelKey: "nav.train" },
   { id: "plaza", labelKey: "nav.plaza", badge: true },
   { id: "settings", labelKey: "nav.settings" },
