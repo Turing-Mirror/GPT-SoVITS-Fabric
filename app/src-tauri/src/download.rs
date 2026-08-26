@@ -1058,7 +1058,7 @@ mod tests {
     fn cnb_500_is_transient() {
         let e = "ripget: unexpected HTTP status 500 Internal Server Error for \
                  https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/\
-                 RVC-runtime/runtime-nvidia-2026.07.21.tar";
+                 GSV-runtime/runtime-nvidia-2026.07.21.tar";
         assert!(is_transient_download_error(e));
         assert!(is_transient_download_error(
             "ripget: unexpected HTTP status 502 Bad Gateway for https://cnb.cool/x"

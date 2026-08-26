@@ -161,7 +161,8 @@ mod tests {
     #[test]
     fn the_shipped_table_parses_and_every_entry_has_its_strings() {
         let t = table();
-        assert!(!t.is_empty(), "表是空的，include_str! 大概指错了");
+        // 新产品还没有已知坑，空表是合法状态（RVC 那份 13 条不继承）；
+        // 一旦将来登记了条目，下面的字段校验自动生效。
         for e in &t {
             assert!(!e.id.is_empty());
             // key 必须在语言包里真的存在，否则界面上会显示 key 本身。

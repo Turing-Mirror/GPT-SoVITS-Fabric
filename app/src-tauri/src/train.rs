@@ -1663,24 +1663,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn the_audio_extensions_match_the_python_side() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..");
-        let src = std::fs::read_to_string(root.join("tools").join("train_worker.py"))
-            .expect("train_worker.py 不在预期位置");
-        let line = src
-            .lines()
-            .find(|l| l.starts_with("AUDIO_EXT"))
-            .expect("train_worker.py 里没有 AUDIO_EXT");
-        for ext in DATASET_AUDIO_EXT {
-            assert!(line.contains(&format!("\".{ext}\"")), "Python 那边没有 {ext}：{line}");
-        }
-        // 反向：Python 多出来的也要在这边补上。
-        let py_count = line.matches('"').count() / 2;
-        assert_eq!(py_count, DATASET_AUDIO_EXT.len(), "两边数量对不上：{line}");
-    }
+    // 「音频扩展名两边一致」的契约测试（the_audio_extensions_match_the_python_side）
+    // 暂时缺席：它钉的是 RVC train_worker.py 的 AUDIO_EXT，而 GSV 的训练管线
+    // （UVR5 → 切片 → ASR → 格式化 → 两段微调）在阶段 D 重写时才会带自己的
+    // worker 与契约测试，这里不给旧契约留空壳。
 
     #[test]
     fn a_dataset_scan_counts_audio_recursively_and_ignores_the_rest() {

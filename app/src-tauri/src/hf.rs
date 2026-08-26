@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn non_hf_passthrough() {
-        let u = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/lfs/abc";
+        let u = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/lfs/abc";
         assert_eq!(download_urls(u, ""), vec![u.to_string()]);
         assert_eq!(download_urls(u, "https://hf-mirror.com"), vec![u.to_string()]);
     }

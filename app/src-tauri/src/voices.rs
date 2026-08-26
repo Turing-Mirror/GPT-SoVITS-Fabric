@@ -566,7 +566,7 @@ fn resolve_selected(models: &[Value], path: &str, file: &str, name: &str) -> i64
     find("path", path)
         .or_else(|| find("file", file))
         .or_else(|| find("name", name))
-        // 三个键都没对上就是没选中。以前退回第一条，选用 DSP 清掉音色之后
+        // 三个键都没对上就是没选中。以前退回第一条，音色被清掉之后
         // 列表又把第一条当成「使用中」，检索库跟着露出来。
         .map(|i| i as i64)
         .unwrap_or(-1)
@@ -643,22 +643,12 @@ pub fn list_voices(root: &Path) -> Value {
         .unwrap_or("")
         .to_string();
 
-    let dsp_on = cfg
-        .get("dsp_enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    // DSP 开着时界面不能把 last_model 当成「当前音色」，否则首页中间那张
-    // 卡还亮着，用户以为选了音色、一点开启却走 DSP 或被拒。
-    let selected_idx = if dsp_on {
-        -1
-    } else {
-        resolve_selected(
-            &primary,
-            &selected_path,
-            &selected_file,
-            &selected_name,
-        )
-    };
+    let selected_idx = resolve_selected(
+        &primary,
+        &selected_path,
+        &selected_file,
+        &selected_name,
+    );
 
     let recents = cfg
         .get("recent_models")
@@ -752,11 +742,7 @@ pub fn select_voice(root: &Path, path: &str, dir: &str, name: &str) -> Result<Va
         overlay_keys_from_value(&m, PROFILE_VOICE_KEYS, &mut cfg);
     }
 
-    // RVC / DSP 二选一：选了音色就把 DSP 关掉。预设参数也要清，
-    // 不然 start 看见残留 dsp_params 还会当成纯 DSP。
-    cfg.insert("dsp_enabled".into(), json!(false));
-    cfg.insert("dsp_preset".into(), json!(""));
-    cfg.insert("dsp_params".into(), json!({}));
+    // 选了音色就回到变声链路：function 折回 vc。
     cfg.insert("function".into(), json!("vc"));
 
     save_app_config(root, &cfg)?;
@@ -779,7 +765,7 @@ pub fn select_voice(root: &Path, path: &str, dir: &str, name: &str) -> Result<Va
     }))
 }
 
-/// 丢掉当前选中的 RVC 音色，好让 DSP 走纯 fx。
+/// 丢掉当前选中的音色。
 ///
 /// `sync_inuse` 不会把空 pth 写进 inuse，所以必须走 force_clear。
 pub fn clear_voice(root: &Path) -> Result<Value, String> {
@@ -2166,7 +2152,7 @@ mod tests {
             ),
             1
         );
-        // 三个都对不上：就是没选中。退回第一条会让 DSP 清音色后检索库又露出来。
+        // 三个都对不上：就是没选中。退回第一条会让清掉音色后的检索库又露出来。
         assert_eq!(
             resolve_selected(&models, "/x", "x.pth", &crate::i18n::t("s.c72e61fc70")),
             -1

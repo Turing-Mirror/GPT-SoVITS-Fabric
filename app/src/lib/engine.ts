@@ -17,7 +17,7 @@ export type EngineStatus = {
   /** Same live reading as delay_ms (kept so older shells still find it). */
   real_delay_ms?: number;
   infer_ms?: number;
-  /** 累计输出欠载次数。撕裂判据看它的增速，不看绝对值。 */
+  /** 累计输出欠载次数。看增速，不看绝对值。 */
   underrun?: number;
   samplerate?: number;
   pid?: number;
@@ -42,9 +42,8 @@ export type EngineStatus = {
   compute_backend?: string;
   /** 后端选中的那块设备的名字。 */
   compute_device?: string;
-  /** "fx" = 纯 DSP，不上 RVC。 */
+  /** 变声（vc）或直通（im / bypass），引擎协议里的取值。 */
   function?: string;
-  dsp_only?: boolean;
   worker_kind?: string;
   [key: string]: unknown;
 };
@@ -142,28 +141,14 @@ export async function forceKillEngine(): Promise<EngineStatus> {
   return invoke<EngineStatus>("engine_force_kill");
 }
 
-export async function activateDsp(id: string): Promise<void> {
-  if (!isTauri()) return;
-  await invoke("dsp_activate", { id });
-}
-
-export async function deactivateDsp(): Promise<void> {
-  if (!isTauri()) return;
-  await invoke("dsp_deactivate");
-}
-
 export async function setHot(params: {
   pitch?: number;
   formant?: number;
-  /** "fx" = 无模型 DSP 变声，整条 RVC 都不走。 */
-  function?: "vc" | "bypass" | "im" | "fx";
+  /** 变声（vc）或直通（im / bypass）。 */
+  function?: "vc" | "bypass" | "im";
   threhold?: number;
   index_rate?: number;
   rms_mix_rate?: number;
-  /** 无模型 DSP 变声。三个都是热键，换预设不重开流。 */
-  dsp_enabled?: boolean;
-  dsp_preset?: string;
-  dsp_params?: Record<string, Record<string, number>>;
 }): Promise<number> {
   if (!isTauri()) return 0;
   return invoke<number>("engine_set_hot", params);
@@ -284,11 +269,7 @@ export function statusSub(st: EngineStatus): string {
   const delay = Number(st.real_delay_ms || st.delay_ms || 0);
   const infer = Number(st.infer_ms || 0);
   if (st.state === "running" && (delay > 0 || infer > 0)) {
-    const dsp =
-      st.dsp_only === true ||
-      st.function === "fx" ||
-      st.worker_kind === "dsp";
-    return tStatic(dsp ? "dock.delayLineDsp" : "dock.delayLine", {
+    return tStatic("dock.delayLine", {
       delay,
       infer,
     });

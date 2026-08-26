@@ -37,7 +37,7 @@ pub const PLACEMENT_MODELS: &str = "models_page";
 pub const MAX_PINNED: usize = 5;
 
 const CNB_RAW_MAIN: &str =
-    "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/git/raw/main";
+    "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main";
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct PlazaItem {

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   getEngineStatus,
   getProvisionStatus,
@@ -184,57 +183,6 @@ export function useEngine() {
 
   const running = status.state === "running";
 
-  // 「已自动降低精度」那句话，用完即弃。
-  const [notice, setNotice] = useState("");
-  // 「要放宽延迟吗」那个询问。null = 没在问。
-  const [tearAsk, setTearAsk] = useState<
-    null | { message: string; blockTime: number }
-  >(null);
-
-  // 撕裂判定：把心跳里的累计欠载数喂给壳，壳按增速判断。
-  //
-  // 判定状态（窗口、冷却）全在 Rust 那边，这里只负责传数和显示结果 ——
-  // 放前端的话换页、重渲染都会把状态弄丢。
-  const tearAsked = useRef(false);
-  useEffect(() => {
-    if (!running) {
-      tearAsked.current = false;
-      try {
-        void invoke("tearing_reset").catch(() => undefined);
-      } catch {
-        /* not in Tauri */
-      }
-      return;
-    }
-    const n = Number(status.underrun || 0);
-    try {
-      void invoke<{ action?: string; message?: string; block_time?: number }>(
-        "tearing_step",
-        { underrun: n },
-      )
-        .then((r) => {
-          if (!r || r.action === "none") return;
-          if (r.action === "lowered") {
-            // 已经做完了，只是告诉他一声。不打断，声音没断过。
-            setNotice(String(r.message || ""));
-            return;
-          }
-          if (r.action === "ask_block") {
-            // 这一步要停流重开，问过再动。一次会话只问一次 —— 他说了不要，
-            // 就别每隔十几秒再弹一遍。
-            if (tearAsked.current) return;
-            tearAsked.current = true;
-            setTearAsk({
-              message: String(r.message || ""),
-              blockTime: Number(r.block_time || 0),
-            });
-          }
-        })
-        .catch(() => undefined);
-    } catch {
-      /* not in Tauri */
-    }
-  }, [running, status.underrun]);
   const bootCode =
     String(status.message_code || "") === "engine.starting" ||
     String(status.message_code || "") === "engine.importing";
@@ -244,7 +192,7 @@ export function useEngine() {
     (status.state === "starting" && !bootCode) ||
     busy;
 
-  const toggleRun = useCallback(async (opts?: { dspId?: string }) => {
+  const toggleRun = useCallback(async () => {
     if (provision.need_provision || provision.runtime_ready === false) {
       setLastError(
         String(provision.message || t("s.6aa0d5bedd")),
@@ -254,34 +202,18 @@ export function useEngine() {
     // 开机导入推理库时 status 也会是 starting。那一下点按钮必须是「开启」，
     // 不能被当成「停止」把还没发出去的 start 吃掉。
     const stopping = running || startingRef.current;
-    let dspOnly = Boolean(opts?.dspId?.trim());
-    let dspId = String(opts?.dspId || "").trim();
     if (!stopping) {
       try {
         const cfg = await getConfig();
-        if (!dspOnly) {
-          // `dsp_active` 是后端 `config::wants_dsp` 的结论，前端不再自己推。
-          //
-          // 这里以前是「dsp_enabled 或 dsp_preset 非空」—— 比后端那套松：
-          // 配置里剩一个旧预设名就算纯 DSP，于是下面 `activateDsp` 会在开启
-          // 前把 pth_path 清掉、让引擎丢掉模型。用户明明选好了音色，一点
-          // 「开启变声」就被抹掉，只能反复切模型碰运气。
-          dspOnly = Boolean(cfg.dsp_active);
-          dspId = dspOnly ? String(cfg.dsp_preset || "").trim() : "";
-        }
-        if (!dspOnly) {
-          const pth = String(cfg.pth_path || cfg.last_model_path || "").trim();
-          const last = String(cfg.last_model || "").trim();
-          if (!pth && !last) {
-            setLastError(t("msg.vc.need_model"));
-            return;
-          }
+        const pth = String(cfg.pth_path || cfg.last_model_path || "").trim();
+        const last = String(cfg.last_model || "").trim();
+        if (!pth && !last) {
+          setLastError(t("msg.vc.need_model"));
+          return;
         }
       } catch {
         /* 预览模式：没有配置就让后面的 start 自己报 */
       }
-    }
-    if (!stopping && !dspOnly) {
       try {
         const { ensureEngineCoreOrPrompt } = await import("../lib/downloadModels");
         const ok = await ensureEngineCoreOrPrompt(t("s.vcNeedEngineCore"));
@@ -305,12 +237,6 @@ export function useEngine() {
       } else {
         startingRef.current = true;
         setUserStarts((n) => n + 1);
-        if (dspOnly && dspId) {
-          // 每次纯 DSP 开启都重新落盘一次：inuse 若漏了 dsp_enabled，
-          // worker 会当成没选音色，报 Please choose the .pth file。
-          const { activateDsp } = await import("../lib/engine");
-          await activateDsp(dspId);
-        }
         // 不再在 start 前推 function=vc：那条 set 会跟 start 抢槽，失败时
         // 还会把 error 盖成「参数已应用」。音高由 start 读 inuse、成功后再热补。
         const st = await startVc();
@@ -443,22 +369,6 @@ export function useEngine() {
     syncParams,
     refresh,
     refreshProvision,
-    notice,
-    dismissNotice: () => setNotice(""),
-    tearAsk,
-    // 用户点了「保持现状」：关掉就好，这一轮会话不会再问第二次。
-    dismissTearAsk: () => setTearAsk(null),
-    // 用户点了「放宽延迟」。block_time 是冷参数，改完要停流重开。
-    applyTearAsk: async () => {
-      const bt = tearAsk?.blockTime || 0;
-      setTearAsk(null);
-      if (bt <= 0) return;
-      try {
-        await invoke("config_set", { patch: { block_time: bt } });
-      } catch {
-        /* 改不动就维持现状，别把用户卡在一个弹不掉的框里 */
-      }
-    },
     reloadDevices,
     devicesBusy,
     title: statusTitle(hinted),

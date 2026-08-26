@@ -387,7 +387,10 @@ mod tests {
     #[test]
     fn old_clients_can_jump_straight_to_current() {
         // The whole point: no chaining through intermediate releases.
-        assert!(compare_versions("1.2.3-hotfix3", APP_VERSION) < 0);
+        // GSV 从 0.x 起版（RVC 的 1.x 版本线不继承）：比当前版本老的
+        // 0.x 客户端必须被判成「旧」，直接更到当前版。
+        assert!(compare_versions("0.0.9", APP_VERSION) < 0);
+        assert!(compare_versions("0.0.9-hotfix2", APP_VERSION) < 0);
     }
 
     #[test]

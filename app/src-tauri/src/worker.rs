@@ -374,52 +374,6 @@ fn status_looks_ready(st: &Value) -> bool {
     state == "idle" || state == "running"
 }
 
-/// 当前该起哪一种 worker。纯 DSP 绝不能去拉 torch。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WorkerKind {
-    Rvc,
-    Dsp,
-}
-
-impl WorkerKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            WorkerKind::Rvc => "rvc",
-            WorkerKind::Dsp => "dsp",
-        }
-    }
-}
-
-pub fn dsp_requested(root: &Path) -> bool {
-    crate::config::wants_dsp(&crate::config::read(root))
-}
-
-pub fn worker_kind_of(root: &Path) -> Option<WorkerKind> {
-    if !is_worker_alive(root) {
-        return None;
-    }
-    let st = protocol::read_status(root);
-    match st.get("worker_kind").and_then(|v| v.as_str()) {
-        Some("dsp") => Some(WorkerKind::Dsp),
-        Some("rvc") => Some(WorkerKind::Rvc),
-        _ => Some(WorkerKind::Rvc),
-    }
-}
-
-fn worker_ready_for_commands(root: &Path) -> bool {
-    if !is_worker_alive(root) {
-        return false;
-    }
-    status_looks_ready(&protocol::read_status(root))
-}
-
-fn worker_script_for(root: &Path, kind: WorkerKind) -> std::path::PathBuf {
-    match kind {
-        WorkerKind::Dsp => paths::dsp_worker_script(root),
-        WorkerKind::Rvc => paths::worker_script(root),
-    }
-}
-
 pub fn get_live_pid(root: &Path) -> u32 {
     // 台账里的 pid 必须参与判定。只看 worker.pid / status.pid 时：
     // adopt 之后若文件被清掉、或 python 还没回写，is_worker_alive 会变 false，
@@ -661,11 +615,6 @@ pub fn kill_known_workers(root: &Path) {
     fields.insert("message_code".into(), json!("engine.stopped"));
     fields.insert("message".into(), json!("workers cleared"));
     fields.insert("error".into(), json!(""));
-    // 种类也要清。status.json 是合并写的，杀掉 DSP worker 之后这里还留着
-    // worker_kind="dsp"，`worker_kind_of` 就会对着一个已经不存在的进程回答
-    // 「现在跑的是 DSP」—— 换回 RVC 的判断从第一步就错了。
-    fields.insert("worker_kind".into(), json!(""));
-    fields.insert("dsp_only".into(), json!(false));
     fields.insert("delay_ms".into(), json!(0));
     fields.insert("infer_ms".into(), json!(0));
     let _ = protocol::write_status_merge(root, fields);
@@ -700,17 +649,6 @@ pub fn reap_orphan_workers(root: &Path) {
 }
 
 pub fn start_worker(root: &Path) -> Result<(), String> {
-    let kind = if dsp_requested(root) {
-        WorkerKind::Dsp
-    } else {
-        WorkerKind::Rvc
-    };
-    start_worker_kind(root, kind)
-}
-
-/// 起指定种类的 worker。种类不对就先杀掉再开 —— 纯 DSP 不能卡在
-/// 「正在导入推理库」上等 torch。
-pub fn start_worker_kind(root: &Path, kind: WorkerKind) -> Result<(), String> {
     // Recover from poisoning instead of failing forever: one panic while
     // starting would otherwise make the engine unstartable for the rest of the
     // session, with a restart as the only way out. The lock guards a re-check
@@ -722,14 +660,6 @@ pub fn start_worker_kind(root: &Path, kind: WorkerKind) -> Result<(), String> {
     crate::sts::release_resident();
 
     if is_worker_alive(root) {
-        if worker_kind_of(root) == Some(kind) {
-            return Ok(());
-        }
-        crate::logging::shell_log!(
-            "worker kind {:?} → {:?}, replacing",
-            worker_kind_of(root),
-            kind
-        );
         let _ = send_command(root, "stop", Map::new());
         thread::sleep(Duration::from_millis(200));
         kill_known_workers(root);
@@ -739,15 +669,12 @@ pub fn start_worker_kind(root: &Path, kind: WorkerKind) -> Result<(), String> {
     // Clear dead bookkeeping; only kill confirmed ours
     kill_known_workers(root);
     thread::sleep(Duration::from_millis(200));
-    if is_worker_alive(root) && worker_kind_of(root) == Some(kind) {
-        return Ok(());
-    }
     if is_worker_alive(root) {
         kill_known_workers(root);
         thread::sleep(Duration::from_millis(200));
     }
 
-    let script = worker_script_for(root, kind);
+    let script = paths::worker_script(root);
     if !script.is_file() {
         return Err(crate::i18n::te("s.fd40e2e936", &script.display()));
     }
@@ -787,21 +714,13 @@ pub fn start_worker_kind(root: &Path, kind: WorkerKind) -> Result<(), String> {
     fields.insert("message".into(), json!("launching worker…"));
     fields.insert("error".into(), json!(""));
     fields.insert("pid".into(), json!(0));
-    fields.insert("worker_kind".into(), json!(kind.as_str()));
-    if kind == WorkerKind::Dsp {
-        fields.insert("dsp_only".into(), json!(true));
-        fields.insert("function".into(), json!("fx"));
-        fields.insert("message_code".into(), json!("engine.dsp_starting"));
-        fields.insert("message".into(), json!("正在启动 DSP 变声…"));
-    }
     let _ = protocol::write_status_merge(root, fields);
 
     append_log(
         root,
         &format!(
-            "\n===== launch ts={} kind={} (tauri shell) =====\nROOT={}\nvia: {} {}",
+            "\n===== launch ts={} kind=rvc (tauri shell) =====\nROOT={}\nvia: {} {}",
             stamp(),
-            kind.as_str(),
             root.display(),
             pyw.display(),
             script.display()
@@ -809,7 +728,7 @@ pub fn start_worker_kind(root: &Path, kind: WorkerKind) -> Result<(), String> {
     );
 
     let mut env = env_for_runtime(root);
-    env.insert("TM_WORKER_KIND".into(), kind.as_str().into());
+    env.insert("TM_WORKER_KIND".into(), "rvc".into());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -843,7 +762,6 @@ pub fn start_worker_kind(root: &Path, kind: WorkerKind) -> Result<(), String> {
         let child = cmd
             .spawn()
             .map_err(|e| crate::i18n::te("s.7611f15dff", &e))?;
-        crate::win_realtime::boost_child(&child);
         append_log(root, &format!("spawned shell-side pid={}", child.id()));
         adopt_spawned(root, child.id());
         watch_exit(root, child);
@@ -1030,22 +948,12 @@ pub fn send_command(root: &Path, cmd: &str, payload: Map<String, Value>) -> Resu
 
 /// Ensure worker is up; refresh device list if empty. Does not hold UI locks.
 pub fn ensure_worker_and_devices(root: &Path, timeout_ms: u64) -> Value {
-    let kind = if dsp_requested(root) {
-        WorkerKind::Dsp
-    } else {
-        WorkerKind::Rvc
-    };
-    if worker_kind_of(root) != Some(kind) || !is_worker_alive(root) {
-        if let Err(e) = start_worker_kind(root, kind) {
+    if !is_worker_alive(root) {
+        if let Err(e) = start_worker(root) {
             return json!({"state": "error", "error": e, "pid": 0});
         }
     }
-    let wait_ms = if kind == WorkerKind::Dsp {
-        timeout_ms.min(20_000)
-    } else {
-        timeout_ms
-    };
-    let st = wait_worker_ready(root, wait_ms);
+    let st = wait_worker_ready(root, timeout_ms);
     if st.get("state").and_then(|v| v.as_str()) == Some("error") {
         return st;
     }
@@ -1083,83 +991,35 @@ pub fn ensure_worker_and_devices(root: &Path, timeout_ms: u64) -> Value {
     protocol::read_status(root)
 }
 
-/// `start` / `set` 命令里那几个 DSP 字段，按**唯一**的判定 `config::wants_dsp` 生成。
+/// start / set 命令载荷的兜底字段。
 ///
-/// 抽出来是为了能测：这几个键以前在 `start_vc` 和 `push_running_hot` 里各写了
-/// 一遍，判定条件还和 `wants_dsp` 不一样（不看 pth_path、不看 function，比它
-/// 松）。后果是壳按 wants_dsp 选了 RVC worker，转头又在命令里告诉它
-/// 「dsp_enabled=true, function=fx」——「DSP 之后换不回 RVC」就是这么来的。
-///
-/// 非 DSP 时**明确写 false**，不是省略：worker 的 gui_config 是常驻的，
-/// 跑过一次纯 DSP 之后那几个字段还在内存里，不覆盖等于沿用上一次。
-pub fn dsp_command_fields(cfg: &Map<String, Value>) -> Map<String, Value> {
-    let mut out = Map::new();
-    if crate::config::wants_dsp(cfg) {
-        out.insert("dsp_enabled".into(), json!(true));
-        out.insert("function".into(), json!("fx"));
-        let preset = cfg
-            .get("dsp_preset")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if !preset.is_empty() {
-            out.insert("dsp_preset".into(), json!(preset));
-        }
-        if let Some(v) = cfg.get("dsp_params").cloned() {
-            if v.as_object().map(|m| !m.is_empty()).unwrap_or(false) {
-                out.insert("dsp_params".into(), v);
-            }
-        }
-    } else {
-        out.insert("dsp_enabled".into(), json!(false));
-        out.insert("dsp_preset".into(), json!(""));
-        out.insert("dsp_params".into(), json!({}));
-        out.insert(
-            "function".into(),
-            match cfg.get("function").and_then(|v| v.as_str()) {
-                // 残留的 fx 不能带回去：那是上一次纯 DSP 留下的。
-                Some(f) if f != "fx" => json!(f),
-                _ => json!("vc"),
-            },
-        );
-    }
+/// 「无模型实时特效」那条链路在壳侧已整体拆除，但引擎的 gui_config 是常驻的：
+/// 升级前跑过那条链路的引擎，内存里那几个开关还停在开。载荷不显式覆盖就等于
+/// 沿用上一次，所以这里永远把 `config::retired_voice_fx_off()` 带上，把残留
+/// 状态钉死在关闭态；function 里残留的 fx 也一并折回 vc。
+fn command_guard_fields(cfg: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = crate::config::retired_voice_fx_off();
+    out.insert(
+        "function".into(),
+        match cfg.get("function").and_then(|v| v.as_str()) {
+            // 残留的 fx 不能带回去：那是已拆除链路的状态。
+            Some(f) if f != "fx" => json!(f),
+            _ => json!("vc"),
+        },
+    );
     out
 }
 
 /// Soft-stop then start (same order as Tk shell before start_vc_remote).
 pub fn start_vc(root: &Path) -> Result<u64, String> {
-    // 锁里再读一次：补上预设参数，避免用过期的空 DSP 把 inuse 盖掉。
-    // 必须在选 worker 之前：dsp_enabled 决定走哪条进程。
+    // 锁里再读一次：pth 空了把上次的音色填回来，避免拿空路径去开流。
     let cfg = crate::config::prepare_vc_start(root).unwrap_or_else(|_| crate::config::read(root));
-    let dsp_on = crate::config::wants_dsp(&cfg);
-    let want = if dsp_on {
-        WorkerKind::Dsp
-    } else {
-        WorkerKind::Rvc
-    };
-    // 纯 DSP：RVC worker 还在 import torch 时立刻换掉，不要让用户等。
-    // RVC worker 已经 idle/running 则复用（里面也有 numpy DSP 路径）。
-    let keep_rvc_for_dsp = dsp_on
-        && worker_kind_of(root) == Some(WorkerKind::Rvc)
-        && worker_ready_for_commands(root);
-    let kind = if keep_rvc_for_dsp {
-        WorkerKind::Rvc
-    } else {
-        want
-    };
-    if worker_kind_of(root) != Some(kind) || !is_worker_alive(root) {
-        start_worker_kind(root, kind)?;
+    if !is_worker_alive(root) {
+        start_worker(root)?;
     }
     // 导入推理库时 worker 已经活着，但命令环还没起来。这时候写下的 start
     // 会被 gui_v1 当成上一轮残留丢掉。先等到 idle/running 再发命令。
-    // 纯 DSP worker 几秒就就绪，不必按 torch 的 100 秒等。
-    let ready_ms = if kind == WorkerKind::Dsp {
-        20_000
-    } else {
-        100_000
-    };
-    let st = wait_worker_ready(root, ready_ms);
+    let st = wait_worker_ready(root, 100_000);
     if st.get("state").and_then(|v| v.as_str()) == Some("error") {
         return Err(st
             .get("error")
@@ -1183,17 +1043,8 @@ pub fn start_vc(root: &Path) -> Result<u64, String> {
             thread::sleep(Duration::from_millis(250));
         }
     }
-    // 纯 DSP 必须把开关/预设/参数塞进 start 本体。
-    // 以前 start 载荷是空的，worker 只读 inuse；inuse 若没同步到 dsp_enabled，
-    // set_values 会当成没选音色，直接报「请选择pth文件」——纯 DSP 永远开不了。
-    //
-    // 用的必须是上面那个 `dsp_on`（`config::wants_dsp`），不能在这里另算一套。
-    // 这里以前是「dsp_enabled 或 有预设 或 有参数」，不看 pth_path、不看
-    // function —— 比 wants_dsp 松。于是换回 RVC 时会出现：壳按 wants_dsp 选了
-    // RVC worker，转头又在 start 载荷里告诉它「dsp_enabled=true, function=fx」。
-    // worker 听载荷的，于是走纯 DSP，RVC 永远加载不上 —— 这就是「DSP 之后换不
-    // 回 RVC，要反复切模型甚至重启」。
-    let payload = dsp_command_fields(&cfg);
+    // start 载荷带上兜底字段：残留的特效开关钉在关闭态，function 折回 vc。
+    let payload = command_guard_fields(&cfg);
     let seq = send_command(root, "start", payload)?;
     // Claim start before any follow-up set. Worker acks last_cmd_seq as soon as
     // it dequeues start (before model load), so this is usually <100 ms.
@@ -1203,13 +1054,13 @@ pub fn start_vc(root: &Path) -> Result<u64, String> {
             &format!("start_vc: start seq={seq} not acked within 5s"),
         );
     }
-    // 音高/DSP 热推挪到 wait_vc_running 之后：start 失败（没音色、没预设）
+    // 音高等热推挪到 wait_vc_running 之后：start 失败（没音色）
     // 时再推一条 set，会把 error 盖成「参数已应用」，底栏看起来像没点过
     // （diag 26.8.16）。
     Ok(seq)
 }
 
-/// 起流成功后再补一次音高/共鸣/DSP。失败的 start 不要走这里。
+/// 起流成功后再补一次音高/共鸣和兜底字段。失败的 start 不要走这里。
 pub fn push_running_hot(root: &Path, cfg: &Map<String, Value>) -> Result<u64, String> {
     let mut hot = Map::new();
     if let Some(v) = cfg.get("pitch") {
@@ -1218,10 +1069,8 @@ pub fn push_running_hot(root: &Path, cfg: &Map<String, Value>) -> Result<u64, St
     if let Some(v) = cfg.get("formant") {
         hot.insert("formant".into(), v.clone());
     }
-    // 和 start 载荷共用同一个生成器 —— 也就是同一个判定。以前这里是另一套松
-    // 规则，后果比 start 更重：start 已经按 RVC 起好了流，这一条热推又把
-    // function 改回 fx、dsp_enabled 改回 true，等于当场把刚起来的 RVC 掐掉。
-    for (k, v) in dsp_command_fields(cfg) {
+    // 和 start 载荷共用同一个生成器，别在这里另算一套规则。
+    for (k, v) in command_guard_fields(cfg) {
         hot.insert(k, v);
     }
     if hot.is_empty() {
@@ -1367,7 +1216,7 @@ pub fn swap_model(root: &Path) -> Result<u64, String> {
 ///
 /// 只清配置是不够的：转着的 worker 手里还攥着 RVC 实例，界面上音色没了、
 /// 耳朵里还是那个音色。worker 没在跑时 `set_hot` 自己会报错，调用方吞掉即可 ——
-/// 配置已经清干净，下次开启就是纯 DSP。
+/// 配置已经清干净，下次开启就是干净状态。
 pub fn drop_model(root: &Path) -> Result<u64, String> {
     let mut payload = Map::new();
     payload.insert("drop_model".into(), json!(true));
@@ -1537,72 +1386,22 @@ mod tests {
         m
     }
 
-    /// 这条是「DSP 之后换不回 RVC」的回归测试。
+    /// 命令载荷必须把已拆除链路的开关**明确**写成关闭态，不能只是不提。
     ///
-    /// 命令载荷的判定必须**等于** `config::wants_dsp`。以前它是另一套更松的
-    /// 规则（只看 dsp_enabled / 有没有预设 / 有没有参数），于是「选了音色但
-    /// 配置里还留着旧预设」这种状态下，壳按 wants_dsp 选了 RVC worker，却在
-    /// start 载荷里告诉它 function=fx —— worker 听载荷的，RVC 永远起不来。
+    /// worker 的 gui_config 是常驻的：升级前跑过那条链路的引擎，内存里那几个
+    /// 开关还停在开。载荷不覆盖就等于沿用上一次 —— 用户看到的还是旧行为。
     #[test]
-    fn the_command_payload_never_disagrees_with_wants_dsp() {
-        let cases = vec![
-            // 选了音色，但上一次纯 DSP 的预设和参数还留在配置里 ← 就是那个 bug
-            cfg_of(&[
-                ("pth_path", json!("C:\\voices\\a.pth")),
-                ("function", json!("vc")),
-                ("dsp_enabled", json!(false)),
-                ("dsp_preset", json!("robot")),
-                ("dsp_params", json!({"pitch": 3})),
-            ]),
-            // 纯 DSP
-            cfg_of(&[
-                ("pth_path", json!("")),
-                ("function", json!("fx")),
-                ("dsp_enabled", json!(true)),
-                ("dsp_preset", json!("robot")),
-            ]),
-            // 什么都没选
-            cfg_of(&[("pth_path", json!("")), ("function", json!("vc"))]),
-            // 残留 fx + 有音色：算 RVC
-            cfg_of(&[
-                ("pth_path", json!("C:\\voices\\a.pth")),
-                ("function", json!("fx")),
-                ("dsp_enabled", json!(false)),
-            ]),
-        ];
-        for cfg in cases {
-            let want = crate::config::wants_dsp(&cfg);
-            let fields = dsp_command_fields(&cfg);
-            let sent = fields
-                .get("dsp_enabled")
-                .and_then(|v| v.as_bool())
-                .expect("dsp_enabled 必须明确给出");
-            assert_eq!(
-                sent, want,
-                "载荷和 wants_dsp 不一致，cfg={cfg:?} fields={fields:?}"
-            );
-            let fname = fields.get("function").and_then(|v| v.as_str()).unwrap();
-            assert_eq!(fname == "fx", want, "function 和判定不一致：{fields:?}");
-        }
-    }
-
-    /// 非 DSP 时必须**明确**把三个键写成关闭态，不能只是不提。
-    ///
-    /// worker 的 gui_config 是常驻的：跑过一次纯 DSP 之后 dsp_enabled / preset /
-    /// params 都还在内存里。载荷不覆盖就等于沿用上一次，用户看到的还是换不回。
-    #[test]
-    fn switching_back_to_rvc_states_the_negative_explicitly() {
+    fn the_command_payload_always_pins_the_retired_switches_off() {
         let cfg = cfg_of(&[
             ("pth_path", json!("C:\\voices\\a.pth")),
             ("function", json!("vc")),
-            ("dsp_enabled", json!(false)),
-            ("dsp_preset", json!("robot")),
-            ("dsp_params", json!({"pitch": 3})),
         ]);
-        let f = dsp_command_fields(&cfg);
-        assert_eq!(f.get("dsp_enabled"), Some(&json!(false)));
-        assert_eq!(f.get("dsp_preset"), Some(&json!("")));
-        assert_eq!(f.get("dsp_params"), Some(&json!({})));
+        let f = command_guard_fields(&cfg);
+        let off = crate::config::retired_voice_fx_off();
+        assert_eq!(f.len(), off.len() + 1, "兜底字段 = 开关组 + function");
+        for (k, v) in &off {
+            assert_eq!(f.get(k), Some(v), "{k} 必须显式给关闭态");
+        }
         assert_eq!(f.get("function"), Some(&json!("vc")));
     }
 
@@ -1612,27 +1411,9 @@ mod tests {
         let cfg = cfg_of(&[
             ("pth_path", json!("C:\\voices\\a.pth")),
             ("function", json!("fx")),
-            ("dsp_enabled", json!(false)),
         ]);
-        assert!(!crate::config::wants_dsp(&cfg));
-        let f = dsp_command_fields(&cfg);
+        let f = command_guard_fields(&cfg);
         assert_eq!(f.get("function"), Some(&json!("vc")));
-    }
-
-    /// 纯 DSP 该带上预设和参数，否则 worker 只能干声直通。
-    #[test]
-    fn a_dsp_start_carries_the_preset_and_params() {
-        let cfg = cfg_of(&[
-            ("pth_path", json!("")),
-            ("dsp_enabled", json!(true)),
-            ("dsp_preset", json!("robot")),
-            ("dsp_params", json!({"pitch": 5})),
-        ]);
-        let f = dsp_command_fields(&cfg);
-        assert_eq!(f.get("dsp_enabled"), Some(&json!(true)));
-        assert_eq!(f.get("function"), Some(&json!("fx")));
-        assert_eq!(f.get("dsp_preset"), Some(&json!("robot")));
-        assert_eq!(f.get("dsp_params"), Some(&json!({"pitch": 5})));
     }
 
     #[test]

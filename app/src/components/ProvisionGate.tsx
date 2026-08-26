@@ -503,7 +503,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
         <div className="flex items-center gap-2 justify-end">
           {core === "ask" || core === "failed" ? (
             <>
-              {/* 跳过也能直接去变声：DSP 变声不需要这三个文件。 */}
+              {/* 跳过也能先进软件：这三个文件在第一次开启变声前还会再问一次。 */}
               <Btn onClick={onDone}>{t("s.provCoreSkip")}</Btn>
               <Btn
                 primary

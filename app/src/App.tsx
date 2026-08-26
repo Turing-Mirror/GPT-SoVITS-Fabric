@@ -237,7 +237,6 @@ export default function App() {
    * 「未选择模型」会永远停在简体中文，用户把界面切成日文也不会变，除非他真的
    * 去选一个音色把这个 state 覆盖掉。占位文案不该进 state，它是渲染出来的。
    */
-  /** 生效中的 DSP 预设 id；空 = 没开。底栏靠它画那条「音色 → 预设」的链。 */
   /** id → 显示名。底栏要写「收音机」，不是写 radio。 */
 
   const [showProvision, setShowProvision] = useState(false);
@@ -774,34 +773,9 @@ export default function App() {
         </div>
       ) : null}
 
-      {/* 撕裂这两条排在所有 Nudge 前面：用户正卡着，别让「要不要更新」
-          「要不要开统计」挡在他前面。 */}
-      {engine.tearAsk ? (
-        <Nudge
-          title={t("s.tearTitle")}
-          actions={
-            <>
-              <Btn onClick={engine.dismissTearAsk}>{t("s.tearKeep")}</Btn>
-              <Btn primary onClick={() => void engine.applyTearAsk()}>
-                {t("s.tearApply")}
-              </Btn>
-            </>
-          }
-        >
-          {engine.tearAsk.message}
-        </Nudge>
-      ) : engine.notice ? (
-        <Nudge
-          title={t("s.tearTitle")}
-          actions={<Btn onClick={engine.dismissNotice}>{t("s.cb63c62e50")}</Btn>}
-        >
-          {engine.notice}
-        </Nudge>
-      ) : null}
-
-      {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么用不了），
-          但比撕裂靠后（那条是正在发生的卡顿）。一个会话里关掉就不再出现 ——
-          不落配置，因为坑没填之前下次启动本来就该再说一次。 */}
+      {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么
+          用不了）。一个会话里关掉就不再出现 —— 不落配置，因为坑没填之前
+          下次启动本来就该再说一次。 */}
       {knownIssue ? (
         <Nudge
           title={knownIssue.title}

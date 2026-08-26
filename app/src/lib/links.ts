@@ -35,8 +35,8 @@ export function repoLinks(): LinkEntry[] {
     {
       title: t("s.71031cc3ad"),
       short: "CNB",
-      desc: "Turing-Mirror/RVC-Fabric-Releases",
-      url: "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases",
+      desc: "Turing-Mirror/GPT-SoVITS-Fabric-Releases",
+      url: "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases",
     },
   ];
 }

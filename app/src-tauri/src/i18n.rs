@@ -448,7 +448,7 @@ pub fn localize_status(status: &mut Value) {
         .unwrap_or("");
     if matches!(
         code.as_str(),
-        "engine.launching" | "engine.starting" | "engine.importing" | "engine.dsp_starting"
+        "engine.launching" | "engine.starting" | "engine.importing"
     ) && state != "starting"
     {
         if let Some(obj) = status.as_object_mut() {

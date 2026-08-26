@@ -11,7 +11,6 @@ mod link_check;
 mod config;
 mod crash;
 mod download;
-mod dsp;
 mod engine_assets;
 mod hf;
 mod extra_assets;
@@ -29,7 +28,6 @@ mod protocol;
 mod provision;
 mod selfcheck;
 mod separate;
-mod tearing;
 mod vcredist;
 mod shell_extras;
 mod sts;
@@ -42,7 +40,6 @@ mod ui_assets;
 pub mod update;
 mod voices;
 mod window_watch;
-mod win_realtime;
 mod worker;
 
 use std::path::PathBuf;
@@ -117,59 +114,6 @@ async fn assets_ensure_engine_core(
     })
     .await
     .map_err(|e| e.to_string())?
-}
-
-/// 喂一次心跳给撕裂判定。第一级（降 f0 精度）直接做掉并回报做了什么；
-/// 第二级（放宽块长）只返回建议 —— 那一步要停流重开，得用户点头。
-#[tauri::command]
-fn tearing_step(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    underrun: u32,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let cfg = config::read(&root);
-    let f0 = cfg
-        .get("f0method")
-        .and_then(|v| v.as_str())
-        .unwrap_or("rmvpe")
-        .to_string();
-    let bt = cfg.get("block_time").and_then(|v| v.as_f64()).unwrap_or(0.25);
-
-    match tearing::step(underrun, &f0, bt) {
-        tearing::Action::None => Ok(json!({"action": "none"})),
-        tearing::Action::LowerF0 => {
-            let Some(next) = tearing::next_f0(&f0) else {
-                return Ok(json!({"action": "none"}));
-            };
-            // f0method 是热参数，改它不用停流 —— 声音不会断。
-            let mut patch = Map::new();
-            patch.insert("f0method".into(), json!(next));
-            config::update(&root, patch.clone())?;
-            let _ = app.emit("config-changed", json!({"patch": patch}));
-            Ok(json!({
-                "action": "lowered",
-                "f0": next,
-                "message": crate::i18n::t("s.tearLowered"),
-            }))
-        }
-        tearing::Action::AskBlock => {
-            let Some(next) = tearing::next_block(bt) else {
-                return Ok(json!({"action": "none"}));
-            };
-            Ok(json!({
-                "action": "ask_block",
-                "block_time": next,
-                "message": crate::i18n::t("s.tearAskBlock"),
-            }))
-        }
-    }
-}
-
-/// 起播时清掉判定窗口。
-#[tauri::command]
-fn tearing_reset() {
-    tearing::reset();
 }
 
 /// 机器上装没装 VC++ 运行库。补全页据此决定要不要显示那一步。
@@ -288,15 +232,7 @@ async fn assets_uninstall_vbcable(state: State<'_, Mutex<AppState>>) -> Result<V
 /// Full effective settings (defaults overlaid with saved values).
 #[tauri::command]
 fn config_get(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let mut cfg = config::read(&root_clone(&state)?);
-    // 「这一次该走 DSP 还是 RVC」由 `config::wants_dsp` 一家说了算，前端不要
-    // 自己再推一遍。以前 useEngine 里是「dsp_enabled 或 有预设」，比 wants_dsp
-    // 松：配置里剩一个旧预设名，前端就当成纯 DSP，开启前先调一次
-    // `activateDsp` —— 那一下会把 pth_path 清掉并让引擎丢掉模型。用户选好的
-    // 音色就是这么在「开启变声」的瞬间被抹掉的。
-    let dsp = config::wants_dsp(&cfg);
-    cfg.insert("dsp_active".into(), json!(dsp));
-    Ok(Value::Object(cfg))
+    Ok(Value::Object(config::read(&root_clone(&state)?)))
 }
 
 /// Switch shell locale (tray / status message_code). Frontend keeps its own pack.
@@ -874,12 +810,7 @@ async fn engine_ensure(state: State<'_, Mutex<AppState>>) -> Result<Value, Strin
     // Called on app start and waits up to 90s for the worker. Inline, that is
     // a 90-second freeze on the first launch after an install.
     tauri::async_runtime::spawn_blocking(move || {
-        let ms = if worker::dsp_requested(&root) {
-            20_000
-        } else {
-            90_000
-        };
-        Ok(worker::ensure_worker_and_devices(&root, ms))
+        Ok(worker::ensure_worker_and_devices(&root, 90_000))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1035,79 +966,6 @@ fn tools_open_downloads(
 #[tauri::command]
 fn tools_open_help(app: AppHandle, section: Option<String>) -> Result<(), String> {
     tool_window::focus_main_help(&app, section.as_deref().unwrap_or("train"))
-}
-
-/// DSP 变声预设：内置 + 用户自存，同 id 用户覆盖内置。
-#[tauri::command]
-fn dsp_activate(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    id: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let id = id.trim().to_string();
-    let out = dsp::activate(&root, &id)?;
-    let _ = app.emit(
-        "config-changed",
-        json!({
-            "config": out.get("config"),
-            "hot": {
-                "dsp_enabled": true,
-                "dsp_preset": id,
-                "function": "fx"
-            }
-        }),
-    );
-    Ok(out)
-}
-
-#[tauri::command]
-fn dsp_deactivate(app: AppHandle, state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let out = dsp::deactivate(&root)?;
-    let _ = app.emit("config-changed", json!({ "config": out.get("config"), "hot": { "dsp_enabled": false, "dsp_preset": "", "function": "vc" } }));
-    Ok(out)
-}
-
-#[tauri::command]
-async fn dsp_presets(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || Ok(dsp::list(&root)))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-/// DSP 效果器规格。前端画滑条要用，范围只有引擎侧一份定义。
-#[tauri::command]
-async fn dsp_effects(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || Ok(dsp::effect_specs(&root)))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn dsp_preset_save(
-    state: State<'_, Mutex<AppState>>,
-    id: String,
-    name: String,
-    params: Value,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || dsp::save(&root, &id, &name, &params))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn dsp_preset_delete(
-    state: State<'_, Mutex<AppState>>,
-    id: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || dsp::delete(&root, &id))
-        .await
-        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1555,9 +1413,6 @@ fn engine_set_hot(
     threhold: Option<f64>,
     index_rate: Option<f64>,
     rms_mix_rate: Option<f64>,
-    dsp_enabled: Option<bool>,
-    dsp_preset: Option<String>,
-    dsp_params: Option<Value>,
 ) -> Result<u64, String> {
     let root = root_clone(&state)?;
     let mut payload = Map::new();
@@ -1568,11 +1423,9 @@ fn engine_set_hot(
         payload.insert("formant".into(), json!(v));
     }
     if let Some(v) = function {
-        // "fx" = 无模型 DSP 变声，整条 RVC 不走。以前这里只认 im/vc，
-        // 别的一律折成 vc —— fx 传进来会被悄悄改成 vc，等于没生效。
+        // 只认 im/vc，别的一律折成 vc：前端没有的取值传进来等于没生效。
         let f = match v.as_str() {
             "bypass" | "im" => "im",
-            "fx" => "fx",
             _ => "vc",
         };
         payload.insert("function".into(), json!(f));
@@ -1585,34 +1438,6 @@ fn engine_set_hot(
     }
     if let Some(v) = rms_mix_rate {
         payload.insert("rms_mix_rate".into(), json!(v));
-    }
-    // 无模型 DSP 变声。这三个键在 config::HOT_KEYS 里，但**命令签名里没有的
-    // 参数 Tauri 是直接丢掉的** —— 加进 HOT_KEYS 只让它们能落盘，推不推得到
-    // worker 是另一回事。少了这一段，模型页点预设是一点反应都没有的。
-    if let Some(v) = dsp_enabled {
-        payload.insert("dsp_enabled".into(), json!(v));
-        if v {
-            // 开 DSP 必须和清音色写在同一次落盘、同一条 worker 命令里。
-            // 先 setHot 再 clearVoice：mailbox 是单槽，drop 会盖掉 dsp 那条
-            // set，引擎内存里 dsp_enabled 仍是 false，start 就会拿空路径去建 RVC。
-            payload.insert("function".into(), json!("fx"));
-            payload.insert("drop_model".into(), json!(true));
-            payload.insert("pth_path".into(), json!(""));
-            payload.insert("index_path".into(), json!(""));
-            // last_model 留下：关掉 DSP / 下次选音色还认得用户上次用的那个。
-        } else {
-            payload.insert("function".into(), json!("vc"));
-            payload.insert("dsp_preset".into(), json!(""));
-            payload.insert("dsp_params".into(), json!({}));
-        }
-    }
-    if let Some(v) = dsp_preset {
-        payload.insert("dsp_preset".into(), json!(v));
-    }
-    if let Some(v) = dsp_params {
-        if v.is_object() {
-            payload.insert("dsp_params".into(), v);
-        }
     }
     if payload.is_empty() {
         return Err(crate::i18n::t("s.40018c2fe1").into());
@@ -2166,8 +1991,6 @@ pub fn run() {
             assets_status,
             assets_ensure_engine_core,
             assets_ensure_vbcable,
-            tearing_step,
-            tearing_reset,
             vcredist_installed,
             assets_ensure_vcredist,
             vcredist_install,
@@ -2181,8 +2004,6 @@ pub fn run() {
             engine_stop_vc,
             engine_force_kill,
             engine_set_hot,
-            dsp_activate,
-            dsp_deactivate,
             engine_swap_model,
             engine_list_devices,
             provision_status,
@@ -2220,10 +2041,6 @@ pub fn run() {
             separate_cancel,
             separate_reveal,
             tools_open_downloads,
-            dsp_presets,
-            dsp_effects,
-            dsp_preset_save,
-            dsp_preset_delete,
             sts_status,
             sts_pick_input,
             sts_pick_output,
@@ -2419,8 +2236,6 @@ pub fn run() {
             // 不这么做的话训练一吃满显存，WebView2 拿不到合成表面，整个
             // 窗口会变纯黑 —— 用户看到的就是「打开就卡死」。
             gpu_pref::apply_once();
-            // pythonw 没窗口，全屏游戏一开，Game Mode 会把我们当后台限速。
-            win_realtime::boost_current();
 
             // setup 末尾再清一次：中间步骤若又写下临时文件，这里兜底。
             {

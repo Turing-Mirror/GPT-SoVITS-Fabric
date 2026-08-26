@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn base_validation_allows_a_path_but_not_traversal() {
-        assert!(is_valid_base("https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases"));
+        assert!(is_valid_base("https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases"));
         assert!(is_valid_base("https://cnb.cool/a/b/"));
         assert!(!is_valid_base("https://cnb.cool/a/../../b"));
         assert!(!is_valid_base("http://cnb.cool/a"));
@@ -303,7 +303,7 @@ mod tests {
             Some("https://hf-mirror.com")
         );
         // CNB 不是可互换的端点，不该覆盖掉刚记下的那个
-        note_success(root, "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/lfs/abc");
+        note_success(root, "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/lfs/abc");
         assert_eq!(
             config::read(root).get("hf_endpoint_last_good").and_then(|v| v.as_str()),
             Some("https://hf-mirror.com")

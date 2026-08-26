@@ -10,7 +10,7 @@ const CNB_HOST: &str = "https://cnb.cool";
 const CNB_ORG_REPO: &str = "Turing-Mirror/GPT-SoVITS-Fabric-Releases";
 const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main";
 const CNB_LFS_BASE: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/lfs";
-const DEFAULT_RELEASE_TAG: &str = "RVC-runtime";
+const DEFAULT_RELEASE_TAG: &str = "GSV-runtime";
 
 /// 清单来源，按顺序试，第一个能解析成对象的就用。
 ///

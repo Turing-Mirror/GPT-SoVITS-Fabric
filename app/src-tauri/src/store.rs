@@ -15,7 +15,7 @@ use crate::download::{self, DownloadKind, DownloadRequest};
 use crate::paths;
 use crate::voices::safe_model_dir_name;
 
-const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/git/raw/main";
+const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main";
 const MIN_PTH_BYTES: u64 = 50_000;
 
 fn progress_message(phase: &str) -> String {
@@ -1497,7 +1497,7 @@ mod tests {
         let entry = json!({
             "id": "tp-miku",
             "name": "初音未来",
-            "cover_url": "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/covers/tp-miku.jpg",
+            "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/covers/tp-miku.jpg",
         });
         let mut extra = Map::new();
         if let Some(v) = entry_cover(&entry) {
@@ -1505,7 +1505,7 @@ mod tests {
         }
         assert_eq!(
             extra.get("cover").and_then(|v| v.as_str()).unwrap_or(""),
-            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/covers/tp-miku.jpg"
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/covers/tp-miku.jpg"
         );
 
         // 清单没有封面字段时不得产出空 cover。
@@ -1555,14 +1555,14 @@ mod tests {
     #[test]
     fn official_cnb_pack_gets_lfs_fallback() {
         let sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let url = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/voices/Anon-v1.zip";
+        let url = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/characters/pkg-v1.zip";
         let root = std::env::temp_dir().join("rvcf-store-lfs");
         let _ = std::fs::remove_dir_all(&root);
         let list = voice_download_urls(&root, url, sha);
         assert_eq!(list[0], url);
         assert_eq!(
             list[1],
-            format!("https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/lfs/{sha}")
+            format!("https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/lfs/{sha}")
         );
     }
 
@@ -1721,7 +1721,7 @@ mod tests {
         let dir = root.join("CNB-GIT-RELEASE").join("ch-banner");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("tp-yuuka.jpg"), vec![0u8; 200]).unwrap();
-        let url = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/covers/tp-yuuka.jpg";
+        let url = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/covers/tp-yuuka.jpg";
         let got = local_banner_for_url(&root, url).expect("should find local yuuka");
         assert!(got.ends_with("tp-yuuka.jpg"), "{got}");
         assert!(local_banner_for_url(&root, "https://x/covers/..").is_none());
@@ -1736,7 +1736,7 @@ mod tests {
 
     #[test]
     fn cover_download_adds_git_raw_fallback() {
-        let url = "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/covers/tp-yuuka.jpg";
+        let url = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/covers/tp-yuuka.jpg";
         let c = cover_download_candidates(url);
         assert_eq!(c[0], url);
         assert!(c.iter().any(|u| u.ends_with("/ch-banner/tp-yuuka.jpg")), "{c:?}");

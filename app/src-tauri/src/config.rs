@@ -20,8 +20,8 @@ use serde_json::{json, Map, Value};
 
 use crate::paths;
 
-/// app_config 读改写必须排队。选 DSP 的 setHot 和开启变声的 setHot
-/// 同时读改写会把刚写上的 dsp_enabled 盖回 false，启动就报「请选择pth文件」。
+/// app_config 读改写必须排队。两路 setHot（比如选音色和开启变声）同时
+/// 读改写会互相覆盖，后写的把先写的键盖回旧值，启动就报「请选择pth文件」。
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
 fn lock_files() -> std::sync::MutexGuard<'static, ()> {
@@ -43,11 +43,11 @@ pub const HOT_KEYS: &[&str] = &[
     "O_noise_reduce",
     "use_pv",
     "function",
-    // 变声后的 DSP 链：噪声门 → 压缩器 → 五段 EQ → 输出增益。
+    // 变声后的音效链（引擎侧叫 fx）：噪声门 → 压缩器 → 五段 EQ → 输出增益。
     //
-    // 引擎侧（tools/dsp_fx.py + gui_v1 的 _worker_apply_hot）一直支持这些键，
-    // 只是迁到 Tauri 之后壳层没把它们列进来，于是整条链在新界面上消失了 ——
-    // 老的 Python 壳有 EQ，新壳没有。全是热键，转着的时候能调。
+    // 引擎侧一直支持这些键，只是迁到 Tauri 之后壳层没把它们列进来，于是
+    // 整条链在新界面上消失了 —— 老的 Python 壳有 EQ，新壳没有。全是热键，
+    // 转着的时候能调。
     "fx_enabled",
     "fx_gate_enabled",
     "fx_gate_threshold_db",
@@ -64,11 +64,6 @@ pub const HOT_KEYS: &[&str] = &[
     "fx_eq_gains",
     "fx_eq_preset",
     "fx_out_gain_db",
-    // 无模型 DSP 变声（tools/dsp_voice.py）。也是热键：换预设、拖参数都不该
-    // 重开流 —— 重开一次要几百毫秒，而 DSP 模式的卖点就是即时。
-    "dsp_enabled",
-    "dsp_preset",
-    "dsp_params",
 ];
 
 /// Needs stop + start (mirrors `realtime_protocol.COLD_KEYS`).
@@ -128,8 +123,8 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("O_noise_reduce".into(), json!(false));
     m.insert("use_pv".into(), json!(false));
     m.insert("function".into(), json!("vc"));
-    // DSP 链（热）。默认整条关掉 —— 开着就改变了所有人听到的声音，
-    // 那不该是升级一次软件就默默发生的事。数值与 dsp_fx.DEFAULT_FX_CONFIG 对齐。
+    // 音效链（热）。默认整条关掉 —— 开着就改变了所有人听到的声音，
+    // 那不该是升级一次软件就默默发生的事。数值与引擎侧默认值对齐。
     m.insert("fx_enabled".into(), json!(false));
     m.insert("fx_gate_enabled".into(), json!(true));
     m.insert("fx_gate_threshold_db".into(), json!(-50.0));
@@ -142,11 +137,6 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("fx_comp_attack_ms".into(), json!(5.0));
     m.insert("fx_comp_release_ms".into(), json!(100.0));
     m.insert("fx_comp_makeup_db".into(), json!(0.0));
-    // 「音色和 DSP 同时开着」那句说明只说一次，说过就记下来。
-    m.insert("dsp_stack_noted".into(), json!(false));
-    m.insert("dsp_enabled".into(), json!(false));
-    m.insert("dsp_preset".into(), json!(""));
-    m.insert("dsp_params".into(), json!({}));
     m.insert("fx_eq_enabled".into(), json!(true));
     m.insert("fx_eq_gains".into(), json!([0.0, 0.0, 0.0, 0.0, 0.0]));
     m.insert("fx_eq_preset".into(), json!("flat"));
@@ -411,42 +401,34 @@ fn sanitize_inuse(root: &Path, m: &mut Map<String, Value>) {
     }
 }
 
+/// 老版本「无模型实时变声」的开关组。壳侧这条链路已整体拆除：键不再进
+/// schema、不再往 inuse 镜像。但引擎侧的旧状态文件里可能还留着 true，
+/// 不主动摘掉的话，升级后第一次开启会继续走那条已经不存在的链路。
+const RETIRED_VOICE_FX_KEYS: &[&str] = &["dsp_enabled", "dsp_preset", "dsp_params"];
+
+/// 这组键的关闭态。start / set 命令载荷里显式带上，把引擎内存里的旧值压掉
+/// —— 引擎的 gui_config 是常驻的，载荷不覆盖就等于沿用上一次的值。
+pub fn retired_voice_fx_off() -> Map<String, Value> {
+    let mut m = Map::new();
+    m.insert(RETIRED_VOICE_FX_KEYS[0].into(), json!(false));
+    m.insert(RETIRED_VOICE_FX_KEYS[1].into(), json!(""));
+    m.insert(RETIRED_VOICE_FX_KEYS[2].into(), json!({}));
+    m
+}
+
 /// Mirror the engine-relevant subset into `configs/inuse/config.json`.
 pub fn sync_inuse(root: &Path, cfg: &Map<String, Value>) -> Result<(), String> {
     let path = paths::inuse_config_path(root);
     let mut out = read_json(&path);
-    let dsp_on = cfg
-        .get("dsp_enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
     for k in engine_keys() {
         let Some(v) = cfg.get(k) else { continue };
         // Never let an empty model path overwrite one that is already set:
         // losing pth_path means the worker starts with no model at all.
-        // DSP 模式除外：二选一就是要把音色路径清掉。
         if matches!(k, "pth_path" | "index_path")
             && v.as_str().map(str::is_empty).unwrap_or(false)
-            && !dsp_on
             && out.get(k).and_then(|x| x.as_str()).map(|s| !s.is_empty()) == Some(true)
         {
             continue;
-        }
-        // DSP 开着时，空预设/空参数不能把已经选好的那份盖掉。
-        if dsp_on && k == "dsp_preset" && v.as_str().map(str::is_empty).unwrap_or(false) {
-            if out.get(k).and_then(|x| x.as_str()).map(|s| !s.is_empty()) == Some(true) {
-                continue;
-            }
-        }
-        if dsp_on && k == "dsp_params" {
-            let incoming_empty = v.as_object().map(|m| m.is_empty()).unwrap_or(true);
-            let have = out
-                .get(k)
-                .and_then(|x| x.as_object())
-                .map(|m| !m.is_empty())
-                .unwrap_or(false);
-            if incoming_empty && have {
-                continue;
-            }
         }
         out.insert(k.to_string(), v.clone());
     }
@@ -460,30 +442,20 @@ pub fn sync_inuse(root: &Path, cfg: &Map<String, Value>) -> Result<(), String> {
             .and_then(|v| v.as_bool())
             .unwrap_or(false)),
     );
+    // 已拆除链路的残留开关：从 inuse 摘掉，function 里残留的 fx 也折回 vc。
+    for k in RETIRED_VOICE_FX_KEYS {
+        out.remove(*k);
+    }
+    if out.get("function").and_then(|v| v.as_str()) == Some("fx") {
+        out.insert("function".into(), json!("vc"));
+    }
     sanitize_inuse(root, &mut out);
     let text = serde_json::to_string_pretty(&Value::Object(out)).map_err(|e| e.to_string())?;
     write_atomic(&path, &text).map_err(|e| crate::i18n::te("s.4ad9fdccd9", &(e)))
 }
 
-fn write_saved_and_inuse(
-    root: &Path,
-    saved: Map<String, Value>,
-) -> Result<Map<String, Value>, String> {
-    let text = serde_json::to_string_pretty(&Value::Object(saved.clone()))
-        .map_err(|e| e.to_string())?;
-    write_atomic(&paths::app_config_path(root), &text)
-        .map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
-    let mut cfg = defaults();
-    for (k, v) in saved {
-        cfg.insert(k, v);
-    }
-    let _ = apply_device_alias(&mut cfg);
-    sync_inuse(root, &cfg)?;
-    Ok(cfg)
-}
-
-/// 上次选中的音色路径：文件还在才返回。DSP 二选一只清 inuse 的 pth，
-/// `last_model*` 留下来，关掉 DSP 或 DSP 没开成时还能回到这个音色。
+/// 上次选中的音色路径：文件还在才返回。清音色只动 inuse 的 pth，
+/// `last_model*` 留下来，下次开启变声时还能回到这个音色。
 fn last_model_pth(cfg: &Map<String, Value>, root: &Path) -> Option<String> {
     let raw = cfg
         .get("last_model_path")
@@ -506,147 +478,18 @@ fn last_model_pth(cfg: &Map<String, Value>, root: &Path) -> Option<String> {
     }
 }
 
-/// 选用 DSP：开关、预设、参数、function=fx。引擎侧 pth 清掉（二选一），
-/// last_model 留下 —— 清掉的话关 DSP 之后用户什么都选不了
-/// （diag 26.8.16：开 DSP / 只用 DSP 之后 last_model 空，开启变声直接拒）。
-pub fn write_dsp_on(
-    root: &Path,
-    preset: &str,
-    params: &Value,
-) -> Result<Map<String, Value>, String> {
-    let _g = lock_files();
-    let mut saved = read_json(&paths::app_config_path(root));
-    saved.insert("dsp_enabled".into(), json!(true));
-    saved.insert("dsp_preset".into(), json!(preset));
-    saved.insert("dsp_params".into(), params.clone());
-    saved.insert("function".into(), json!("fx"));
-    saved.insert("pth_path".into(), json!(""));
-    saved.insert("index_path".into(), json!(""));
-    write_saved_and_inuse(root, saved)
-}
-
-pub fn write_dsp_off(root: &Path) -> Result<Map<String, Value>, String> {
-    let _g = lock_files();
-    let mut saved = read_json(&paths::app_config_path(root));
-    saved.insert("dsp_enabled".into(), json!(false));
-    saved.insert("dsp_preset".into(), json!(""));
-    saved.insert("dsp_params".into(), json!({}));
-    if saved.get("function").and_then(|v| v.as_str()) == Some("fx") {
-        saved.insert("function".into(), json!("vc"));
-    }
-    if saved
-        .get("pth_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .is_empty()
-    {
-        if let Some(pth) = last_model_pth(&saved, root) {
-            saved.insert("pth_path".into(), json!(pth));
-        }
-    }
-    write_saved_and_inuse(root, saved)
-}
-
-/// 这次开启该走 DSP 还是 RVC。
-///
-/// `dsp_enabled` 是开关。选了音色之后 `dsp_params` 常还留着上一份预设，
-/// 不能再靠「有参数就是 DSP」——否则换回 RVC 仍走 fx。
-pub fn wants_dsp(cfg: &Map<String, Value>) -> bool {
-    if cfg
-        .get("dsp_enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        return true;
-    }
-    let pth = cfg
-        .get("pth_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim();
-    if !pth.is_empty() {
-        return false;
-    }
-    if cfg.get("function").and_then(|v| v.as_str()) == Some("vc") {
-        return false;
-    }
-    let preset = cfg
-        .get("dsp_preset")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim();
-    let params_on = cfg
-        .get("dsp_params")
-        .and_then(|v| v.as_object())
-        .map(|m| !m.is_empty())
-        .unwrap_or(false);
-    !preset.is_empty() || params_on
-}
-
-/// 开启变声前在锁里再读一次。预设 id 在、参数丢了就从磁盘补上。
+/// 开启变声前在锁里再读一次。pth 空了就把上次的音色填回来。
 pub fn prepare_vc_start(root: &Path) -> Result<Map<String, Value>, String> {
     let _g = lock_files();
     let mut cfg = read(root);
-    let preset = cfg
-        .get("dsp_preset")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let params_empty = cfg
-        .get("dsp_params")
-        .and_then(|v| v.as_object())
-        .map(|m| m.is_empty())
-        .unwrap_or(true);
-    // 只有真要走 DSP 才把参数补回来。
-    //
-    // 以前这里是无条件补：`dsp_preset` 只要非空就从磁盘把 params 灌进 cfg。
-    // 而下游有几处判定是「有预设或有参数就算 DSP」，于是「选了音色、但配置里
-    // 还留着一个旧预设名」这种状态，会被这一步亲手补成「有参数」，接着被判成
-    // 纯 DSP —— 换回 RVC 换不动的根子之一。
-    //
-    // 判定用补参数之前的 cfg：wants_dsp 本身会看 params，补完再问就是自证。
-    let dsp_on = wants_dsp(&cfg);
-    if dsp_on && !preset.is_empty() && params_empty {
-        if let Some(p) = crate::dsp::get(root, &preset) {
-            if let Some(params) = p.get("params").cloned().filter(Value::is_object) {
-                cfg.insert("dsp_params".into(), params);
-            }
-        }
-    }
-    if dsp_on {
-        cfg.insert("dsp_enabled".into(), json!(true));
-        cfg.insert("function".into(), json!("fx"));
-        // 必须改 cfg 本身再 sync_inuse：只改 app_config 文件、cfg 里还留着
-        // 旧 pth 的话，inuse 会被写回音色路径，worker 又去要 .pth。
-        cfg.insert("pth_path".into(), json!(""));
-        cfg.insert("index_path".into(), json!(""));
-        let mut saved = read_json(&paths::app_config_path(root));
-        for k in [
-            "dsp_enabled",
-            "dsp_preset",
-            "dsp_params",
-            "function",
-            "pth_path",
-            "index_path",
-        ] {
-            if let Some(v) = cfg.get(k) {
-                saved.insert(k.into(), v.clone());
-            }
-        }
-        let text = serde_json::to_string_pretty(&Value::Object(saved))
-            .map_err(|e| e.to_string())?;
-        write_atomic(&paths::app_config_path(root), &text)
-            .map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
-    } else if cfg
+    if cfg
         .get("pth_path")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim()
         .is_empty()
     {
-        // DSP 没开、pth 又空：把上次的音色填回去，否则开启变声会直接拒。
+        // pth 空：把上次的音色填回去，否则开启变声会直接拒。
         if let Some(pth) = last_model_pth(&cfg, root) {
             cfg.insert("pth_path".into(), json!(pth));
             let mut saved = read_json(&paths::app_config_path(root));
@@ -754,7 +597,7 @@ pub fn update(root: &Path, patch: Map<String, Value>) -> Result<Value, String> {
     }))
 }
 
-/// 用户明确点「只用 DSP」：把 app_config 和 inuse 里的音色路径一起清掉。
+/// 用户明确点「取消当前音色」：把 app_config 和 inuse 里的音色路径一起清掉。
 ///
 /// 普通 `sync_inuse` 故意不让空 `pth_path` 覆盖已有值（见
 /// `empty_model_path_never_clobbers_a_real_one`）。这里是用户自己要丢掉音色，
@@ -1169,87 +1012,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// 老版本留下的特效开关组：sync_inuse 必须把它们从 inuse 里摘掉，
+    /// function 里残留的 fx 也要折回 vc。不摘的话，升级前用过「纯特效」的
+    /// 用户升级后第一次开启会继续走那条已经拆除的链路。
     #[test]
-    fn leftover_dsp_params_do_not_win_over_a_selected_voice() {
-        let mut cfg = defaults();
-        cfg.insert("dsp_enabled".into(), json!(false));
-        cfg.insert("dsp_preset".into(), json!(""));
-        cfg.insert(
-            "dsp_params".into(),
-            json!({"pitch":{"semitones":7.0}}),
-        );
-        cfg.insert("function".into(), json!("vc"));
-        cfg.insert("pth_path".into(), json!("User_Data/models/anon/anon.pth"));
-        assert!(
-            !wants_dsp(&cfg),
-            "选了音色就不能再因为残留 DSP 参数走 fx"
-        );
-
-        cfg.insert("pth_path".into(), json!(""));
-        cfg.insert("function".into(), json!("vc"));
-        assert!(!wants_dsp(&cfg), "function=vc 也必须是 RVC 侧");
-
-        cfg.insert("function".into(), json!("fx"));
-        cfg.insert("dsp_enabled".into(), json!(true));
-        assert!(wants_dsp(&cfg));
-    }
-
-    #[test]
-    fn write_dsp_on_keeps_last_model() {
-        let root = std::env::temp_dir().join("rvcf-dsp-keep-last");
+    fn retired_switches_are_scrubbed_from_inuse() {
+        let root = std::env::temp_dir().join("rvcf-retired-scrub");
         let _ = std::fs::remove_dir_all(&root);
-        let inuse = root.join("configs").join("inuse");
-        let user = crate::paths::user_data(&root);
-        std::fs::create_dir_all(&inuse).unwrap();
-        std::fs::create_dir_all(&user).unwrap();
-        let model = user.join("kasumi.pth");
-        std::fs::write(&model, b"x").unwrap();
-        let model_s = model.to_string_lossy().to_string();
-        std::fs::write(
-            crate::paths::app_config_path(&root),
-            serde_json::to_string(&json!({
-                "pth_path": model_s,
-                "last_model": "kasumi.pth",
-                "last_model_name": "Kasumi",
-                "last_model_path": model_s,
-                "dsp_enabled": false
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-        std::fs::write(inuse.join("config.json"), "{}").unwrap();
-
-        write_dsp_on(&root, "chipmunk", &json!({"pitch":{"semitones":7}})).unwrap();
-        let app = read_json(&paths::app_config_path(&root));
-        assert_eq!(app["dsp_enabled"], json!(true));
-        assert_eq!(app["pth_path"], json!(""));
-        assert_eq!(app["last_model"], json!("kasumi.pth"));
-        assert_eq!(app["last_model_path"], json!(model_s));
-
-        write_dsp_off(&root).unwrap();
-        let app = read_json(&paths::app_config_path(&root));
-        assert_eq!(app["dsp_enabled"], json!(false));
-        assert_eq!(app["pth_path"], json!(model_s), "关掉 DSP 应回到上次音色");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn dsp_mode_may_clear_the_model_path() {
-        let root = std::env::temp_dir().join("rvcf-inuse-dsp-clear");
         let inuse = root.join("configs").join("inuse");
         std::fs::create_dir_all(&inuse).unwrap();
         std::fs::write(
             inuse.join("config.json"),
-            r#"{"pth_path":"User_Data/models/anon/anon.pth","dsp_enabled":false}"#,
+            r#"{"pth_path":"User_Data/models/anon/anon.pth","function":"fx"}"#,
         )
         .unwrap();
         let mut cfg = defaults();
-        cfg.insert("dsp_enabled".into(), json!(true));
-        cfg.insert("pth_path".into(), json!(""));
+        // 老配置里可能还存着 fx；read() 会把它原样带回来。
+        cfg.insert("function".into(), json!("fx"));
         sync_inuse(&root, &cfg).unwrap();
+
         let after = read_json(&paths::inuse_config_path(&root));
-        assert_eq!(after["pth_path"], json!(""));
-        assert_eq!(after["dsp_enabled"], json!(true));
+        for k in RETIRED_VOICE_FX_KEYS {
+            assert!(!after.contains_key(*k), "{k} 必须从 inuse 里摘掉");
+        }
+        assert_eq!(after["function"], json!("vc"), "残留的 fx 必须折回 vc");
         let _ = std::fs::remove_dir_all(&root);
     }
 
