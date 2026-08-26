@@ -1,148 +1,398 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field, Slider, Toggle } from "../components/controls";
+import { ErrorNote } from "../components/ErrorNote";
+import { useConfig } from "../hooks/useConfig";
 import { t } from "../i18n/t";
 
 /**
  * 合成台 —— GPT-SoVITS Fabric 的核心页面。
  *
- * 浏览器预览模式（无 Tauri 外壳）下整页运行在演示数据上：角色与 .list 参考
- * 行均为内置样例，合成流程走本地模拟进度。接通 synth_worker 后，数据源替换
- * 为引擎真实返回，组件结构与交互保持不变。
+ * 角色来自本地角色库（`User_Data/characters/<id>/config.json`），参考音频
+ * 来自角色包里的 `.list` 标注（和标注管理页读的是同一份解析结果，见
+ * DECISIONS D4），合成走常驻的 synth_worker。
+ *
+ * 三处和「看起来更漂亮」相反的取舍：
+ *
+ * 1. **进度条是不定向的。** 上游 `tts.run()` 是个生成器，只知道又出了一段，
+ *    不知道总共几段 —— 报一个百分比就是在编。所以这里只报确定知道的：
+ *    首包多少毫秒、已出几段、已用多少秒。
+ * 2. **文件不在的参考行不能选。** `.list` 里指向的 wav 缺失是常事（数据集
+ *    搬过目录）。让它可选，用户点下去只会拿到一句引擎的报错。
+ * 3. **换角色就回到该角色包的推荐参数。** 参数是作者随包给的，跨角色沿用
+ *    上一个角色的 temperature 没有意义。
+ *
+ * 浏览器预览模式（无 Tauri 外壳）下用内置样例数据，只为看排版，合成不可用。
  */
 
-type RefRow = {
-  /** 对应 .list 一行：audios/xxx.wav|说话人|语种|文本 */
+type AnnotRow = {
+  line: number;
   wav: string;
+  speaker: string;
+  lang: string;
   text: string;
-  lang: "ZH" | "JA" | "EN" | "KO" | "YUE";
-  mood?: string;
+  abs: string;
+  exists: boolean;
+  issues: string[];
+};
+
+type ListFile = { file: string; lang: string; note: string; rows: AnnotRow[] };
+
+type RoleParams = {
+  speed?: number;
+  top_k?: number;
+  top_p?: number;
+  temperature?: number;
+  repetition_penalty?: number;
 };
 
 type Role = {
   id: string;
   name: string;
   author: string;
-  version: "v2" | "v2Pro" | "v2ProPlus" | "v4";
-  coverHue: number;
-  refs: RefRow[];
+  version: string;
+  cover: string;
+  cover_exists: boolean;
+  params: RoleParams;
+  lists: ListFile[];
+  dir: string;
 };
+
+/** 参考候选：`.list` 的一行，加上它属于哪个标注文件。 */
+type RefRow = AnnotRow & { from: string };
+
+type Params = Required<RoleParams>;
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-const LANG_BADGE: Record<RefRow["lang"], string> = {
-  ZH: "中",
-  JA: "日",
-  EN: "英",
-  KO: "韩",
-  YUE: "粤",
+/** 上游没给推荐值时的兜底。和 synth_worker.py 的默认值一致。 */
+const FALLBACK: Params = {
+  speed: 1.0,
+  top_k: 15,
+  top_p: 1.0,
+  temperature: 1.0,
+  repetition_penalty: 1.35,
 };
 
+const LANG_BADGE: Record<string, string> = {
+  zh: "中",
+  all_zh: "中",
+  ja: "日",
+  all_ja: "日",
+  en: "英",
+  ko: "韩",
+  all_ko: "韩",
+  yue: "粤",
+  auto: "自",
+};
+
+function langBadge(lang: string): string {
+  const k = (lang || "").toLowerCase();
+  return LANG_BADGE[k] ?? (k ? k.slice(0, 2).toUpperCase() : "?");
+}
+
+/** 没有封面图时按 id 取一个稳定的色相 —— 同一个角色每次打开都是同一种颜色。 */
+function hueOf(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return h;
+}
+
+function recommendedOf(role: Role | null): Params {
+  const p = role?.params ?? {};
+  return {
+    speed: typeof p.speed === "number" ? p.speed : FALLBACK.speed,
+    top_k: typeof p.top_k === "number" ? p.top_k : FALLBACK.top_k,
+    top_p: typeof p.top_p === "number" ? p.top_p : FALLBACK.top_p,
+    temperature: typeof p.temperature === "number" ? p.temperature : FALLBACK.temperature,
+    repetition_penalty:
+      typeof p.repetition_penalty === "number" ? p.repetition_penalty : FALLBACK.repetition_penalty,
+  };
+}
+
+function refsOf(role: Role | null): RefRow[] {
+  if (!role) return [];
+  const out: RefRow[] = [];
+  for (const l of role.lists ?? []) {
+    for (const r of l.rows ?? []) {
+      if (!r.wav || !r.text.trim()) continue;
+      out.push({ ...r, from: l.file, lang: r.lang || l.lang || "zh" });
+    }
+  }
+  return out;
+}
+
 function demoRoles(): Role[] {
+  const mk = (
+    id: string,
+    name: string,
+    rows: [string, string, string][],
+  ): Role => ({
+    id,
+    name,
+    author: "图灵镜官方",
+    version: "v2ProPlus",
+    cover: "",
+    cover_exists: false,
+    params: {},
+    dir: `characters/${id}`,
+    lists: [
+      {
+        file: "voice.list",
+        lang: "zh",
+        note: "",
+        rows: rows.map(([wav, text, lang], i) => ({
+          line: i + 1,
+          wav,
+          speaker: name,
+          lang,
+          text,
+          abs: `characters/${id}/dataset/${wav}`,
+          exists: true,
+          issues: [],
+        })),
+      },
+    ],
+  });
   return [
-    {
-      id: "tendou_alice",
-      name: "天童爱丽丝",
-      author: "图灵镜官方",
-      version: "v2ProPlus",
-      coverHue: 205,
-      refs: [
-        { wav: "jp_original_游戏标题.ogg", text: "ブルーアーカイブ", lang: "JA", mood: "平静" },
-        { wav: "zh_获得补给.wav", text: "哇！是新的补给品！", lang: "ZH", mood: "开心" },
-        { wav: "zh_战斗受创1.wav", text: "机体出现异常……", lang: "ZH", mood: "低落" },
-      ],
-    },
-    {
-      id: "hoshino",
-      name: "小鸟游星野",
-      author: "图灵镜官方",
-      version: "v2ProPlus",
-      coverHue: 45,
-      refs: [
-        { wav: "jp_login.ogg", text: "おはよう、先生……", lang: "JA", mood: "慵懒" },
-        { wav: "zh_battle_skill.wav", text: "要上了哦，大家掩护我！", lang: "ZH", mood: "认真" },
-      ],
-    },
-    {
-      id: "serika",
-      name: "黑见芹香",
-      author: "图灵镜官方",
-      version: "v2ProPlus",
-      coverHue: 300,
-      refs: [
-        { wav: "zh_吐槽.wav", text: "又来？真是服了你了。", lang: "ZH", mood: "无奈" },
-        { wav: "jp_battle.ogg", text: "逃げても無駄だよ！", lang: "JA", mood: "生气" },
-      ],
-    },
-    {
-      id: "mutsuki",
-      name: "浅黄睦月",
-      author: "图灵镜官方",
-      version: "v2ProPlus",
-      coverHue: 160,
-      refs: [{ wav: "jp_greet.ogg", text: "ふふっ、面白いねぇ", lang: "JA", mood: "调皮" }],
-    },
+    mk("tendou_alice", "天童爱丽丝", [
+      ["audios/jp_title.ogg", "ブルーアーカイブ", "ja"],
+      ["audios/zh_supply.wav", "哇！是新的补给品！", "zh"],
+      ["audios/zh_hurt.wav", "机体出现异常……", "zh"],
+    ]),
+    mk("hoshino", "小鸟游星野", [
+      ["audios/jp_login.ogg", "おはよう、先生……", "ja"],
+      ["audios/zh_skill.wav", "要上了哦，大家掩护我！", "zh"],
+    ]),
+    mk("serika", "黑见芹香", [
+      ["audios/zh_tsukkomi.wav", "又来？真是服了你了。", "zh"],
+      ["audios/jp_battle.ogg", "逃げても無駄だよ！", "ja"],
+    ]),
   ];
 }
 
-/** 角色包 config.json 内嵌的作者推荐参数；「恢复推荐值」回到这里。 */
-const RECOMMENDED = { speed: 1.0, topK: 15, topP: 1.0, temperature: 1.0, repPenalty: 1.35 };
-
 export function SynthPage() {
-  const roles = useMemo(demoRoles, []);
-  const [roleId, setRoleId] = useState(roles[0].id);
-  const role = roles.find((r) => r.id === roleId) ?? roles[0];
-  const [refIdx, setRefIdx] = useState(0);
-  const ref = role.refs[Math.min(refIdx, role.refs.length - 1)];
+  const c = useConfig();
+  const [roles, setRoles] = useState<Role[] | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [roleId, setRoleId] = useState("");
+  const [refKey, setRefKey] = useState("");
 
-  const [text, setText] = useState(
-    "欢迎安装 GPT-SoVITS Fabric。选择角色与参考音频后，在此输入文本即可开始合成。",
-  );
-  const [speed, setSpeed] = useState(RECOMMENDED.speed);
-  const [topK, setTopK] = useState(RECOMMENDED.topK);
-  const [topP, setTopP] = useState(RECOMMENDED.topP);
-  const [temperature, setTemperature] = useState(RECOMMENDED.temperature);
-  const [repPenalty, setRepPenalty] = useState(RECOMMENDED.repPenalty);
+  const [text, setText] = useState("");
+  const [params, setParams] = useState<Params>(FALLBACK);
   const [streaming, setStreaming] = useState(true);
 
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [chunks, setChunks] = useState(0);
   const [tFirst, setTFirst] = useState<number | null>(null);
-  const timerRef = useRef<number | null>(null);
+  const [tTotal, setTTotal] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [out, setOut] = useState("");
+  const [err, setErr] = useState("");
+  const [playing, setPlaying] = useState(false);
 
-  function startSynth() {
-    if (busy || !text.trim()) return;
-    setBusy(true);
-    setProgress(0);
-    setTFirst(null);
-    const started = performance.now();
-    let firstPacketDone = false;
-    if (timerRef.current != null) window.clearInterval(timerRef.current);
-    timerRef.current = window.setInterval(() => {
-      setProgress((p) => {
-        const next = (p ?? 0) + Math.random() * 9 + 3;
-        if (!firstPacketDone && next > 22) {
-          firstPacketDone = true;
-          setTFirst(performance.now() - started);
-        }
-        if (next >= 100) {
-          if (timerRef.current != null) window.clearInterval(timerRef.current);
-          setBusy(false);
-          return 100;
-        }
-        return next;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const startedAt = useRef(0);
+  /** 配置只在第一次读到时灌进来一次，之后以界面为准，免得写盘回声把滑块拽回去。 */
+  const seeded = useRef(false);
+
+  // —— 角色库 ——
+  useEffect(() => {
+    let alive = true;
+    if (!isTauri()) {
+      setRoles(demoRoles());
+      return;
+    }
+    invoke<{ roles: Role[] }>("synth_characters")
+      .then((r) => alive && setRoles(r?.roles ?? []))
+      .catch((e) => {
+        if (!alive) return;
+        setRoles([]);
+        setErr(String(e));
       });
-    }, 140);
-  }
+    return () => {
+      alive = false;
+    };
+  }, [reloadTick]);
 
-  const paramsDirty =
-    speed !== RECOMMENDED.speed ||
-    topK !== RECOMMENDED.topK ||
-    topP !== RECOMMENDED.topP ||
-    temperature !== RECOMMENDED.temperature ||
-    repPenalty !== RECOMMENDED.repPenalty;
+  const role = useMemo(
+    () => (roles ?? []).find((r) => r.id === roleId) ?? (roles ?? [])[0] ?? null,
+    [roles, roleId],
+  );
+  const recommended = useMemo(() => recommendedOf(role), [role]);
+  const refs = useMemo(() => refsOf(role), [role]);
+  const ref = useMemo(
+    () => refs.find((r) => `${r.from}#${r.line}` === refKey) ?? refs.find((r) => r.exists) ?? null,
+    [refs, refKey],
+  );
+
+  // 首次加载：上次用的角色、上次用的参数。角色没了就落到第一个。
+  useEffect(() => {
+    if (seeded.current || !c.loaded || !roles) return;
+    seeded.current = true;
+    const saved = c.str("synth_role");
+    if (saved && roles.some((r) => r.id === saved)) setRoleId(saved);
+    setStreaming(c.cfg.synth_streaming !== false);
+    setParams({
+      speed: c.num("synth_speed", FALLBACK.speed),
+      top_k: c.num("synth_top_k", FALLBACK.top_k),
+      top_p: c.num("synth_top_p", FALLBACK.top_p),
+      temperature: c.num("synth_temperature", FALLBACK.temperature),
+      repetition_penalty: c.num("synth_rep_penalty", FALLBACK.repetition_penalty),
+    });
+  }, [c, roles]);
+
+  const setParam = useCallback(
+    (key: keyof Params, cfgKey: string) => (v: number) => {
+      setParams((p) => ({ ...p, [key]: v }));
+      void c.set(cfgKey, v);
+    },
+    [c],
+  );
+
+  const pickRole = useCallback(
+    (r: Role) => {
+      setRoleId(r.id);
+      setRefKey("");
+      // 参数随包走：作者给的推荐值才是这个角色该有的起点。
+      setParams(recommendedOf(r));
+      void c.set("synth_role", r.id);
+      void c.set("synth_speed", recommendedOf(r).speed);
+      void c.set("synth_top_k", recommendedOf(r).top_k);
+      void c.set("synth_top_p", recommendedOf(r).top_p);
+      void c.set("synth_temperature", recommendedOf(r).temperature);
+      void c.set("synth_rep_penalty", recommendedOf(r).repetition_penalty);
+    },
+    [c],
+  );
+
+  // —— 引擎事件 ——
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    const offs: Array<() => void> = [];
+    const keep = (p: Promise<() => void>) =>
+      void p.then((fn) => (alive ? offs.push(fn) : fn()));
+
+    keep(
+      listen<{ seq?: number; sec?: number }>("synth-chunk", (ev) => {
+        if (!alive) return;
+        const seq = ev.payload?.seq ?? 0;
+        setChunks(seq + 1);
+        // 第一段落地的那一刻就是首包延迟，用引擎自己报的秒数，不用界面猜。
+        if (seq === 0 && typeof ev.payload?.sec === "number") {
+          setTFirst(Math.round(ev.payload.sec * 1000));
+        }
+      }),
+    );
+    keep(
+      listen<{ t_first_ms?: number; t_total_ms?: number }>("synth-done", (ev) => {
+        if (!alive) return;
+        if (typeof ev.payload?.t_first_ms === "number" && ev.payload.t_first_ms > 0) {
+          setTFirst(ev.payload.t_first_ms);
+        }
+        if (typeof ev.payload?.t_total_ms === "number") setTTotal(ev.payload.t_total_ms);
+      }),
+    );
+    return () => {
+      alive = false;
+      offs.forEach((fn) => fn());
+    };
+  }, []);
+
+  // 「已用 x.x s」：合成期间才走，停了就不再占用一个定时器。
+  useEffect(() => {
+    if (!busy) return;
+    const id = window.setInterval(() => {
+      setElapsed((performance.now() - startedAt.current) / 1000);
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
+  useEffect(
+    () => () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    },
+    [],
+  );
+
+  const startSynth = useCallback(async () => {
+    if (busy || !text.trim() || !role || !ref) return;
+    if (!isTauri()) {
+      setErr(t("synth.previewOnly"));
+      return;
+    }
+    setBusy(true);
+    setCancelling(false);
+    setChunks(0);
+    setTFirst(null);
+    setTTotal(null);
+    setElapsed(0);
+    setOut("");
+    setErr("");
+    startedAt.current = performance.now();
+    try {
+      const r = await invoke<{ cancelled?: boolean; out?: string }>("synth_start", {
+        roleId: role.id,
+        roleDir: role.dir,
+        version: role.version,
+        text: text.trim(),
+        refWav: ref.abs,
+        refText: ref.text,
+        refLang: ref.lang,
+        params,
+        streaming,
+      });
+      if (r?.cancelled) setOut("");
+      else if (r?.out) setOut(r.out);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+      setCancelling(false);
+    }
+  }, [busy, text, role, ref, params, streaming]);
+
+  const cancelSynth = useCallback(() => {
+    if (!busy || cancelling) return;
+    setCancelling(true);
+    void invoke("synth_cancel").catch((e) => setErr(String(e)));
+  }, [busy, cancelling]);
+
+  const togglePlay = useCallback(() => {
+    if (!out) return;
+    if (playing) {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      setPlaying(false);
+      return;
+    }
+    try {
+      const a = new Audio(isTauri() ? convertFileSrc(out) : out);
+      a.onended = () => setPlaying(false);
+      a.onerror = () => {
+        setPlaying(false);
+        setErr(t("synth.playFailed"));
+      };
+      audioRef.current = a;
+      void a.play();
+      setPlaying(true);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }, [out, playing]);
+
+  const paramsDirty = (Object.keys(recommended) as Array<keyof Params>).some(
+    (k) => params[k] !== recommended[k],
+  );
+
+  const empty = roles != null && roles.length === 0;
 
   return (
     <PagePad>
@@ -158,91 +408,115 @@ export function SynthPage() {
         }
       />
 
-      <Block title={t("synth.roleTitle")} note={t("synth.roleNote")}>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-[10px]">
-          {roles.map((r) => {
-            const on = r.id === roleId;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => {
-                  setRoleId(r.id);
-                  setRefIdx(0);
-                }}
-                className={[
-                  "text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 transition-all duration-200 ease-[var(--ease)]",
-                  "active:scale-[0.97]",
-                  on
-                    ? "shadow-[inset_0_0_0_2px_var(--accent)] bg-[var(--accent-soft)]"
-                    : "shadow-[var(--glass)] bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)]",
-                ].join(" ")}
-              >
-                <div
-                  className="w-full aspect-[5/3] rounded-[calc(var(--r)-4px)] mb-2 relative overflow-hidden"
-                  style={{
-                    background: `linear-gradient(135deg, hsl(${r.coverHue} 62% 72%), hsl(${r.coverHue + 30} 55% 58%))`,
-                  }}
+      {err ? <ErrorNote text={err} /> : null}
+
+      <Block
+        title={t("synth.roleTitle")}
+        note={t("synth.roleNote")}
+        action={<Btn onClick={() => setReloadTick((n) => n + 1)}>{t("synth.roleRefresh")}</Btn>}
+      >
+        {empty ? (
+          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)] max-w-[860px]">
+            {t("synth.roleEmpty")}
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-[10px]">
+            {(roles ?? []).map((r) => {
+              const on = r.id === role?.id;
+              const hue = hueOf(r.id);
+              const cover = r.cover_exists && isTauri() ? convertFileSrc(`${r.dir}/${r.cover}`) : "";
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => pickRole(r)}
+                  className={[
+                    "text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 transition-all duration-200 ease-[var(--ease)]",
+                    "active:scale-[0.97]",
+                    on
+                      ? "shadow-[inset_0_0_0_2px_var(--accent)] bg-[var(--accent-soft)]"
+                      : "shadow-[var(--glass)] bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)]",
+                  ].join(" ")}
                 >
-                  <span className="absolute bottom-1 right-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-black/35 text-white">
-                    {r.version}
-                  </span>
-                </div>
-                <div className="text-[13.5px] font-medium leading-tight">{r.name}</div>
-                <div className="text-[11.5px] text-[var(--meta)] mt-0.5">
-                  {t("home.author", { author: r.author })}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                  <div
+                    className="w-full aspect-[5/3] rounded-[calc(var(--r)-4px)] mb-2 relative overflow-hidden bg-center bg-cover"
+                    style={
+                      cover
+                        ? { backgroundImage: `url("${cover}")` }
+                        : {
+                            background: `linear-gradient(135deg, hsl(${hue} 62% 72%), hsl(${hue + 30} 55% 58%))`,
+                          }
+                    }
+                  >
+                    <span className="absolute bottom-1 right-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-black/35 text-white">
+                      {r.version}
+                    </span>
+                  </div>
+                  <div className="text-[13.5px] font-medium leading-tight">{r.name}</div>
+                  <div className="text-[11.5px] text-[var(--meta)] mt-0.5">
+                    {t("home.author", { author: r.author })}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </Block>
 
       <Block title={t("synth.refTitle")} titleTip={t("synth.refTip")} note={t("synth.refNote")}>
-        <div className="rounded-[var(--r)] overflow-hidden shadow-[var(--glass)] max-w-[860px]">
-          {role.refs.map((row, i) => {
-            const on = i === Math.min(refIdx, role.refs.length - 1);
-            return (
-              <button
-                key={row.wav}
-                type="button"
-                onClick={() => setRefIdx(i)}
-                className={[
-                  "w-full text-left px-3.5 py-2.5 border-0 cursor-pointer flex items-center gap-3 transition-colors duration-150",
-                  i > 0 ? "border-t border-[var(--hairline)]" : "",
-                  on
-                    ? "bg-[var(--accent-soft)]"
-                    : "bg-[var(--surface)] hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
-                ].join(" ")}
-              >
-                <span
+        {refs.length === 0 ? (
+          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)] max-w-[860px]">
+            {t("synth.refEmpty")}
+          </div>
+        ) : (
+          <div className="rounded-[var(--r)] overflow-hidden shadow-[var(--glass)] max-w-[860px]">
+            {refs.map((row, i) => {
+              const key = `${row.from}#${row.line}`;
+              const on = ref != null && key === `${ref.from}#${ref.line}`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={!row.exists}
+                  onClick={() => setRefKey(key)}
                   className={[
-                    "shrink-0 w-[22px] h-[22px] rounded-full grid place-items-center text-[11px]",
+                    "w-full text-left px-3.5 py-2.5 border-0 flex items-center gap-3 transition-colors duration-150",
+                    row.exists ? "cursor-pointer" : "cursor-not-allowed opacity-55",
+                    i > 0 ? "border-t border-[var(--hairline)]" : "",
                     on
-                      ? "bg-[var(--accent)] text-[var(--accent-ink)]"
-                      : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
+                      ? "bg-[var(--accent-soft)]"
+                      : "bg-[var(--surface)] hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
                   ].join(" ")}
                 >
-                  ▶
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] truncate">{row.text}</span>
-                  <span className="block text-[11.5px] text-[var(--meta)] truncate mt-0.5">
-                    dataset/audios/{row.wav}
+                  <span
+                    className={[
+                      "shrink-0 w-[22px] h-[22px] rounded-full grid place-items-center text-[11px]",
+                      on
+                        ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                        : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
+                    ].join(" ")}
+                  >
+                    ▶
                   </span>
-                </span>
-                {row.mood ? (
-                  <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-[var(--ink-muted)]">
-                    {row.mood}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] truncate">{row.text}</span>
+                    <span className="block text-[11.5px] text-[var(--meta)] truncate mt-0.5">
+                      {row.from} · {row.wav}
+                    </span>
                   </span>
-                ) : null}
-                <span className="shrink-0 w-[20px] h-[20px] rounded-[6px] grid place-items-center text-[10.5px] bg-[var(--stage)] text-[var(--accent)] font-semibold">
-                  {LANG_BADGE[row.lang]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                  {!row.exists ? (
+                    <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-full text-[#c44] bg-[color-mix(in_srgb,#c44_10%,transparent)]">
+                      {t("synth.refMissing")}
+                    </span>
+                  ) : null}
+                  <span className="shrink-0 w-[20px] h-[20px] rounded-[6px] grid place-items-center text-[10.5px] bg-[var(--stage)] text-[var(--accent)] font-semibold">
+                    {langBadge(row.lang)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </Block>
 
       <Block
@@ -252,11 +526,12 @@ export function SynthPage() {
           paramsDirty ? (
             <Btn
               onClick={() => {
-                setSpeed(RECOMMENDED.speed);
-                setTopK(RECOMMENDED.topK);
-                setTopP(RECOMMENDED.topP);
-                setTemperature(RECOMMENDED.temperature);
-                setRepPenalty(RECOMMENDED.repPenalty);
+                setParams(recommended);
+                void c.set("synth_speed", recommended.speed);
+                void c.set("synth_top_k", recommended.top_k);
+                void c.set("synth_top_p", recommended.top_p);
+                void c.set("synth_temperature", recommended.temperature);
+                void c.set("synth_rep_penalty", recommended.repetition_penalty);
               }}
             >
               {t("synth.paramsReset")}
@@ -270,12 +545,12 @@ export function SynthPage() {
             tip={t("synth.pSpeedTip")}
             control={
               <Slider
-                value={speed}
+                value={params.speed}
                 min={0.5}
                 max={2}
                 step={0.05}
-                defaultValue={1}
-                onChange={setSpeed}
+                defaultValue={recommended.speed}
+                onChange={setParam("speed", "synth_speed")}
                 format={(v) => `${v.toFixed(2)}x`}
               />
             }
@@ -283,13 +558,30 @@ export function SynthPage() {
           <Field
             label={t("synth.pTopK")}
             tip={t("synth.pTopKTip")}
-            control={<Slider value={topK} min={1} max={100} step={1} onChange={setTopK} />}
+            control={
+              <Slider
+                value={params.top_k}
+                min={1}
+                max={100}
+                step={1}
+                defaultValue={recommended.top_k}
+                onChange={setParam("top_k", "synth_top_k")}
+              />
+            }
           />
           <Field
             label={t("synth.pTopP")}
             tip={t("synth.pTopPTip")}
             control={
-              <Slider value={topP} min={0} max={1} step={0.01} onChange={setTopP} format={(v) => v.toFixed(2)} />
+              <Slider
+                value={params.top_p}
+                min={0}
+                max={1}
+                step={0.01}
+                defaultValue={recommended.top_p}
+                onChange={setParam("top_p", "synth_top_p")}
+                format={(v) => v.toFixed(2)}
+              />
             }
           />
           <Field
@@ -297,11 +589,12 @@ export function SynthPage() {
             tip={t("synth.pTempTip")}
             control={
               <Slider
-                value={temperature}
+                value={params.temperature}
                 min={0}
                 max={1}
                 step={0.01}
-                onChange={setTemperature}
+                defaultValue={recommended.temperature}
+                onChange={setParam("temperature", "synth_temperature")}
                 format={(v) => v.toFixed(2)}
               />
             }
@@ -311,12 +604,12 @@ export function SynthPage() {
             tip={t("synth.pRepTip")}
             control={
               <Slider
-                value={repPenalty}
+                value={params.repetition_penalty}
                 min={1}
                 max={2}
                 step={0.01}
-                defaultValue={1.35}
-                onChange={setRepPenalty}
+                defaultValue={recommended.repetition_penalty}
+                onChange={setParam("repetition_penalty", "synth_rep_penalty")}
                 format={(v) => v.toFixed(2)}
               />
             }
@@ -337,43 +630,67 @@ export function SynthPage() {
             <span className="text-[12px] text-[var(--meta)] tabular-nums">
               {t("synth.charCount", { n: text.length })}
             </span>
-            <span className="text-[12px] px-1.5 py-0.5 rounded-md bg-[var(--stage)] text-[var(--accent)]">
-              {t("synth.langAuto")}
-            </span>
-            <Toggle checked={streaming} onChange={setStreaming} label={t("synth.streaming")} />
-            <div className="ml-auto">
-              <Btn primary busy={busy} onClick={startSynth} disabled={!text.trim()}>
+            <Toggle
+              checked={streaming}
+              onChange={(v) => {
+                setStreaming(v);
+                void c.set("synth_streaming", v);
+              }}
+              label={t("synth.streaming")}
+            />
+            <div className="ml-auto flex items-center gap-2">
+              {busy ? (
+                <Btn onClick={cancelSynth} disabled={cancelling}>
+                  {cancelling ? t("synth.cancelling") : t("synth.cancel")}
+                </Btn>
+              ) : null}
+              <Btn
+                primary
+                busy={busy}
+                onClick={() => void startSynth()}
+                disabled={!text.trim() || !role || !ref}
+              >
                 {busy ? t("synth.synthesizing") : t("synth.synthesize")}
               </Btn>
             </div>
           </div>
-          {progress != null ? (
+
+          {busy || out ? (
             <div className="mt-3">
               <div className="h-[6px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-[var(--ease)]"
-                  style={{ width: `${Math.min(100, progress)}%` }}
+                  className={[
+                    "h-full rounded-full bg-[var(--accent)]",
+                    // 引擎报不出总量，所以这条是「在动」而不是「到了几成」。
+                    busy ? "w-1/3 dock-bar-indeterminate" : "w-full",
+                  ].join(" ")}
                 />
               </div>
               <div className="flex items-center gap-4 mt-2 text-[12px] text-[var(--help)] tabular-nums flex-wrap">
-                <span>{t("synth.progress", { n: Math.round(Math.min(100, progress)) })}</span>
-                {tFirst != null ? (
-                  <span>{t("synth.tFirst", { n: Math.round(streaming ? tFirst * 0.45 : tFirst) })}</span>
-                ) : null}
+                {tFirst != null ? <span>{t("synth.tFirst", { n: tFirst })}</span> : null}
+                {chunks > 0 ? <span>{t("synth.chunks", { n: chunks })}</span> : null}
+                <span>
+                  {t("synth.elapsed", {
+                    n: ((tTotal != null && !busy ? tTotal / 1000 : elapsed) || 0).toFixed(1),
+                  })}
+                </span>
                 {ref ? (
                   <span className="truncate">
-                    {t("synth.usingRef", { name: ref.mood ?? ref.wav, lang: LANG_BADGE[ref.lang] })}
+                    {t("synth.usingRef", { name: ref.wav, lang: langBadge(ref.lang) })}
                   </span>
                 ) : null}
               </div>
+              {out && !busy ? (
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <Btn onClick={togglePlay}>{playing ? t("synth.stop") : t("synth.play")}</Btn>
+                  <Btn onClick={() => void invoke("synth_reveal_output").catch(() => {})}>
+                    {t("synth.openOutDir")}
+                  </Btn>
+                  <span className="text-[11.5px] text-[var(--meta)] truncate min-w-0">{out}</span>
+                </div>
+              ) : null}
             </div>
           ) : null}
-        </div>
-      </Block>
-
-      <Block title={t("synth.batchTitle")} note={t("synth.batchNote")}>
-        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)] max-w-[860px]">
-          {t("synth.batchEmpty")}
         </div>
       </Block>
     </PagePad>
