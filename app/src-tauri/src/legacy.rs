@@ -126,14 +126,18 @@ pub fn open_webui(root: &Path) -> Result<serde_json::Value, String> {
         WEBUI_PORT.to_string(),
         "--noautoopen".into(),
     ];
-    // Same switch the Python shell used: the DirectML build needs --dml or it
-    // falls back to CPU and looks broken on AMD/Intel machines.
+    // Same switch the Python shell used: the legacy A-card build needs --dml or
+    // it falls back to CPU and looks broken. meta 里非 nvidia 系、也不是新 cpu
+    // 变体的旧值，一律按旧 A 卡包对待。
     if config::read(root)
         .get("accel")
         .and_then(|v| v.as_str())
         .map(|s| s.eq_ignore_ascii_case("dml"))
         .unwrap_or(false)
-        || crate::provision::read_package_meta_variant(root).as_deref() == Some("amd")
+        || crate::provision::read_package_meta_variant(root)
+            .as_deref()
+            .map(|v| !v.starts_with("nvidia") && v != "cpu")
+            .unwrap_or(false)
     {
         args.push("--dml".into());
     }

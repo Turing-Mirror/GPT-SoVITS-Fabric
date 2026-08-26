@@ -62,7 +62,7 @@ export function MorePage({
   /**
    * 引擎实际落在哪个后端上。
    *
-   * 后端是自动降级的：CUDA 不可用就退 DirectML，再不行退 CPU。以前这条链路只写
+   * 后端是自动降级的：CUDA 不可用就退 CPU。以前这条链路只写
    * 在 worker 日志里，界面上什么都看不到 —— 用户装的是 N 卡包、机器上插着 N 卡，
    * 实际跑在虚拟显示适配器上，最后报出来的是「显存不足」，跟显卡设置对不上号。
    */
@@ -70,7 +70,6 @@ export function MorePage({
   const backendLabel = backend
     ? ({
         cuda: "CUDA",
-        directml: "DirectML",
         mps: "Metal",
         xpu: "XPU",
         cpu: "CPU",

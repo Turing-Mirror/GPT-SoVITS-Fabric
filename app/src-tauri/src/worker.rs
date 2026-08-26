@@ -332,8 +332,7 @@ pub(crate) fn env_for_runtime(root: &Path) -> HashMap<String, String> {
 /// FASTEST_FIRST 排，换一次驱动、插一块新卡都可能让同一个序号指向另一块卡，
 /// 那样用户选过的设置会莫名其妙失效。
 ///
-/// DirectML（A 卡 / 核显）不认这两个变量，那条路径上这个设置不生效 ——
-/// 界面上写清楚了。
+/// 这套变量只有 CUDA 认；CPU 变体没有多卡可选的问题，界面上写清楚了。
 fn apply_main_gpu(root: &Path, env: &mut HashMap<String, String>) {
     let cfg = crate::config::read(root);
     let idx = cfg.get("main_gpu").and_then(|v| v.as_i64()).unwrap_or(-1);
@@ -343,7 +342,7 @@ fn apply_main_gpu(root: &Path, env: &mut HashMap<String, String>) {
         return;
     }
     // 越界的序号比不设还糟：`CUDA_VISIBLE_DEVICES` 指向不存在的设备时，CUDA 报的
-    // 是 0 个设备，`is_available()` 直接变 false，引擎会静默退到 DirectML 甚至 CPU。
+    // 是 0 个设备，`is_available()` 直接变 false，引擎会静默退到 CPU。
     // 用户看到的是「显存不足」，跟他动过的那个下拉框看不出任何关系。
     //
     // 这种脏序号是真会存在的：早先的列表来自注册表的显示适配器枚举，里面混着已

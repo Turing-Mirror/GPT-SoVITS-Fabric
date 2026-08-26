@@ -802,12 +802,12 @@ fn count_dir(p: &Path) -> u64 {
         .unwrap_or(0)
 }
 
-/// N 卡才谈得上训练。DirectML 后端不支持训练用到的算子，AMD/Intel 上
-/// `train.py` 会退到 CPU —— 那不是「慢一点」，是几百小时。必须在界面上拦住，
-/// 而不是让用户跑一晚上才发现。
+/// N 卡才谈得上训练。CPU 变体跑 `train.py` 不是「慢一点」，是几百小时。
+/// 必须在界面上拦住，而不是让用户跑一晚上才发现。
 fn is_nvidia(root: &Path) -> bool {
     match crate::provision::read_package_meta_variant(root).as_deref() {
-        Some("nvidia") | Some("nvidia50") => true,
+        // nvidia* 一并盖住旧的 50 系专用 meta：那也是 CUDA 包，变体收敛后不再单列。
+        Some(v) if v.starts_with("nvidia") => true,
         Some(_) => false,
         // 没写过 package_meta 就现场看显卡名。
         None => {

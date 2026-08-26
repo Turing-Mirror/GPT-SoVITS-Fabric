@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "未知の言語記号",
     "annot.issue.no_text": "テキストが空",
     "annot.issue.dup": "音声が重複",
-    "annot.openWindow": "別ウィンドウ"
+    "annot.openWindow": "別ウィンドウ",
+    "synthErrNoWorker": "合成コンポーネントがありません（synth_worker.py）。",
+    "synthErrProtocol": "合成コンポーネントのプロトコルが不一致です。アプリを再起動して再試行してください。",
+    "synthErrWorkerGone": "合成エンジンが終了しました。",
+    "synthErrBusy": "合成タスクが実行中です。",
+    "synthErrNoRuntime": "ランタイムが未準備です。初回セットアップのダウンロードを完了してください。",
+    "synthErrNoModel": "モデルファイルが見つかりません：{v0}",
+    "synthErrLoadTimeout": "キャラクターモデルの読み込みがタイムアウトしました。",
+    "synthErrLoadFailed": "キャラクターの読み込みに失敗：{v0}"
   },
   "extras": {
     "engineTitle": "エンジンリソース",

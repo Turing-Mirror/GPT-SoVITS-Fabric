@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "알 수 없는 언어 표기",
     "annot.issue.no_text": "텍스트가 비어 있음",
     "annot.issue.dup": "오디오 중복",
-    "annot.openWindow": "별도 창"
+    "annot.openWindow": "별도 창",
+    "synthErrNoWorker": "합성 구성 요소가 없습니다(synth_worker.py).",
+    "synthErrProtocol": "합성 구성 요소 프로토콜이 일치하지 않습니다. 앱을 다시 시작한 후 재시도하세요.",
+    "synthErrWorkerGone": "합성 엔진이 종료되었습니다.",
+    "synthErrBusy": "이미 합성 작업이 진행 중입니다.",
+    "synthErrNoRuntime": "런타임이 아직 준비되지 않았습니다. 첫 실행 다운로드를 먼저 완료하세요.",
+    "synthErrNoModel": "모델 파일이 없습니다: {v0}",
+    "synthErrLoadTimeout": "캐릭터 모델 로딩 시간이 초과되었습니다.",
+    "synthErrLoadFailed": "캐릭터 로딩 실패: {v0}"
   },
   "extras": {
     "engineTitle": "엔진 리소스",

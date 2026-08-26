@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "code de langue inconnu",
     "annot.issue.no_text": "texte vide",
     "annot.issue.dup": "audio en double",
-    "annot.openWindow": "Fenêtre séparée"
+    "annot.openWindow": "Fenêtre séparée",
+    "synthErrNoWorker": "Composant de synthèse manquant (synth_worker.py).",
+    "synthErrProtocol": "Protocole du composant de synthèse incompatible. Redémarrez l'application et réessayez.",
+    "synthErrWorkerGone": "Le moteur de synthèse s'est arrêté.",
+    "synthErrBusy": "Une tâche de synthèse est déjà en cours.",
+    "synthErrNoRuntime": "Le runtime n'est pas prêt. Terminez d'abord le téléchargement initial.",
+    "synthErrNoModel": "Fichier de modèle manquant : {v0}",
+    "synthErrLoadTimeout": "Délai dépassé lors du chargement du modèle du personnage.",
+    "synthErrLoadFailed": "Échec du chargement du personnage : {v0}"
   },
   "extras": {
     "engineTitle": "Ressources moteur",

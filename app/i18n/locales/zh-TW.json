@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "語種記號不認識",
     "annot.issue.no_text": "文字是空的",
     "annot.issue.dup": "這個音訊出現了兩次",
-    "annot.openWindow": "獨立視窗"
+    "annot.openWindow": "獨立視窗",
+    "synthErrNoWorker": "缺少合成元件（synth_worker.py）。",
+    "synthErrProtocol": "合成元件協定不匹配，請重啟軟體重試。",
+    "synthErrWorkerGone": "合成引擎已退出。",
+    "synthErrBusy": "已有合成任務進行中。",
+    "synthErrNoRuntime": "運行時尚未就緒，請先完成首次引導中的下載步驟。",
+    "synthErrNoModel": "缺少模型檔案：{v0}",
+    "synthErrLoadTimeout": "載入角色模型逾時。",
+    "synthErrLoadFailed": "角色載入失敗：{v0}"
   },
   "extras": {
     "engineTitle": "引擎資源",

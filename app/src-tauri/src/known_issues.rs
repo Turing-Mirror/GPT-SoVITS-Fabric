@@ -26,7 +26,7 @@ pub struct Affects {
     /// "windows" / "macos" / "linux"。空 = 不限。
     #[serde(default)]
     pub os: String,
-    /// status.json 里的 compute_backend，如 "directml"。空 = 不限。
+    /// status.json 里的 compute_backend，如 "cuda"。空 = 不限。
     #[serde(default)]
     pub backend: String,
     /// 显卡名里包含这一段（大小写不敏感）。空 = 不限。

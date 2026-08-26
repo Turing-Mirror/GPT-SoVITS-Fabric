@@ -141,6 +141,16 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("fx_eq_gains".into(), json!([0.0, 0.0, 0.0, 0.0, 0.0]));
     m.insert("fx_eq_preset".into(), json!("flat"));
     m.insert("fx_out_gain_db".into(), json!(0.0));
+    // 合成台（GPT-SoVITS 自己的键）。参数在角色推荐值与用户手调值之间
+    // 由前端合并，这里存的是用户最后用过的那份。
+    m.insert("synth_role".into(), json!(""));
+    m.insert("synth_out_dir".into(), json!(""));
+    m.insert("synth_streaming".into(), json!(true));
+    m.insert("synth_speed".into(), json!(1.0));
+    m.insert("synth_top_k".into(), json!(15));
+    m.insert("synth_top_p".into(), json!(1.0));
+    m.insert("synth_temperature".into(), json!(1.0));
+    m.insert("synth_rep_penalty".into(), json!(1.35));
     // model binding (cold) — written by voice selection, not by the settings
     // page, but the worker expects the keys to exist.
     m.insert("pth_path".into(), json!(""));

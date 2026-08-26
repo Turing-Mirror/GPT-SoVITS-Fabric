@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "语种记号不认识",
     "annot.issue.no_text": "文本是空的",
     "annot.issue.dup": "这个音频出现了两次",
-    "annot.openWindow": "独立窗口"
+    "annot.openWindow": "独立窗口",
+    "synthErrNoWorker": "缺少合成组件（synth_worker.py）。",
+    "synthErrProtocol": "合成组件协议不匹配，请重启软件重试。",
+    "synthErrWorkerGone": "合成引擎已退出。",
+    "synthErrBusy": "已有合成任务在进行中。",
+    "synthErrNoRuntime": "运行时尚未就绪，请先完成首次引导中的下载步骤。",
+    "synthErrNoModel": "缺少模型文件：{v0}",
+    "synthErrLoadTimeout": "加载角色模型超时。",
+    "synthErrLoadFailed": "角色加载失败：{v0}"
   },
   "extras": {
     "engineTitle": "引擎资源",

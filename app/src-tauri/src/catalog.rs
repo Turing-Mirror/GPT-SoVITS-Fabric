@@ -15,7 +15,7 @@ const DEFAULT_RELEASE_TAG: &str = "GSV-runtime";
 /// 清单来源，按顺序试，第一个能解析成对象的就用。
 ///
 /// 第三条以前是 `manifest.json` —— LFS 时代的老清单。**它不是兜底，是个陷阱：**
-/// 里面的 runtime 条目根本没有 url，只有 `runtime\amd\...` 这种本地路径，客户端
+/// 里面的 runtime 条目根本没有 url，只有按变体分的本地路径，客户端
 /// 只好按 lfs 通道拿 sha256 拼出 `/-/lfs/<sha>`；而那批 LFS 对象在 173a573
 /// 清仓时就删干净了，实测那个地址返回 404。也就是说前两条一旦抖一下，用户拿到
 /// 的不是「旧一点的清单」，而是一个下不动的地址。它也没有 app 段，更新检查
@@ -57,12 +57,24 @@ fn normalize_hex_sha(s: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn default_channel(variant: &str) -> &'static str {
-    if variant == "amd" {
-        "lfs"
+/// 运行时变体收敛（DECISIONS.md D3）：只认 nvidia + cpu 两个。
+///
+/// 老客户端可能还缓存着已删除的变体 id（50 系专用包等）：那些本来就是 CUDA
+/// 包，归回 nvidia；其余一切输入折到 cpu —— 折到 nvidia 会把没有 N 卡的人指到
+/// 一个装完也起不来的 6GB 包，而 cpu 谁都能跑。「没有 N 卡的人要有可选项」，
+/// 所以兜底方向选 cpu。
+pub(crate) fn normalize_variant(raw: &str) -> String {
+    let v = raw.trim().to_ascii_lowercase();
+    if v.starts_with("nvidia") {
+        "nvidia".into()
     } else {
-        "release"
+        "cpu".into()
     }
+}
+
+fn default_channel() -> &'static str {
+    // 全部挂 Release 标签。以前的 A 卡包走 LFS 特例，那批对象清仓后特例一并删除。
+    "release"
 }
 
 fn lfs_url(sha: &str) -> String {
@@ -76,20 +88,15 @@ fn release_url(tag: &str, name: &str) -> String {
 /// Embedded fallback when CNB is unreachable (keep in sync with cnb_sources._FALLBACK_RUNTIMES).
 fn fallback_blob(variant: &str) -> Value {
     let (label, version, size, sha, name, channel) = match variant {
-        "amd" => (
-            "AMD/Intel DirectML".to_string(),
+        // CPU 包还没构建（发布仓 cpu.yaml 的 sha 同样空着）。这里不造占位 sha：
+        // 给出约定文件名让 spec 结构合法、URL 拼得出来，sha 留空 —— run_provision
+        // 的 64 位十六进制校验会拒绝安装，等 M0 构建后回填真值。
+        "cpu" => (
+            "CPU".to_string(),
             "2026.07.21",
-            1801268224u64,
-            "5d5e4437c70ac1cf368232829381170d5a88f457eed20d14d35b1ef155dd0274",
-            "runtime-amd-2026.07.21.tar",
-            "lfs",
-        ),
-        "nvidia50" => (
-            crate::i18n::t("s.bf312fa098"),
-            "2026.07.21",
-            6698774016u64,
-            "a828e13e23589447f25b16b9314b6d730a1a7701e973613bc97d80a026102489",
-            "runtime-nvidia50-2026.07.21.tar",
+            0u64,
+            "",
+            "runtime-cpu-2026.07.21.tar",
             "release",
         ),
         _ => (
@@ -208,7 +215,6 @@ pub fn fetch_remote_catalog(timeout_secs: u64) -> Result<Value, String> {
 
 fn normalize_part(
     part: &Value,
-    variant: &str,
     channel: &str,
     release_tag: &str,
 ) -> Option<RuntimePart> {
@@ -231,7 +237,7 @@ fn normalize_part(
         .trim()
         .to_ascii_lowercase();
     if ch != "lfs" && ch != "release" {
-        ch = default_channel(variant).into();
+        ch = default_channel().into();
     }
 
     let mut urls: Vec<String> = Vec::new();
@@ -291,10 +297,7 @@ fn normalize_part(
 }
 
 pub fn parse_spec(variant: &str, data: &Value) -> RuntimeSpec {
-    let mut var = variant.trim().to_ascii_lowercase();
-    if var != "nvidia" && var != "amd" && var != "nvidia50" {
-        var = "nvidia".into();
-    }
+    let var = normalize_variant(variant);
     let runtimes = data.get("runtimes").and_then(|v| v.as_object());
     let mut blob = runtimes
         .and_then(|m| m.get(&var).cloned())
@@ -308,7 +311,7 @@ pub fn parse_spec(variant: &str, data: &Value) -> RuntimeSpec {
     let channel = blob
         .get("channel")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| default_channel(&var))
+        .unwrap_or_else(|| default_channel())
         .to_ascii_lowercase();
     let release_tag = blob
         .get("release_tag")
@@ -320,7 +323,7 @@ pub fn parse_spec(variant: &str, data: &Value) -> RuntimeSpec {
     let mut part = None;
     if let Some(arr) = blob.get("parts").and_then(|v| v.as_array()) {
         for p in arr {
-            if let Some(rp) = normalize_part(p, &var, &channel, &release_tag) {
+            if let Some(rp) = normalize_part(p, &channel, &release_tag) {
                 part = Some(rp);
                 break;
             }
@@ -333,7 +336,7 @@ pub fn parse_spec(variant: &str, data: &Value) -> RuntimeSpec {
                 "sha256": sha,
                 "size_bytes": blob.get("size_bytes").cloned().unwrap_or(Value::Null),
             });
-            part = normalize_part(&p, &var, &channel, &release_tag);
+            part = normalize_part(&p, &channel, &release_tag);
         }
     }
     if part.is_none() {
@@ -342,20 +345,20 @@ pub fn parse_spec(variant: &str, data: &Value) -> RuntimeSpec {
             .get("parts")
             .and_then(|v| v.as_array())
             .and_then(|a| a.first())
-            .and_then(|p| normalize_part(p, &var, &channel, &release_tag));
+            .and_then(|p| normalize_part(p, &channel, &release_tag));
         blob = fb;
     }
     let part = match part {
         Some(p) => p,
         None => {
-            // Last-resort: synthesize from hardcoded nvidia fallback
+            // Last-resort: synthesize from hardcoded nvidia fallback. 这条
+            // expect 是「任何输入都必须产出一个合法 part」的最终保证。
             let fb = fallback_blob("nvidia");
             normalize_part(
                 fb.get("parts")
                     .and_then(|v| v.as_array())
                     .and_then(|a| a.first())
                     .unwrap_or(&fb),
-                "nvidia",
                 "release",
                 DEFAULT_RELEASE_TAG,
             )
@@ -394,8 +397,7 @@ pub fn resolve_runtime_spec(variant: &str, prefer_remote: bool) -> Result<Runtim
     let mut data = serde_json::json!({
         "runtimes": {
             "nvidia": fallback_blob("nvidia"),
-            "amd": fallback_blob("amd"),
-            "nvidia50": fallback_blob("nvidia50"),
+            "cpu": fallback_blob("cpu"),
         }
     });
     if prefer_remote {
@@ -461,5 +463,39 @@ mod tests {
         let u = with_cache_bust("https://example.invalid/index.json?x=1");
         assert!(u.contains("&_="));
         assert!(u.starts_with("https://example.invalid/index.json?x=1&_="));
+    }
+
+    /// D3：变体收敛成 nvidia + cpu。旧 id 与垃圾输入都要落到合法变体上。
+    #[test]
+    fn variants_converge_to_nvidia_and_cpu() {
+        assert_eq!(normalize_variant("nvidia"), "nvidia");
+        assert_eq!(normalize_variant(" NVIDIA "), "nvidia");
+        // 旧的 50 系专用包本来就是 CUDA，归回 nvidia（回归：老客户端可能还传它）。
+        assert_eq!(normalize_variant("NVIDIA50"), "nvidia");
+        // 其余一律折到 cpu：没有 N 卡的人必须始终有一个能跑的选项。
+        assert_eq!(normalize_variant(""), "cpu");
+        assert_eq!(normalize_variant("garbage"), "cpu");
+    }
+
+    /// 兜底约束：任何输入都得产出一个带 URL 的 part —— parse_spec 末尾那条
+    /// expect 依赖它，离线时 provision_status 也靠这个画出体积。
+    #[test]
+    fn fallback_always_yields_a_part_with_urls() {
+        let empty = serde_json::json!({});
+        for v in ["nvidia", "cpu", "legacy-id", "garbage"] {
+            let spec = parse_spec(v, &empty);
+            assert!(!spec.part.urls.is_empty(), "{v}");
+        }
+    }
+
+    /// CPU 包还没构建、兜底 sha 为空：结构必须合法（URL 可拼），但不能拿
+    /// N 卡的包冒充 —— sha 校验那一关要能把它拦下来。
+    #[test]
+    fn cpu_fallback_stays_honest_until_the_build_lands() {
+        let spec = parse_spec("cpu", &serde_json::json!({}));
+        assert_eq!(spec.variant, "cpu");
+        assert_eq!(spec.part.sha256.len(), 0);
+        assert!(spec.part.name.starts_with("runtime-cpu"));
+        assert!(spec.part.urls.iter().all(|u| u.contains("/-/releases/download/")));
     }
 }

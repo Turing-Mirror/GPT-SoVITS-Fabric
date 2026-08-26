@@ -34,9 +34,9 @@ export type EngineStatus = {
   threshold_meter?: number;
   threhold?: number;
   /**
-   * 引擎实际在算的后端：cuda | directml | mps | xpu | cpu。
+   * 引擎实际在算的后端：cuda | mps | xpu | cpu。
    *
-   * 后端是自动降级的，装了 N 卡包也可能落到 DirectML 或 CPU。不摆出来的话，
+   * 后端是自动降级的，装了 N 卡包也可能落到 CPU。不摆出来的话，
    * 用户只会看到「显存不足」之类的现象，没法把它和显卡设置联系起来。
    */
   compute_backend?: string;

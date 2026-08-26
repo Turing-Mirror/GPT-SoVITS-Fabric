@@ -179,10 +179,10 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   const variants: VariantRow[] = useMemo(() => {
     const list = (info.variants || []) as VariantRow[];
     if (list.length > 0) return list;
+    // D3 之后只有两个变体；cpu 的 label 是技术字符串，等语言包任务统一补 key。
     return [
       { id: "nvidia", label: t("s.4c65a5e25e") },
-      { id: "nvidia50", label: t("s.e7a64d4aaf") },
-      { id: "amd", label: "AMD / Intel（DirectML）" },
+      { id: "cpu", label: "CPU" },
     ];
   }, [info.variants]);
 

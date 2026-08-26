@@ -31,6 +31,7 @@ mod separate;
 mod vcredist;
 mod shell_extras;
 mod sts;
+mod synth;
 mod store;
 mod telemetry;
 mod tool_window;
@@ -1033,6 +1034,71 @@ fn sts_default_input(state: State<'_, Mutex<AppState>>) -> Result<String, String
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     sts::remember_input(&root, &dir.to_string_lossy());
     Ok(dir.to_string_lossy().into_owned())
+}
+
+// --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
+
+#[tauri::command]
+fn synth_status(state: State<'_, Mutex<AppState>>) -> Value {
+    let root = root_clone(&state).unwrap_or_else(|_| PathBuf::from("."));
+    json!({
+        "busy": synth::is_busy(),
+        "out_dir": synth::out_dir(&root).to_string_lossy(),
+    })
+}
+
+#[tauri::command]
+fn synth_characters(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    Ok(synth::list_characters(&root))
+}
+
+#[tauri::command]
+async fn synth_start(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    role_id: String,
+    role_dir: String,
+    version: Option<String>,
+    text: String,
+    ref_wav: String,
+    ref_text: String,
+    ref_lang: Option<String>,
+    params: Option<Value>,
+    streaming: Option<bool>,
+) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    let role_dir = PathBuf::from(role_dir.trim());
+    tauri::async_runtime::spawn_blocking(move || {
+        synth::synthesize(
+            &app,
+            &root,
+            role_id.trim(),
+            &role_dir,
+            version.as_deref().unwrap_or("v2ProPlus"),
+            text.trim(),
+            ref_wav.trim(),
+            ref_text.trim(),
+            ref_lang.as_deref().unwrap_or("zh"),
+            params.as_ref().unwrap_or(&json!({})),
+            streaming.unwrap_or(true),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn synth_cancel() {
+    synth::cancel();
+}
+
+#[tauri::command]
+fn synth_reveal_output(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+    let root = root_clone(&state)?;
+    let dir = synth::out_dir(&root);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::shell_extras::reveal(&dir.join("x"))
 }
 
 #[tauri::command]
@@ -2050,6 +2116,11 @@ pub fn run() {
             sts_delete_input,
             sts_reveal_input,
             sts_default_input,
+            synth_status,
+            synth_characters,
+            synth_start,
+            synth_cancel,
+            synth_reveal_output,
             sts_record_start,
             sts_record_stop,
             mic_test_start,

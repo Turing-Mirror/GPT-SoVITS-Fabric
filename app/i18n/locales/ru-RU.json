@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "неизвестный код языка",
     "annot.issue.no_text": "пустой текст",
     "annot.issue.dup": "дубликат аудио",
-    "annot.openWindow": "Отдельное окно"
+    "annot.openWindow": "Отдельное окно",
+    "synthErrNoWorker": "Отсутствует компонент синтеза (synth_worker.py).",
+    "synthErrProtocol": "Несовместимый протокол компонента синтеза. Перезапустите приложение и повторите.",
+    "synthErrWorkerGone": "Модуль синтеза завершился.",
+    "synthErrBusy": "Задача синтеза уже выполняется.",
+    "synthErrNoRuntime": "Среда выполнения не готова. Сначала завершите загрузку при первом запуске.",
+    "synthErrNoModel": "Файл модели отсутствует: {v0}",
+    "synthErrLoadTimeout": "Истекло время загрузки модели персонажа.",
+    "synthErrLoadFailed": "Не удалось загрузить персонажа: {v0}"
   },
   "extras": {
     "engineTitle": "Ресурсы движка",

@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "etiqueta de idioma desconocida",
     "annot.issue.no_text": "texto vacío",
     "annot.issue.dup": "audio duplicado",
-    "annot.openWindow": "Ventana propia"
+    "annot.openWindow": "Ventana propia",
+    "synthErrNoWorker": "Falta el componente de síntesis (synth_worker.py).",
+    "synthErrProtocol": "Protocolo del componente de síntesis no compatible. Reinicie la aplicación e inténtelo de nuevo.",
+    "synthErrWorkerGone": "El motor de síntesis se ha cerrado.",
+    "synthErrBusy": "Ya hay una tarea de síntesis en curso.",
+    "synthErrNoRuntime": "El runtime aún no está listo. Complete primero la descarga inicial.",
+    "synthErrNoModel": "Falta el archivo del modelo: {v0}",
+    "synthErrLoadTimeout": "Tiempo agotado al cargar el modelo del personaje.",
+    "synthErrLoadFailed": "Error al cargar el personaje: {v0}"
   },
   "extras": {
     "engineTitle": "Recursos del motor",

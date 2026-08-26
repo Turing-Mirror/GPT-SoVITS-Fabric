@@ -2156,7 +2156,15 @@
     "annot.issue.odd_lang": "unknown language tag",
     "annot.issue.no_text": "empty text",
     "annot.issue.dup": "duplicate audio",
-    "annot.openWindow": "Own window"
+    "annot.openWindow": "Own window",
+    "synthErrNoWorker": "Synthesis component missing (synth_worker.py).",
+    "synthErrProtocol": "Synthesis component protocol mismatch. Restart the app and try again.",
+    "synthErrWorkerGone": "The synthesis engine has exited.",
+    "synthErrBusy": "A synthesis job is already running.",
+    "synthErrNoRuntime": "Runtime is not ready. Please finish the first-run download first.",
+    "synthErrNoModel": "Model file missing: {v0}",
+    "synthErrLoadTimeout": "Timed out while loading the character model.",
+    "synthErrLoadFailed": "Failed to load the character: {v0}"
   },
   "extras": {
     "engineTitle": "Engine resources",

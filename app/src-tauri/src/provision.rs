@@ -24,25 +24,17 @@ fn cancel_flag() -> Arc<AtomicBool> {
         .clone()
 }
 
-/// nvidia | nvidia50 | amd | unknown
+/// nvidia | cpu | unknown
+///
+/// 上游是纯 PyTorch，只有 CUDA / CPU 两条路（DECISIONS.md D3）：认得出 N 卡就
+/// 推荐 nvidia；识别得到显卡但没有 N 卡，落 cpu —— 谁都能跑的回退项。一块卡
+/// 都问不到才给 unknown，让用户在补全界面自己选。
 pub fn recommend_variant(gpu_names: &[String]) -> (String, String) {
     let joined = gpu_names.join(" | ").to_ascii_lowercase();
     if joined.is_empty() {
         return (
             "unknown".into(),
             crate::i18n::t("s.47c37d6efa"),
-        );
-    }
-    if joined.contains("rtx 50")
-        || joined.contains("rtx50")
-        || joined.contains("5060")
-        || joined.contains("5070")
-        || joined.contains("5080")
-        || joined.contains("5090")
-    {
-        return (
-            "nvidia50".into(),
-            crate::i18n::t("s.8289d5d0bc").replacen("{}", &gpu_names[0], 1),
         );
     }
     if joined.contains("nvidia")
@@ -56,21 +48,13 @@ pub fn recommend_variant(gpu_names: &[String]) -> (String, String) {
             crate::i18n::t("s.3967a4b124").replacen("{}", &gpu_names[0], 1),
         );
     }
-    if joined.contains("amd")
-        || joined.contains("radeon")
-        || joined.contains("intel")
-        || joined.contains("arc")
-        || joined.contains("uhd")
-        || joined.contains("iris")
-    {
-        return (
-            "amd".into(),
-            crate::i18n::t("s.c0b4d5c2f4").replacen("{}", &gpu_names[0], 1),
-        );
-    }
+    // TODO(i18n): 等语言包任务补 key 后替换这条技术文案。
     (
-        "unknown".into(),
-        crate::i18n::t("s.e12d8322af").replacen("{}", &gpu_names.join(", "), 1),
+        "cpu".into(),
+        format!(
+            "检测到非 NVIDIA 显卡：{}，推荐 CPU 运行时",
+            gpu_names[0]
+        ),
     )
 }
 
@@ -96,7 +80,7 @@ pub(crate) fn looks_like_nvidia(name: &str) -> bool {
 /// VR、远程桌面）也照样占位。于是「第 N 个名字带 NVIDIA 的注册表项」和「第 N
 /// 块 CUDA 设备」可以完全对不上号 —— 用户选了列表里的第二块卡，环境变量却指向
 /// 一个不存在的设备，CUDA 直接报 0 设备、`is_available()` 变 false，整个引擎静默
-/// 掉进 DirectML。这不是「选错卡慢一点」，是显卡整块消失。
+/// 掉进 CPU。这不是「选错卡慢一点」，是显卡整块消失。
 pub fn list_nvidia_gpus() -> Vec<String> {
     static NV: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     NV.get_or_init(|| {
@@ -318,10 +302,10 @@ pub fn read_package_meta_variant(root: &Path) -> Option<String> {
 }
 
 fn write_package_meta(root: &Path, variant: &str, label: &str, version: &str) -> Result<(), String> {
-    let (accel, use_dml, summary) = match variant {
-        "amd" => ("dml", true, crate::i18n::t("s.ab31cc9ebb")),
-        "nvidia50" => ("cuda", false, crate::i18n::t("s.083e3aad12")),
-        _ => ("cuda", false, "NVIDIA CUDA Runtime".to_string()),
+    // 变体收敛后只有 nvidia / cpu 两种取值（normalize_variant 保证）。
+    let (accel, summary) = match variant {
+        "cpu" => ("cpu", "CPU Runtime".to_string()),
+        _ => ("cuda", "NVIDIA CUDA Runtime".to_string()),
     };
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -331,7 +315,6 @@ fn write_package_meta(root: &Path, variant: &str, label: &str, version: &str) ->
         "variant": variant,
         "label": label,
         "accel_default": accel,
-        "use_dml": use_dml,
         "summary": summary,
         "runtime_version": version,
         "runtime_source": "cnb_release",
@@ -377,12 +360,12 @@ pub fn provision_status(root: &Path) -> Value {
 
     // Per-variant sizes so the UI can follow the user's selection, not only
     // the recommended package. One catalog fetch is cached for ~5 minutes.
+    // D3 之后只有两个变体；cpu 的 label 是技术字符串，等语言包任务统一补 key。
     let variant_defs = [
         ("nvidia", crate::i18n::t("s.4c65a5e25e")),
-        ("nvidia50", crate::i18n::t("s.e7a64d4aaf")),
-        ("amd", "AMD / Intel（DirectML）".to_string()),
+        ("cpu", "CPU".to_string()),
     ];
-    let mut variants = Vec::with_capacity(3);
+    let mut variants = Vec::with_capacity(variant_defs.len());
     let mut size_hint = 0u64;
     let mut label = recommended.clone();
     let rec_key = if recommended == "unknown" {
@@ -528,10 +511,9 @@ pub fn run_provision(
     cancel_flag().store(false, Ordering::SeqCst);
 
     let result: Result<Value, String> = (|| {
-        let mut var = variant.trim().to_ascii_lowercase();
-        if var != "nvidia" && var != "amd" && var != "nvidia50" {
-            var = "nvidia".to_string();
-        }
+        // 只认 nvidia / cpu（D3）。老前端缓存里的旧 id 在 catalog::normalize_variant
+        // 里归位：CUDA 系回 nvidia，其余落到谁都能跑的 cpu。
+        let var = catalog::normalize_variant(&variant);
 
         if paths::runtime_ready(&root) && !force {
             write_package_meta(&root, &var, &var, "").ok();
@@ -759,6 +741,35 @@ pub fn run_provision(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// D3 之后推荐只有三档：N 卡（含 50 系，不再单列）→ nvidia；
+    /// 识别得到显卡但没有 N 卡 → cpu；一块卡都问不到 → unknown 让用户手选。
+    #[test]
+    fn recommendation_falls_back_to_cpu_without_nvidia() {
+        let g = |names: &[&str]| -> String {
+            recommend_variant(
+                &names.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            )
+            .0
+        };
+        assert_eq!(g(&["NVIDIA GeForce RTX 5090"]), "nvidia");
+        assert_eq!(g(&["NVIDIA GeForce GTX 1660 SUPER"]), "nvidia");
+        assert_eq!(g(&["AMD Radeon RX 7900 XTX", "Intel(R) UHD Graphics 770"]), "cpu");
+        assert_eq!(g(&["Intel(R) Arc(TM) A770"]), "cpu");
+        // 虚拟显示适配器也不是 N 卡，同样落 cpu。
+        assert_eq!(g(&["Parsec Virtual Display Adapter"]), "cpu");
+        assert_eq!(g(&[]), "unknown");
+    }
+
+    /// 归一化和 catalog::parse_spec 共用一套语义：旧 id 不能再绕出第三个变体。
+    #[test]
+    fn provision_accepts_only_the_two_converged_variants() {
+        assert_eq!(catalog::normalize_variant("nvidia"), "nvidia");
+        // 旧 50 系 id 本就是 CUDA 包，归回 nvidia（回归：老前端可能还传它）。
+        assert_eq!(catalog::normalize_variant("NVIDIA50"), "nvidia");
+        assert_eq!(catalog::normalize_variant("cpu"), "cpu");
+        assert_eq!(catalog::normalize_variant("garbage"), "cpu");
+    }
 
     /// 「主显卡」的序号最后是给 `CUDA_VISIBLE_DEVICES` 用的，而 CUDA 只看得见
     /// N 卡。核显或 A 卡混进候选列表，用户选「1」拿到的就不是他看到的那块。
