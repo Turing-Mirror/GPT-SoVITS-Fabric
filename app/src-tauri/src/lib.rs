@@ -3,6 +3,7 @@
 //! Stages 1–4: window/UI, worker bridge, Runtime provision, voice catalog & store.
 
 pub mod catalog;
+mod characters;
 mod annot;
 mod asset_scope;
 mod autostart;
@@ -976,6 +977,29 @@ async fn annot_save(path: String, rows: Vec<annot::Row>) -> Result<Value, String
         .map_err(|e| e.to_string())?
 }
 
+/// 「模型」页 → 导入角色包（`<id>_voice.zip`）。
+///
+/// 对话框留在同步那一侧（原生对话框要主线程），解压落盘搬到后台 ——
+/// 一个带完整数据集的角色包可能上 GB，在 IPC 线程上做会把窗口冻住。
+#[tauri::command]
+async fn role_import_pack(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+    path: Option<String>,
+) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    let zip = match path.filter(|p| !p.trim().is_empty()) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => characters::pick_pack(Some(&window))
+            .into_iter()
+            .next()
+            .ok_or_else(|| crate::i18n::t("s.rolePackCancelled"))?,
+    };
+    tauri::async_runtime::spawn_blocking(move || characters::install_zip(&root, &zip))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn annot_reveal(path: String) -> Result<(), String> {
     shell_extras::reveal_path(&path)
@@ -1755,6 +1779,7 @@ pub fn run() {
             annot_pick,
             annot_load,
             annot_save,
+            role_import_pack,
             annot_reveal,
         ])
         .setup(move |app| {

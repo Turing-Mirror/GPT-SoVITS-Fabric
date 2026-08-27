@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "角色加载失败：{v0}",
     "moreRunStateNoRuntime": "运行时未就绪",
     "moreRunStateBusy": "有任务在跑",
-    "moreRunStateIdle": "空闲"
+    "moreRunStateIdle": "空闲",
+    "roleErrNoConfig": "这个压缩包里没有 config.json，不是角色包。",
+    "roleErrBadConfig": "config.json 解析失败：{}",
+    "roleErrNoName": "config.json 里没有写角色名（name）。",
+    "roleErrMissingWeight": "角色包缺少 {}，装进去也合成不了，已拒收。",
+    "rolePackFilter": "角色包",
+    "rolePackPickTitle": "选择要导入的角色包",
+    "rolePackCancelled": "未选择角色包。"
   },
   "extras": {
     "engineTitle": "引擎资源",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "去广场安装",
     "emptyImport": "导入角色包",
     "fmtTitle": "角色包结构",
-    "fmtTip": "角色包内路径一律相对包根；.list 每行四列以竖线分隔。"
+    "fmtTip": "角色包内路径一律相对包根；.list 每行四列以竖线分隔。",
+    "importDone": "已导入：{v0}。到「合成」页就能选到它了。"
   }
 }

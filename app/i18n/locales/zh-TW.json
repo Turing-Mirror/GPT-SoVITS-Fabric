@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "角色載入失敗：{v0}",
     "moreRunStateNoRuntime": "執行環境未就緒",
     "moreRunStateBusy": "有工作在執行",
-    "moreRunStateIdle": "閒置"
+    "moreRunStateIdle": "閒置",
+    "roleErrNoConfig": "這個壓縮檔裡沒有 config.json，不是角色包。",
+    "roleErrBadConfig": "config.json 解析失敗：{}",
+    "roleErrNoName": "config.json 裡沒有寫角色名稱（name）。",
+    "roleErrMissingWeight": "角色包缺少 {}，裝進去也無法合成，已拒收。",
+    "rolePackFilter": "角色包",
+    "rolePackPickTitle": "選擇要匯入的角色包",
+    "rolePackCancelled": "未選擇角色包。"
   },
   "extras": {
     "engineTitle": "引擎資源",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "去廣場安裝",
     "emptyImport": "匯入角色包",
     "fmtTitle": "角色包結構",
-    "fmtTip": "角色包內路徑一律相對包根；.list 每行四列以豎線分隔。"
+    "fmtTip": "角色包內路徑一律相對包根；.list 每行四列以豎線分隔。",
+    "importDone": "已匯入：{v0}。到「合成」頁就能選到它了。"
   }
 }

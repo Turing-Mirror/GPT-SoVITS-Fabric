@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "Error al cargar el personaje: {v0}",
     "moreRunStateNoRuntime": "Entorno no preparado",
     "moreRunStateBusy": "Hay una tarea en curso",
-    "moreRunStateIdle": "Inactivo"
+    "moreRunStateIdle": "Inactivo",
+    "roleErrNoConfig": "Este archivo no contiene config.json, así que no es un paquete de personaje.",
+    "roleErrBadConfig": "No se pudo analizar config.json: {}",
+    "roleErrNoName": "config.json no indica el nombre del personaje.",
+    "roleErrMissingWeight": "Al paquete le falta {}: no podría sintetizar nada, así que se ha rechazado.",
+    "rolePackFilter": "Paquete de personaje",
+    "rolePackPickTitle": "Elija el paquete de personaje que desea importar",
+    "rolePackCancelled": "No se ha elegido ningún paquete de personaje."
   },
   "extras": {
     "engineTitle": "Recursos del motor",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "Buscar en la Plaza",
     "emptyImport": "Importar paquete",
     "fmtTitle": "Estructura del paquete",
-    "fmtTip": "Rutas relativas a la raíz del paquete; cada línea .list tiene cuatro columnas separadas por barras."
+    "fmtTip": "Rutas relativas a la raíz del paquete; cada línea .list tiene cuatro columnas separadas por barras.",
+    "importDone": "Se ha importado {v0}. Ya está disponible en la página de síntesis."
   }
 }

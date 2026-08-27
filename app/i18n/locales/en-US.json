@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "Failed to load the character: {v0}",
     "moreRunStateNoRuntime": "Runtime not ready",
     "moreRunStateBusy": "A task is running",
-    "moreRunStateIdle": "Idle"
+    "moreRunStateIdle": "Idle",
+    "roleErrNoConfig": "This archive has no config.json, so it is not a character pack.",
+    "roleErrBadConfig": "config.json could not be parsed: {}",
+    "roleErrNoName": "config.json does not give the character a name.",
+    "roleErrMissingWeight": "The pack is missing {} — it could not synthesise anything, so it was refused.",
+    "rolePackFilter": "Character pack",
+    "rolePackPickTitle": "Choose a character pack to import",
+    "rolePackCancelled": "No character pack was chosen."
   },
   "extras": {
     "engineTitle": "Engine resources",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "Browse the Plaza",
     "emptyImport": "Import a pack",
     "fmtTitle": "Pack layout",
-    "fmtTip": "Paths inside a pack are relative to its root; each .list line has four pipe-separated columns."
+    "fmtTip": "Paths inside a pack are relative to its root; each .list line has four pipe-separated columns.",
+    "importDone": "Imported {v0}. It is now available on the Synthesis page."
   }
 }

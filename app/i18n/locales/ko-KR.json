@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "캐릭터 로딩 실패: {v0}",
     "moreRunStateNoRuntime": "런타임 준비 안 됨",
     "moreRunStateBusy": "실행 중인 작업 있음",
-    "moreRunStateIdle": "대기 중"
+    "moreRunStateIdle": "대기 중",
+    "roleErrNoConfig": "이 압축 파일에는 config.json이 없습니다. 캐릭터 팩이 아닙니다.",
+    "roleErrBadConfig": "config.json을 해석하지 못했습니다: {}",
+    "roleErrNoName": "config.json에 캐릭터 이름(name)이 없습니다.",
+    "roleErrMissingWeight": "이 팩에는 {}이(가) 없습니다. 설치해도 합성할 수 없어 거부했습니다.",
+    "rolePackFilter": "캐릭터 팩",
+    "rolePackPickTitle": "가져올 캐릭터 팩 선택",
+    "rolePackCancelled": "캐릭터 팩을 선택하지 않았습니다."
   },
   "extras": {
     "engineTitle": "엔진 리소스",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "광장에서 찾기",
     "emptyImport": "팩 가져오기",
     "fmtTitle": "팩 구조",
-    "fmtTip": "팩 내부 경로는 루트 기준 상대경로. .list는 한 줄에 네 열을 세로 막대로 구분합니다."
+    "fmtTip": "팩 내부 경로는 루트 기준 상대경로. .list는 한 줄에 네 열을 세로 막대로 구분합니다.",
+    "importDone": "{v0}을(를) 가져왔습니다. ‘합성’ 페이지에서 선택할 수 있습니다."
   }
 }

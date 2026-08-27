@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
+import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n/t";
 
 /**
@@ -7,7 +8,10 @@ import { t } from "../i18n/t";
  *
  * 一个「角色」= SoVITS 音色模型 + GPT 韵律模型 + 参考音频集（.list 标注）
  * + 元数据与推荐参数，打包为单个 zip。本页负责导入、管理与导出分享包；
- * 列表数据在 M1 由角色注册表（Rust）提供，当前为空态与导入流程骨架。
+ * 导入走 `role_import_pack`：Rust 侧解压、校验（zip-slip / 体积 / 两份权重
+ * 齐全）后落到 `User_Data/characters/<id>/`，也就是合成台扫的那个目录。
+ *
+ * 下面的角色列表还没接上 `synth_characters`，仍是空态骨架。
  */
 
 function isTauri(): boolean {
@@ -23,13 +27,16 @@ export function ModelsPage({ onOpenPlaza }: { onOpenPlaza?: () => void }) {
       setMsg(t("library.demoImport"));
       return;
     }
-    // M1：invoke("role_import_pack") —— Rust 侧解压校验后写入 User_Data/roles。
     setBusy(true);
     setMsg(t("library.importPending"));
-    window.setTimeout(() => {
+    try {
+      const r = await invoke<{ name?: string }>("role_import_pack");
+      setMsg(t("library.importDone", { v0: String(r?.name ?? "") }));
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
       setBusy(false);
-      setMsg("");
-    }, 1200);
+    }
   }
 
   return (

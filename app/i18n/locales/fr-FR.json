@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "Échec du chargement du personnage : {v0}",
     "moreRunStateNoRuntime": "Environnement non prêt",
     "moreRunStateBusy": "Une tâche est en cours",
-    "moreRunStateIdle": "Inactif"
+    "moreRunStateIdle": "Inactif",
+    "roleErrNoConfig": "Cette archive ne contient pas de config.json : ce n’est pas un pack de personnage.",
+    "roleErrBadConfig": "Impossible d’analyser config.json : {}",
+    "roleErrNoName": "config.json n’indique pas de nom de personnage.",
+    "roleErrMissingWeight": "Il manque {} dans ce pack : il ne pourrait rien synthétiser, il a donc été refusé.",
+    "rolePackFilter": "Pack de personnage",
+    "rolePackPickTitle": "Choisissez le pack de personnage à importer",
+    "rolePackCancelled": "Aucun pack de personnage n’a été choisi."
   },
   "extras": {
     "engineTitle": "Ressources moteur",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "Chercher sur la Place",
     "emptyImport": "Importer un pack",
     "fmtTitle": "Structure d’un pack",
-    "fmtTip": "Chemins relatifs à la racine du pack ; chaque ligne .list comporte quatre colonnes séparées par des barres."
+    "fmtTip": "Chemins relatifs à la racine du pack ; chaque ligne .list comporte quatre colonnes séparées par des barres.",
+    "importDone": "{v0} a été importé. Il est désormais disponible sur la page de synthèse."
   }
 }

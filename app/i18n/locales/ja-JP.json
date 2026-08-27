@@ -972,7 +972,14 @@
     "synthErrLoadFailed": "キャラクターの読み込みに失敗：{v0}",
     "moreRunStateNoRuntime": "ランタイム未準備",
     "moreRunStateBusy": "実行中のタスクあり",
-    "moreRunStateIdle": "待機中"
+    "moreRunStateIdle": "待機中",
+    "roleErrNoConfig": "このアーカイブには config.json がありません。キャラクターパックではありません。",
+    "roleErrBadConfig": "config.json を解析できませんでした：{}",
+    "roleErrNoName": "config.json にキャラクター名（name）が書かれていません。",
+    "roleErrMissingWeight": "このパックには {} がありません。導入しても合成できないため、受け付けませんでした。",
+    "rolePackFilter": "キャラクターパック",
+    "rolePackPickTitle": "読み込むキャラクターパックを選択",
+    "rolePackCancelled": "キャラクターパックが選択されていません。"
   },
   "extras": {
     "engineTitle": "エンジンリソース",
@@ -1214,6 +1221,7 @@
     "emptyGoPlaza": "プラザで探す",
     "emptyImport": "パックを導入",
     "fmtTitle": "パック構成",
-    "fmtTip": "パック内のパスはルート相対。.list は1行4列を縦棒で区切ります。"
+    "fmtTip": "パック内のパスはルート相対。.list は1行4列を縦棒で区切ります。",
+    "importDone": "{v0} を読み込みました。「合成」ページで選べます。"
   }
 }
