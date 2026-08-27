@@ -410,8 +410,6 @@ pub fn status(root: &Path) -> Value {
         "input_device": cfg.get("sg_input_device").and_then(|v| v.as_str()).unwrap_or(""),
         "recorder_present": record_script(root).is_file(),
         "recording": *REC_BUSY.lock().unwrap_or_else(|e| e.into_inner()),
-        // 实时变声是否还占着显存。面板拿它决定要不要先问一句再开转。
-        "worker_alive": crate::worker::is_worker_alive(root),
         "busy": busy,
         // 只在还在跑的时候给，跑完了给一份陈旧进度反而误导。
         "progress": if busy {
@@ -1100,12 +1098,7 @@ fn take_resident(root: &Path) -> Option<Resident> {
 
 /// 一批跑完、进程还活着，放回去等下一次。
 fn keep_resident(mut r: Resident) {
-    // 这中间用户把实时变声开起来了：下一次转换会走热路径，这个进程再留着就
-    // 纯粹是白占显存，还跟实时 worker 抢同一张卡。直接放掉。
-    if crate::worker::is_worker_alive(&r.root) {
-        stop_resident(r);
-        return;
-    }
+
     r.last = std::time::Instant::now();
     let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
     // 理论上此刻 RESIDENT 必然是 None（同一时刻只有一批在跑，BUSY 拦着）。
@@ -1116,233 +1109,6 @@ fn keep_resident(mut r: Resident) {
     }
 }
 
-/// 热路径没跑成的两种情况。
-enum HotError {
-    /// worker 没接住（没应答、模型还没加载好…）。可以退回冷路径重试。
-    Unavailable(String),
-    /// 转换本身失败（音频坏了、显存不够…）。冷路径重来一遍也是同样的结果，
-    /// 白等一分钟不说，还会把已经写出的输出再写一份。直接把错误报给用户。
-    Failed(String),
-}
-
-/// worker 多久没更新 sts.json 就认为这条热路径走不通。
-///
-/// 进度只在片段边界跳（hubert / index / infer 完）。3GB fp32 上一窗
-/// synthesizer 可能要十几秒（diag 26.8.22/3 卡在 infer 10%），20 秒会把
-/// 还活着的转换误判成死了。卡死时必须走 Unavailable（杀进程 + 冷路径），
-/// 走 Failed 的话 worker 命令循环还堵在 convert 里，用户重试就是
-/// `command not claimed`。
-const HOT_STALL_MS: u128 = 90_000;
-/// 发出命令后等第一条进度的宽限。换目标音色时这里要读一个 55MB 的 pth。
-const HOT_FIRST_MS: u128 = 45_000;
-
-/// 让活着的实时 worker 就地把转换跑了。进度轮询 sts.json。
-#[allow(clippy::too_many_arguments)]
-fn run_hot(
-    app: &AppHandle,
-    root: &Path,
-    input: &str,
-    out: &Path,
-    pitch: i32,
-    f0method: &str,
-    index_rate: f64,
-    pth: &str,
-    index: &str,
-    opts: &ConvertOpts,
-    job: &mut StsLog,
-) -> Result<Value, HotError> {
-    crate::protocol::clear_sts(root);
-    let mut payload = serde_json::Map::new();
-    payload.insert("input".into(), json!(input));
-    payload.insert("output".into(), json!(out.to_string_lossy()));
-    payload.insert("model".into(), json!(pth));
-    payload.insert("index".into(), json!(index));
-    payload.insert("pitch".into(), json!(pitch));
-    payload.insert(
-        "f0method".into(),
-        json!(if f0method.trim().is_empty() { "rmvpe" } else { f0method }),
-    );
-    payload.insert("index_rate".into(), json!(index_rate.clamp(0.0, 1.0)));
-    payload.insert("filter_radius".into(), json!(opts.filter_radius));
-    payload.insert("resample_sr".into(), json!(opts.resample_sr));
-    payload.insert("rms_mix_rate".into(), json!(opts.rms_mix_rate));
-    payload.insert("protect".into(), json!(opts.protect));
-    payload.insert("format".into(), json!(opts.format));
-    payload.insert("sid".into(), json!(opts.sid));
-    payload.insert("f0_file".into(), json!(opts.f0_file));
-    let seq = crate::worker::send_command(root, "convert", payload)
-        .map_err(HotError::Unavailable)?;
-
-    let started = std::time::Instant::now();
-    let mut last_change = std::time::Instant::now();
-    let mut last_ts = 0.0_f64;
-    let mut saw_any = false;
-    let mut sent_cancel = false;
-
-    loop {
-        if cancel_flag().load(Ordering::SeqCst) && !sent_cancel {
-            sent_cancel = true;
-            let _ = crate::worker::send_command(root, "sts_cancel", serde_json::Map::new());
-        }
-        let v = crate::protocol::read_sts(root);
-        let ts = v.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
-        if ts > last_ts {
-            last_ts = ts;
-            last_change = std::time::Instant::now();
-            saw_any = true;
-            if let Some(done) = forward_sts_event(app, &v, out, job) {
-                return done;
-            }
-        } else {
-            // worker 死了就别再等了 —— 进程没了 sts.json 也不会再变。
-            if !crate::worker::is_worker_alive(root) {
-                return Err(if saw_any {
-                    HotError::Failed(crate::i18n::t("s.stsHotWorkerGone").into())
-                } else {
-                    HotError::Unavailable("worker exited".into())
-                });
-            }
-            let idle = last_change.elapsed().as_millis();
-            let budget = if saw_any { HOT_STALL_MS } else { HOT_FIRST_MS };
-            if idle > budget {
-                return Err(HotError::Unavailable(if saw_any {
-                    crate::i18n::t("s.stsHotStalled").into()
-                } else {
-                    format!("no progress within {budget}ms (seq={seq})")
-                }));
-            }
-            // 命令还没被认领，说明 worker 忙着别的（比如正在起流）。
-            if !saw_any
-                && started.elapsed().as_millis() > 3_000
-                && crate::protocol::last_cmd_seq(root) < seq
-            {
-                return Err(HotError::Unavailable("command not claimed".into()));
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(120));
-    }
-}
-
-/// 把 worker 写的一条进度转成界面事件。返回 Some(..) 表示这批活结束了。
-fn forward_sts_event(
-    app: &AppHandle,
-    v: &Value,
-    out: &Path,
-    job: &mut StsLog,
-) -> Option<Result<Value, HotError>> {
-    job.event(v);
-    let phase = v.get("phase").and_then(|x| x.as_str()).unwrap_or("");
-    let msg_owned = crate::i18n::t_worker_msg(v);
-    let msg = msg_owned.as_str();
-    let total = v.get("total").and_then(|x| x.as_u64()).unwrap_or(1).max(1);
-    let done = v.get("done").and_then(|x| x.as_u64()).unwrap_or(0);
-    let pct = v
-        .get("pct")
-        .and_then(|x| x.as_u64().or_else(|| x.as_f64().map(|f| f as u64)));
-    let step = v.get("step").and_then(|x| x.as_str());
-    let current = v.get("current").and_then(|x| x.as_u64());
-    let ok_n = v.get("ok").and_then(|x| x.as_u64());
-    let skip_n = v.get("skip").and_then(|x| x.as_u64());
-    let file = v.get("file").and_then(|x| x.as_str());
-
-    match phase {
-        "error" => {
-            // 「热路径接不上」和「转换失败」是两件事，以前都归成 Failed。
-            //
-            // 回退分支（`HotError::Unavailable`）本来就写好了，但只有传输层问题
-            // （worker 退出、命令没被领走）会走到它。worker 自己报的「实时引擎里
-            // 没有已加载的音色」——恰恰是最该回退的那一种——以 phase=error 上来，
-            // 被当成终端错误直接抛给用户，转换就失败了。而常驻模型为空是常态：
-            // 用户开软件直接进语音转换，全程没碰实时变声，rvc 本来就是 None。
-            let hot_unavailable = v
-                .get("hot_unavailable")
-                .and_then(|x| x.as_bool())
-                .unwrap_or(false)
-                || v.get("message_code").and_then(|x| x.as_str())
-                    == Some("sts.hot_unavailable");
-            if hot_unavailable {
-                return Some(Err(HotError::Unavailable(if msg.is_empty() {
-                    "no resident model".to_string()
-                } else {
-                    msg.to_string()
-                })));
-            }
-            return Some(Err(HotError::Failed(if msg.is_empty() {
-                crate::i18n::t("s.stsHotFailed").into()
-            } else {
-                msg.to_string()
-            })));
-        }
-        "cancelled" => {
-            return Some(Err(HotError::Failed(
-                crate::i18n::t("s.a5ffdc95ee").into(),
-            )))
-        }
-        "done" => {
-            let files: Vec<String> = v
-                .get("files")
-                .and_then(|x| x.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let skipped: Vec<Value> = v
-                .get("skipped")
-                .and_then(|x| x.as_array())
-                .cloned()
-                .unwrap_or_default();
-            emit_full(
-                app,
-                "done",
-                total,
-                total,
-                &crate::i18n::t("s.e43ef3d56a"),
-                Some(100),
-                Some("done"),
-                Some(total),
-                Some(files.len() as u64),
-                Some(skipped.len() as u64),
-                None,
-            );
-            return Some(Ok(json!({
-                "ok": true,
-                "files": files,
-                "skipped": skipped,
-                "output": out.to_string_lossy(),
-            })));
-        }
-        "skip" => {
-            let reason = v
-                .get("reason")
-                .and_then(|x| x.as_str())
-                .filter(|s| !s.is_empty())
-                .unwrap_or(msg);
-            emit_full_ex(
-                app, "skip", done, total, msg, pct, step, current, ok_n, skip_n, file,
-                Some(reason),
-            );
-        }
-        _ => {
-            let fallback = crate::i18n::t("s.090840132b");
-            emit_full(
-                app,
-                if phase == "start" { "start" } else { "run" },
-                done,
-                total,
-                if msg.is_empty() { &fallback } else { msg },
-                pct,
-                step,
-                current,
-                ok_n,
-                skip_n,
-                file,
-            );
-        }
-    }
-    None
-}
 
 /// 跑一次转换。阻塞。
 pub fn run(
@@ -1486,47 +1252,8 @@ fn run_inner(
 
     let (pth, index) = resolve_model(root, model_path, index_path)?;
 
-    // 实时 worker 还活着的话，hubert / net_g / rmvpe / faiss 全在它显存里躺着。
-    // 老做法是把它杀掉再起一个新 python 把这四样从盘上重读一遍——一条 5 秒语音
-    // 真正干活一两秒，其余全耗在这上面。现在直接让它兼职把活干了。
-    if crate::worker::is_worker_alive(root) {
-        job.route = "hot";
-        job.trace.note("hot path: reusing live worker models");
-        // 界面上也要说走了哪条路。用户对同一段音频两次转换耗时差二十秒毫无头绪，
-        // 只会得出「这软件时快时慢」——而这条信息本来就在，只是以前只进日志。
-        emit_full(
-            app, "run", 0, 1, &crate::i18n::t("s.stsRouteHot"),
-            Some(0), Some("route"), Some(0), Some(0), Some(0), None,
-        );
-        match run_hot(
-            app, root, input, &out, pitch, f0method, index_rate, &pth, &index, opts, job,
-        ) {
-            Ok(v) => {
-                let stats = crate::paths::clean_temps(root);
-                crate::paths::log_clean_stats(&crate::i18n::t("s.e246e3bafa"), root, &stats);
-                return Ok(v);
-            }
-            Err(HotError::Failed(e)) => return Err(e),
-            Err(HotError::Unavailable(why)) => {
-                // 热路径没接上（worker 半死、模型还没加载好…）。退回冷路径，
-                // 慢是慢，但不能因为提速的那条路没走通就干脆转不了。
-                job.route = "cold";
-                job.trace.note(&format!("hot path unavailable: {why}"));
-                let free_msg = crate::i18n::t("s.stsFreeVram");
-                emit_full(
-                    app, "run", 0, 1, &free_msg, Some(0), Some("free_vram"),
-                    Some(0), Some(0), Some(0), None,
-                );
-                crate::worker::kill_known_workers(root);
-                // 给驱动一点时间把进程显存真正吐回池子；立刻 spawn 下一份 python
-                // 时偶发还能看见「reserved >> free」。3GB 卡上 400ms 有时不够。
-                std::thread::sleep(std::time::Duration::from_millis(700));
-            }
-        }
-    }
-
-    // 走到这里就是冷路径。上一次转换留下的那个 python 还在的话，hubert /
-    // net_g / rmvpe 都还在它显存里 —— 那就不是冷启动，也别拿「约 20 秒」吓人。
+    // 上一次转换留下的那个 python 还在的话，hubert / net_g / rmvpe 都还在
+    // 它显存里 —— 那就不是冷启动，也别拿「约 20 秒」吓人。
     let req = paths::update_cache(root).join("sts_request.json");
     if let Some(p) = req.parent() {
         let _ = std::fs::create_dir_all(p);
@@ -1928,13 +1655,6 @@ mod tests {
         );
         assert_eq!(o.resample_sr, 44100);
         assert_eq!(o.format, "flac");
-    }
-
-    #[test]
-    fn hot_stall_budget_covers_a_low_vram_synthesizer_window() {
-        // 26.8.22/3: 3GB fp32 上一窗 synthesizer 可能 >20s；20_000 会误杀还活着的转换。
-        assert!(HOT_STALL_MS >= 60_000);
-        assert!(HOT_STALL_MS <= HOT_FIRST_MS * 3);
     }
 
     #[test]

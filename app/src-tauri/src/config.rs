@@ -28,84 +28,6 @@ fn lock_files() -> std::sync::MutexGuard<'static, ()> {
     FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Applies live while converting (mirrors `realtime_protocol.HOT_KEYS`).
-pub const HOT_KEYS: &[&str] = &[
-    "pitch",
-    "formant",
-    "index_rate",
-    "rms_mix_rate",
-    "threhold",
-    "in_gain_db",
-    // 变声后的总音量。和 fx_out_gain_db 分开：那个在音效链里，音效关着就不生效。
-    "out_gain_db",
-    "f0method",
-    "I_noise_reduce",
-    "O_noise_reduce",
-    "use_pv",
-    "function",
-    // 变声后的音效链（引擎侧叫 fx）：噪声门 → 压缩器 → 五段 EQ → 输出增益。
-    //
-    // 引擎侧一直支持这些键，只是迁到 Tauri 之后壳层没把它们列进来，于是
-    // 整条链在新界面上消失了 —— 老的 Python 壳有 EQ，新壳没有。全是热键，
-    // 转着的时候能调。
-    "fx_enabled",
-    "fx_gate_enabled",
-    "fx_gate_threshold_db",
-    "fx_gate_release_ms",
-    "fx_gate_hold_ms",
-    "fx_gate_range_db",
-    "fx_comp_enabled",
-    "fx_comp_threshold_db",
-    "fx_comp_ratio",
-    "fx_comp_attack_ms",
-    "fx_comp_release_ms",
-    "fx_comp_makeup_db",
-    "fx_eq_enabled",
-    "fx_eq_gains",
-    "fx_eq_preset",
-    "fx_out_gain_db",
-];
-
-/// Needs stop + start (mirrors `realtime_protocol.COLD_KEYS`).
-pub const COLD_KEYS: &[&str] = &[
-    "pth_path",
-    "index_path",
-    "sg_hostapi",
-    "sg_wasapi_exclusive",
-    "sg_input_device",
-    "sg_output_device",
-    "sr_type",
-    "block_time",
-    "crossfade_length",
-    "extra_time",
-    "n_cpu",
-    // 「变声时监听自己」 and its device. These were in neither list, so
-    // `update()` never set `touched_engine` and `sync_inuse` was never called
-    // for them — the toggle wrote app_config and stopped there. The worker
-    // reads `monitor_enabled` / `monitor_device` out of inuse, so monitoring
-    // could not be switched on at all. Cold because the shell's hot channel
-    // (`engine_set_hot`) has a fixed parameter list with no monitor in it.
-    "monitor_self",
-    "monitor_device",
-    // CUDA Graph 推理加速。冷键：要在模型加载前就定下来，转着的时候切不了。
-    "cuda_graph",
-];
-
-/// Keys the worker consumes — only these are mirrored into `inuse`.
-fn engine_keys() -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = HOT_KEYS.to_vec();
-    v.extend_from_slice(COLD_KEYS);
-    v
-}
-
-pub fn is_hot(key: &str) -> bool {
-    HOT_KEYS.contains(&key)
-}
-
-pub fn is_cold(key: &str) -> bool {
-    COLD_KEYS.contains(&key)
-}
-
 /// Product defaults. Values match the Python shell so a user switching over
 /// does not silently get different audio.
 pub fn defaults() -> Map<String, Value> {
@@ -356,200 +278,21 @@ fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     }
 }
 
-/// True when a string looks like an absolute path (drive letter or UNC).
-fn looks_absolute(s: &str) -> bool {
-    let b = s.as_bytes();
-    (b.len() >= 3 && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/'))
-        || s.starts_with("\\\\")
-        || s.starts_with('/')
-}
 
-/// Windows `canonicalize()` hands back extended-length paths (`\\?\E:\…`).
+/// 合并 patch 并落盘，回新的完整配置，外加「哪些键要等下一次任务才生效」。
 ///
-/// That prefix is invisible to the user and meaningless to the comparison
-/// below, but it makes `strip_prefix(root)` fail — the path looks like it is
-/// outside the install, so it gets blanked. `index_path` is canonicalised in
-/// several places in `voices.rs`, so the index of a perfectly local model was
-/// being thrown away every time inuse was rewritten.
-fn strip_verbatim(p: &str) -> &str {
-    p.strip_prefix(r"\\?\UNC\")
-        .map(|_| p)
-        .unwrap_or_else(|| p.strip_prefix(r"\\?\").unwrap_or(p))
-}
-
-/// 安装目录里的路径存成相对的，让 inuse 不跟这台机器的盘符绑死。
-///
-/// **装在安装目录外面的路径原样保留。** 这里以前是直接抹成空字符串，理由大概是
-/// 「不让 inuse 记住本机布局」，但代价是：音色只要不在安装目录里，写进 inuse 的
-/// `pth_path` 就是空的，worker 拿到空路径 → 报「请选择音色」→ RVC 根本用不了。
-/// 而「音色在别处」是正常情况：用户从别的地方导入的音色，以及训练时选了自定义
-/// 存放目录（`train_output_dir`，可以指到另一个盘）落下来的音色。
-///
-/// 抹掉也解决不了「跟机器绑死」——绝对路径换台机器一样不成立，而空路径连本机
-/// 都用不了。所以保留：本机能用，换机器时用户重选一次音色即可。
-fn sanitize_inuse(root: &Path, m: &mut Map<String, Value>) {
-    let root_s = root.to_string_lossy().to_string();
-    let root_s = strip_verbatim(&root_s).to_string();
-    for key in ["pth_path", "index_path"] {
-        let Some(Value::String(p0)) = m.get(key).cloned() else {
-            continue;
-        };
-        let p = strip_verbatim(&p0).to_string();
-        if !looks_absolute(&p) {
-            continue;
-        }
-        if let Some(rel) = p.strip_prefix(&root_s) {
-            m.insert(
-                key.into(),
-                json!(rel.trim_start_matches(['\\', '/']).to_string()),
-            );
-        } else {
-            // verbatim 前缀（`\\?\E:\…`）要去掉：那是 canonicalize 的产物，
-            // 对用户不可见，留着只会让日志和诊断包里的路径看起来像另一个东西。
-            m.insert(key.into(), json!(p));
-        }
-    }
-}
-
-/// 老版本「无模型实时变声」的开关组。壳侧这条链路已整体拆除：键不再进
-/// schema、不再往 inuse 镜像。但引擎侧的旧状态文件里可能还留着 true，
-/// 不主动摘掉的话，升级后第一次开启会继续走那条已经不存在的链路。
-const RETIRED_VOICE_FX_KEYS: &[&str] = &["dsp_enabled", "dsp_preset", "dsp_params"];
-
-/// 这组键的关闭态。start / set 命令载荷里显式带上，把引擎内存里的旧值压掉
-/// —— 引擎的 gui_config 是常驻的，载荷不覆盖就等于沿用上一次的值。
-pub fn retired_voice_fx_off() -> Map<String, Value> {
-    let mut m = Map::new();
-    m.insert(RETIRED_VOICE_FX_KEYS[0].into(), json!(false));
-    m.insert(RETIRED_VOICE_FX_KEYS[1].into(), json!(""));
-    m.insert(RETIRED_VOICE_FX_KEYS[2].into(), json!({}));
-    m
-}
-
-/// Mirror the engine-relevant subset into `configs/inuse/config.json`.
-pub fn sync_inuse(root: &Path, cfg: &Map<String, Value>) -> Result<(), String> {
-    let path = paths::inuse_config_path(root);
-    let mut out = read_json(&path);
-    for k in engine_keys() {
-        let Some(v) = cfg.get(k) else { continue };
-        // Never let an empty model path overwrite one that is already set:
-        // losing pth_path means the worker starts with no model at all.
-        if matches!(k, "pth_path" | "index_path")
-            && v.as_str().map(str::is_empty).unwrap_or(false)
-            && out.get(k).and_then(|x| x.as_str()).map(|s| !s.is_empty()) == Some(true)
-        {
-            continue;
-        }
-        out.insert(k.to_string(), v.clone());
-    }
-    // The shell calls it `monitor_self`; the worker reads `monitor_enabled`.
-    // Nothing translated between the two, so 「变声时监听自己」 was always
-    // false on the engine side no matter what the settings page showed.
-    out.insert(
-        "monitor_enabled".into(),
-        json!(cfg
-            .get("monitor_self")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)),
-    );
-    // 已拆除链路的残留开关：从 inuse 摘掉，function 里残留的 fx 也折回 vc。
-    for k in RETIRED_VOICE_FX_KEYS {
-        out.remove(*k);
-    }
-    if out.get("function").and_then(|v| v.as_str()) == Some("fx") {
-        out.insert("function".into(), json!("vc"));
-    }
-    sanitize_inuse(root, &mut out);
-    let text = serde_json::to_string_pretty(&Value::Object(out)).map_err(|e| e.to_string())?;
-    write_atomic(&path, &text).map_err(|e| crate::i18n::te("s.4ad9fdccd9", &(e)))
-}
-
-/// 上次选中的音色路径：文件还在才返回。清音色只动 inuse 的 pth，
-/// `last_model*` 留下来，下次开启变声时还能回到这个音色。
-fn last_model_pth(cfg: &Map<String, Value>, root: &Path) -> Option<String> {
-    let raw = cfg
-        .get("last_model_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim();
-    if raw.is_empty() {
-        return None;
-    }
-    let p = std::path::Path::new(raw);
-    let abs = if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        root.join(p)
-    };
-    if abs.is_file() {
-        Some(raw.to_string())
-    } else {
-        None
-    }
-}
-
-/// 开启变声前在锁里再读一次。pth 空了就把上次的音色填回来。
-pub fn prepare_vc_start(root: &Path) -> Result<Map<String, Value>, String> {
-    let _g = lock_files();
-    let mut cfg = read(root);
-    if cfg
-        .get("pth_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .is_empty()
-    {
-        // pth 空：把上次的音色填回去，否则开启变声会直接拒。
-        if let Some(pth) = last_model_pth(&cfg, root) {
-            cfg.insert("pth_path".into(), json!(pth));
-            let mut saved = read_json(&paths::app_config_path(root));
-            saved.insert("pth_path".into(), json!(pth));
-            let text = serde_json::to_string_pretty(&Value::Object(saved))
-                .map_err(|e| e.to_string())?;
-            write_atomic(&paths::app_config_path(root), &text)
-                .map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
-        }
-    }
-    sync_inuse(root, &cfg)?;
-    Ok(cfg)
-}
-
-/// Merge `patch` into the saved config; returns the new effective config plus
-/// which keys need a restart of the stream to take effect.
+/// 以前这里还分 HOT / COLD 两类键，往 `configs/inuse/config.json` 镜像一份，
+/// 再把 HOT 的那批热推给常驻 worker。那整套是 RVC 实时变声的机制 ——
+/// 边说话边改音高不能重开音频流，所以要分冷热。这个产品的合成是一次一个
+/// 进程、参数随请求一起发过去，没有「正在跑的流」可热更新，也就没有冷热之分。
 pub fn update(root: &Path, patch: Map<String, Value>) -> Result<Value, String> {
     let _g = lock_files();
     let mut saved = read_json(&paths::app_config_path(root));
-    let mut hot = Map::new();
     let mut needs_restart: Vec<String> = Vec::new();
-    let mut touched_engine = false;
-    let mut touched_monitor = false;
 
     for (k, v) in patch {
-        if is_hot(&k) {
-            hot.insert(k.clone(), v.clone());
-            touched_engine = true;
-        } else if is_cold(&k) {
-            needs_restart.push(k.clone());
-            touched_engine = true;
-        }
-        if k == "monitor_self" || k == "monitor_device" {
-            touched_monitor = true;
-        }
-        // Keep the leftover `input_device` alias in sync so old fields
-        // stop contradicting what the settings page just wrote.
-        if k == "sg_input_device" {
-            if let Some(s) = v.as_str() {
-                saved.insert("input_device".into(), json!(s));
-            }
-        }
-        if k == "sg_output_device" {
-            if let Some(s) = v.as_str() {
-                saved.insert("output_device".into(), json!(s));
-            }
-        }
-        // 主显卡不是引擎配置键，它改的是 worker 进程的环境变量，所以既不该
-        // 进 inuse（touched_engine），也不能靠 is_cold 拿到重启提示 ——
-        // 但它确实要重开变声才换得过去，提示得补上。
+        // 主显卡改的是 python 进程的环境变量（CUDA_VISIBLE_DEVICES），
+        // 已经在跑的那个进程改不了 —— 得等下一次任务才换得过去，说清楚。
         if k == "main_gpu" {
             needs_restart.push(k.clone());
         }
@@ -566,52 +309,13 @@ pub fn update(root: &Path, patch: Map<String, Value>) -> Result<Value, String> {
         .map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
 
     let cfg = read(root);
-    // Only touch the engine's config file when an engine key actually changed.
-    // The worker may be reading it, and theme / wallpaper / telemetry writes
-    // have no business rewriting it.
-    if touched_engine {
-        sync_inuse(root, &cfg)?;
-    }
-
-    // 监听是唯一「冷键但其实能热切」的东西。worker 的 _worker_apply_hot 早就
-    // 认 monitor_enabled / monitor_device，转着的时候会自己开关监听流；只是
-    // shell 从来没把它推过去，于是用户点完监听要重启变声才生效。
-    //
-    // 仍然留在 COLD_KEYS 里：inuse 得写进去，新起的 worker 才知道该不该监听。
-    // 这里只是额外补一次热推送。
-    if touched_monitor {
-        let mut p = Map::new();
-        p.insert(
-            "monitor_enabled".into(),
-            json!(cfg
-                .get("monitor_self")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)),
-        );
-        p.insert(
-            "monitor_device".into(),
-            json!(cfg
-                .get("monitor_device")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")),
-        );
-        // worker 没起来就算了 —— inuse 已经写好，下次启动自然生效。
-        let _ = crate::worker::set_hot(root, p);
-        needs_restart.retain(|k| k != "monitor_self" && k != "monitor_device");
-    }
-
     Ok(json!({
         "config": Value::Object(cfg),
-        "hot": Value::Object(hot),
         "needs_restart": needs_restart,
     }))
 }
 
-/// 用户明确点「取消当前音色」：把 app_config 和 inuse 里的音色路径一起清掉。
-///
-/// 普通 `sync_inuse` 故意不让空 `pth_path` 覆盖已有值（见
-/// `empty_model_path_never_clobbers_a_real_one`）。这里是用户自己要丢掉音色，
-/// 必须写穿。
+/// 用户明确点「取消当前角色」：把配置里的模型路径清干净。
 pub fn force_clear_model_paths(root: &Path) -> Result<(), String> {
     let _g = lock_files();
     let mut saved = read_json(&paths::app_config_path(root));
@@ -628,15 +332,6 @@ pub fn force_clear_model_paths(root: &Path) -> Result<(), String> {
     write_atomic(&paths::app_config_path(root), &text)
         .map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
 
-    let inuse = paths::inuse_config_path(root);
-    if let Some(parent) = inuse.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let mut out = read_json(&inuse);
-    out.insert("pth_path".into(), json!(""));
-    out.insert("index_path".into(), json!(""));
-    let text = serde_json::to_string_pretty(&Value::Object(out)).map_err(|e| e.to_string())?;
-    write_atomic(&inuse, &text).map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
     Ok(())
 }
 
@@ -789,11 +484,7 @@ pub fn describe() -> Value {
         "general",
         vec!["close_action", "ui_locale", "telemetry_opt_in", "ui_compat_render"],
     );
-    json!({
-        "groups": groups,
-        "hot": HOT_KEYS,
-        "cold": COLD_KEYS,
-    })
+    json!({ "groups": groups })
 }
 
 #[cfg(test)]
@@ -801,296 +492,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_voice_outside_the_install_keeps_its_path() {
-        // 抹成空字符串等于「RVC 用不了」：worker 拿到空 pth 就报「请选择音色」。
-        // 而音色在安装目录外面是正常情况 —— 从别处导入的，或者训练时选了自定义
-        // 存放目录（可以在另一个盘）落下来的。
-        let root = Path::new("C:\\App");
-        let mut m = Map::new();
-        m.insert("pth_path".into(), json!("D:\\Voices\\anon\\anon.pth"));
-        m.insert("index_path".into(), json!("D:\\Voices\\anon\\anon.index"));
-        sanitize_inuse(root, &mut m);
-        assert_eq!(m["pth_path"], json!("D:\\Voices\\anon\\anon.pth"));
-        assert_eq!(m["index_path"], json!("D:\\Voices\\anon\\anon.index"));
-    }
-
-    #[test]
-    fn a_voice_inside_the_install_is_stored_relative() {
-        // 装在安装目录里的仍然存相对路径：换个盘符装同一份安装还能用。
-        let root = Path::new("C:\\App");
-        let mut m = Map::new();
-        m.insert(
-            "pth_path".into(),
-            json!("C:\\App\\User_Data\\models\\anon\\anon.pth"),
-        );
-        sanitize_inuse(root, &mut m);
-        assert_eq!(
-            m["pth_path"],
-            json!("User_Data\\models\\anon\\anon.pth")
-        );
-    }
-
-    #[test]
-    fn a_verbatim_prefix_is_stripped_either_way() {
-        // canonicalize 会吐 `\\?\…`，对用户不可见，别让它进 inuse 和诊断包。
-        let root = Path::new("C:\\App");
-        let mut m = Map::new();
-        m.insert("pth_path".into(), json!(r"\\?\D:\Voices\a.pth"));
-        m.insert(
-            "index_path".into(),
-            json!(r"\\?\C:\App\User_Data\models\a\a.index"),
-        );
-        sanitize_inuse(root, &mut m);
-        assert_eq!(m["pth_path"], json!("D:\\Voices\\a.pth"));
-        assert_eq!(
-            m["index_path"],
-            json!("User_Data\\models\\a\\a.index")
-        );
-    }
-
-    #[test]
-    fn leftover_input_device_fills_empty_sg_key() {
-        let mut m = Map::new();
-        m.insert("input_device".into(), json!("麦克风 (Realtek(R) Audio)"));
-        m.insert("sg_input_device".into(), json!(""));
-        let notes = apply_device_alias(&mut m);
-        assert_eq!(m["sg_input_device"], json!("麦克风 (Realtek(R) Audio)"));
-        assert!(notes.iter().any(|n| n.contains("←")));
-    }
-
-    #[test]
-    fn leftover_input_device_does_not_override_broadcast() {
-        let mut m = Map::new();
-        m.insert("input_device".into(), json!("麦克风 (Realtek(R) Audio)"));
-        m.insert("sg_input_device".into(), json!("麦克风 (NVIDIA Broadcast)"));
-        let notes = apply_device_alias(&mut m);
-        assert_eq!(m["sg_input_device"], json!("麦克风 (NVIDIA Broadcast)"));
-        assert!(notes.iter().any(|n| n.contains("engine uses sg_")));
-    }
-
-    #[test]
-    fn hot_and_cold_do_not_overlap() {
-        for k in HOT_KEYS {
-            assert!(!COLD_KEYS.contains(k), "{k} in both sets");
-        }
-    }
-
-    #[test]
-    fn monitor_toggle_reaches_the_worker() {
-        // 语言是进程级全局状态，别的测试改了会让这里的 t() 前后取到两种语言。
-        let _g = crate::i18n::testing::pin("zh-CN");
-        // The settings page writes `monitor_self`; the worker only ever looks
-        // at `monitor_enabled`. If this mapping goes missing again,
-        // 「变声时监听自己」 silently does nothing.
-        let root = crate::testutil::scratch("monitor-sync-test");
-        let _ = std::fs::remove_dir_all(&root);
-        let mut cfg = defaults();
-        cfg.insert("monitor_self".into(), json!(true));
-        cfg.insert("monitor_device".into(), json!(crate::i18n::t("s.a593781b23")));
-        sync_inuse(&root, &cfg).unwrap();
-
-        let out = read_json(&paths::inuse_config_path(&root));
-        assert_eq!(out.get("monitor_enabled"), Some(&json!(true)));
-        assert_eq!(out.get("monitor_device"), Some(&json!(crate::i18n::t("s.a593781b23"))));
-
-        cfg.insert("monitor_self".into(), json!(false));
-        sync_inuse(&root, &cfg).unwrap();
-        let out = read_json(&paths::inuse_config_path(&root));
-        assert_eq!(out.get("monitor_enabled"), Some(&json!(false)));
+    fn ui_locale_is_written_through() {
+        let root = crate::testutil::scratch("cfg-locale");
+        std::fs::create_dir_all(crate::paths::user_data(&root)).unwrap();
+        let mut p = Map::new();
+        p.insert("ui_locale".into(), json!("ja-JP"));
+        let out = update(&root, p).unwrap();
+        assert_eq!(out["config"]["ui_locale"], json!("ja-JP"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// 主显卡改的是进程环境变量，跑着的那个进程改不了。改完必须告诉用户
+    /// 「下次任务才生效」—— 不提示的话用户改完毫无反应，只会以为功能坏了。
     #[test]
-    fn monitor_keys_force_an_inuse_write() {
-        // `update()` only touches inuse when a key is hot or cold. Monitoring
-        // was in neither list, so the toggle never got as far as the engine.
-        assert!(is_cold("monitor_self"));
-        assert!(is_cold("monitor_device"));
-    }
-
-    #[test]
-    fn verbatim_prefixed_paths_survive_sanitize() {
-        // Windows canonicalize() 返回 \\?\ 开头的扩展长度路径，voices.rs 里
-        // index 全是这么来的。以前 strip_prefix(root) 匹配不上，于是本机模型的
-        // 检索库每次重写 inuse 都被清空 —— 用户看到的是「检索库没了」。
-        let root = Path::new(r"E:\Dev\RVC-Fabric");
-        let mut m = Map::new();
-        m.insert(
-            "pth_path".into(),
-            json!(r"\\?\E:\Dev\RVC-Fabric\User_Data\models\anon\anon.pth"),
-        );
-        m.insert(
-            "index_path".into(),
-            json!(r"\\?\E:\Dev\RVC-Fabric\User_Data\models\anon\a.index"),
-        );
-        sanitize_inuse(root, &mut m);
-        assert_eq!(
-            m["pth_path"],
-            json!(r"User_Data\models\anon\anon.pth"));
-        assert_eq!(m["index_path"], json!(r"User_Data\models\anon\a.index"));
-    }
-
-    #[test]
-    fn verbatim_paths_outside_the_install_keep_working() {
-        // 这条原来叫 `..._are_still_dropped`，断言别的盘上的路径被清成空。
-        // 本次刻意反转了那个决定：清空的代价是「RVC 直接用不了」，而绝对路径
-        // 换台机器本来也不成立 —— 清空只是额外把本机也弄坏。verbatim 前缀仍要
-        // 去掉，它是 canonicalize 的产物，对用户不可见。
-        let root = Path::new(r"E:\Dev\RVC-Fabric");
-        let mut m = Map::new();
-        m.insert("pth_path".into(), json!(r"\\?\L:\somebody-else\x.pth"));
-        sanitize_inuse(root, &mut m);
-        assert_eq!(m["pth_path"], json!(r"L:\somebody-else\x.pth"));
-    }
-
-    #[test]
-    fn absolute_paths_are_detected() {
-        assert!(looks_absolute("L:\\My Project\\a.pth"));
-        assert!(looks_absolute("C:/x/y.index"));
-        assert!(looks_absolute("\\\\server\\share\\a"));
-        assert!(!looks_absolute("User_Data/models/anon/a.pth"));
-        assert!(!looks_absolute(""));
-    }
-
-    #[test]
-    fn inuse_relativises_local_paths_and_keeps_foreign_ones() {
-        // 原名 `inuse_strips_foreign_absolute_paths`，断言外部路径被清空 ——
-        // 同上，那个决定本次反转了。安装目录里的仍然转相对（保住可搬迁）。
-        let root = Path::new("C:\\App");
-        let mut m = Map::new();
-        m.insert("pth_path".into(), json!("Z:\\somewhere\\anon.pth"));
-        m.insert("index_path".into(), json!("C:\\App\\User_Data\\a.index"));
-        sanitize_inuse(root, &mut m);
-        assert_eq!(m["pth_path"], json!("Z:\\somewhere\\anon.pth"));
-        assert_eq!(m["index_path"], json!("User_Data\\a.index"));
-    }
-
-    #[test]
-    fn force_clear_model_paths_writes_empty_into_inuse() {
-        let root = crate::testutil::scratch("force-clear-model");
+    fn main_gpu_asks_to_wait_for_the_next_run() {
+        let root = crate::testutil::scratch("cfg-gpu");
+        std::fs::create_dir_all(crate::paths::user_data(&root)).unwrap();
+        let mut p = Map::new();
+        p.insert("main_gpu".into(), json!(1));
+        let out = update(&root, p).unwrap();
+        let nr = out["needs_restart"].as_array().unwrap();
+        assert!(nr.iter().any(|v| v == "main_gpu"), "{nr:?}");
         let _ = std::fs::remove_dir_all(&root);
-        let inuse = root.join("configs").join("inuse");
-        let user = crate::paths::user_data(&root);
-        std::fs::create_dir_all(&inuse).unwrap();
-        std::fs::create_dir_all(&user).unwrap();
-        std::fs::write(
-            inuse.join("config.json"),
-            r#"{"pth_path":"User_Data/models/anon/anon.pth","index_path":"a.index"}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            crate::paths::app_config_path(&root),
-            r#"{"pth_path":"User_Data/models/anon/anon.pth","last_model":"anon.pth"}"#,
-        )
-        .unwrap();
+    }
 
+    /// 外观、语言这些跟引擎无关的键不该带出「要重来一次」的提示。
+    #[test]
+    fn a_cosmetic_key_never_asks_to_wait() {
+        let root = crate::testutil::scratch("cfg-theme");
+        std::fs::create_dir_all(crate::paths::user_data(&root)).unwrap();
+        let mut p = Map::new();
+        p.insert("theme_mode".into(), json!("dark"));
+        let out = update(&root, p).unwrap();
+        assert!(out["needs_restart"].as_array().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 用户点「取消当前角色」之后，配置里不能再留着上一个模型的任何路径 ——
+    /// 留一条，下一次合成就会悄悄用回那个角色。
+    #[test]
+    fn clearing_the_model_leaves_no_path_behind() {
+        let root = crate::testutil::scratch("cfg-clear");
+        std::fs::create_dir_all(crate::paths::user_data(&root)).unwrap();
+        let mut p = Map::new();
+        p.insert("pth_path".into(), json!("D:/x/a.pth"));
+        p.insert("last_model".into(), json!("角色甲"));
+        update(&root, p).unwrap();
         force_clear_model_paths(&root).unwrap();
-
-        let after = read_json(&paths::inuse_config_path(&root));
-        assert_eq!(after["pth_path"], json!(""));
-        assert_eq!(after["index_path"], json!(""));
-        let app = read_json(&paths::app_config_path(&root));
-        assert_eq!(app["pth_path"], json!(""));
-        assert_eq!(app["last_model"], json!(""));
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn empty_model_path_never_clobbers_a_real_one() {
-        // The shell rewrites inuse from app_config at startup. If app_config
-        // has not caught up yet, an empty pth_path must not wipe the model the
-        // worker is actually using.
-        let root = crate::testutil::scratch("inuse-guard");
-        let inuse = root.join("configs").join("inuse");
-        std::fs::create_dir_all(&inuse).unwrap();
-        std::fs::write(
-            inuse.join("config.json"),
-            r#"{"pth_path":"User_Data/models/anon/anon.pth","index_path":"a.index"}"#,
-        )
-        .unwrap();
-
-        let mut cfg = defaults(); // pth_path / index_path default to ""
-        cfg.insert("pitch".into(), json!(5));
-        sync_inuse(&root, &cfg).unwrap();
-
-        let after = read_json(&paths::inuse_config_path(&root));
-        assert_eq!(
-            after["pth_path"], json!("User_Data/models/anon/anon.pth"),
-            "empty default must not clear the selected model"
-        );
-        assert_eq!(after["pitch"], json!(5), "other keys still sync");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// 老版本留下的特效开关组：sync_inuse 必须把它们从 inuse 里摘掉，
-    /// function 里残留的 fx 也要折回 vc。不摘的话，升级前用过「纯特效」的
-    /// 用户升级后第一次开启会继续走那条已经拆除的链路。
-    #[test]
-    fn retired_switches_are_scrubbed_from_inuse() {
-        let root = crate::testutil::scratch("retired-scrub");
-        let _ = std::fs::remove_dir_all(&root);
-        let inuse = root.join("configs").join("inuse");
-        std::fs::create_dir_all(&inuse).unwrap();
-        std::fs::write(
-            inuse.join("config.json"),
-            r#"{"pth_path":"User_Data/models/anon/anon.pth","function":"fx"}"#,
-        )
-        .unwrap();
-        let mut cfg = defaults();
-        // 老配置里可能还存着 fx；read() 会把它原样带回来。
-        cfg.insert("function".into(), json!("fx"));
-        sync_inuse(&root, &cfg).unwrap();
-
-        let after = read_json(&paths::inuse_config_path(&root));
-        for k in RETIRED_VOICE_FX_KEYS {
-            assert!(!after.contains_key(*k), "{k} 必须从 inuse 里摘掉");
+        let cfg = read(&root);
+        for k in ["pth_path", "last_model", "last_model_name", "last_model_path"] {
+            assert_eq!(cfg[k], json!(""), "{k} 没清干净");
         }
-        assert_eq!(after["function"], json!("vc"), "残留的 fx 必须折回 vc");
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// 「主显卡」是个特例：它不是引擎配置键，改的是 worker 进程的环境变量。
-    ///
-    /// 所以它既不能进 COLD_KEYS（那会把一个 worker 根本不读的键写进 inuse），
-    /// 又必须给出重启提示 —— 换卡不重开变声是换不过去的。以前有人顺手把这类
-    /// 键塞进 COLD_KEYS 或者干脆忘了提示，用户改完毫无反应，只会以为功能坏了。
+    /// 设置页照着 describe() 的分组渲染。分组里出现一个 defaults() 没有的键，
+    /// 那一格就是空的 —— 所以两边必须对得上。
     #[test]
-    fn main_gpu_asks_for_a_restart_without_pretending_to_be_an_engine_key() {
-        assert!(!is_hot("main_gpu"));
-        assert!(!is_cold("main_gpu"));
-        assert!(!engine_keys().contains(&"main_gpu"));
-
-        let root = crate::testutil::scratch("main-gpu-test");
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-
-        let mut patch = Map::new();
-        patch.insert("main_gpu".into(), json!(1));
-        let out = update(&root, patch).unwrap();
-
-        let restart = out["needs_restart"].as_array().unwrap();
-        assert!(
-            restart.iter().any(|v| v == "main_gpu"));
-        assert_eq!(out["config"]["main_gpu"], json!(1));
-
-        // 不是引擎键，就不该顺手去改引擎的配置文件 —— worker 可能正在读它。
-        assert!(
-            !paths::inuse_config_path(&root).is_file());
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn main_gpu_defaults_to_auto() {
-        // -1 才是「自动」。写成 0 的话所有单卡用户会被静默钉在 0 号卡上，
-        // 表面看不出区别，出问题时也查不到。
-        assert_eq!(defaults()["main_gpu"], json!(-1));
-    }
-
-    #[test]
-    fn defaults_cover_every_engine_key() {
+    fn every_described_key_has_a_default() {
         let d = defaults();
-        for k in engine_keys() {
-            assert!(d.contains_key(k), "default missing for {k}");
+        let desc = describe();
+        for (group, keys) in desc["groups"].as_object().unwrap() {
+            for k in keys.as_array().unwrap() {
+                let k = k.as_str().unwrap();
+                assert!(d.contains_key(k), "{group} 里的 {k} 没有默认值");
+            }
         }
     }
 }

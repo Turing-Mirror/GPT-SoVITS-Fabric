@@ -742,9 +742,6 @@ pub fn select_voice(root: &Path, path: &str, dir: &str, name: &str) -> Result<Va
         overlay_keys_from_value(&m, PROFILE_VOICE_KEYS, &mut cfg);
     }
 
-    // 选了音色就回到变声链路：function 折回 vc。
-    cfg.insert("function".into(), json!("vc"));
-
     save_app_config(root, &cfg)?;
 
     // Sync engine inuse config if present
@@ -753,8 +750,6 @@ pub fn select_voice(root: &Path, path: &str, dir: &str, name: &str) -> Result<Va
         m.get("path").and_then(|v| v.as_str()).unwrap_or(""),
         m.get("index").and_then(|v| v.as_str()).unwrap_or(""),
     );
-    let _ = crate::config::sync_inuse(root, &cfg);
-
     Ok(json!({
         "ok": true,
         "model": m,
@@ -765,15 +760,13 @@ pub fn select_voice(root: &Path, path: &str, dir: &str, name: &str) -> Result<Va
     }))
 }
 
-/// 丢掉当前选中的音色。
+/// 丢掉当前选中的角色。
 ///
-/// `sync_inuse` 不会把空 pth 写进 inuse，所以必须走 force_clear。
+/// 合成是一次一个进程，下一次读的就是这份配置 —— 清掉即生效，
+/// 不存在「还有个常驻进程攥着旧模型」的情况。
 pub fn clear_voice(root: &Path) -> Result<Value, String> {
     crate::config::force_clear_model_paths(root)?;
-    // 正在变声的话，还得让引擎当场把 RVC 放掉 —— 光清配置只改了下次开启。
-    // 没在跑就是 Err，那时候本来也没什么要热更新的。
-    let dropped = crate::worker::drop_model(root).is_ok();
-    Ok(json!({ "ok": true, "dropped": dropped }))
+    Ok(json!({ "ok": true }))
 }
 
 /// Persist the selected model.
@@ -2355,9 +2348,7 @@ mod tests {
     }
 
     fn scratch(tag: &str) -> PathBuf {
-        let p = crate::testutil::scratch("prof");
-        let _ = std::fs::remove_dir_all(&p);
-        p
+        crate::testutil::scratch(tag)
     }
 
     #[test]

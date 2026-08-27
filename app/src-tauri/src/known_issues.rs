@@ -121,15 +121,13 @@ pub fn matches(e: &Entry, m: &Machine) -> bool {
 }
 
 pub fn machine(root: &Path) -> Machine {
-    let status = crate::protocol::read_status(root);
+    // 后端不再有常驻引擎可问（status.json 随实时链路一起没了）。已知问题表里
+    // 按后端筛的条目本来就只有 DirectML 那一类，而这个产品只出 nvidia + cpu，
+    // 所以按「装的是哪个变体」来判就够，而且这个值任何时候都读得到。
     Machine {
         version: crate::update::APP_VERSION.to_string(),
         os: std::env::consts::OS.to_string(),
-        backend: status
-            .get("compute_backend")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+        backend: crate::provision::read_package_meta_variant(root).unwrap_or_default(),
         gpus: crate::provision::list_gpus(),
         asio: crate::crash::asio_drivers(),
     }

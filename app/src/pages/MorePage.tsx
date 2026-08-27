@@ -6,7 +6,6 @@ import { MainGpuPicker, MAIN_GPU_AUTO, mainGpuTip } from "../components/MainGpuP
 import { openExternal } from "../lib/plaza";
 import { allLinks } from "../lib/links";
 import { tip } from "../lib/glossary";
-import { statusTitle } from "../lib/engine";
 import type { EngineStatus, ProvisionStatus } from "../lib/engine";
 import { t } from "../i18n/t";
 import { askConfirm } from "../lib/webDialog";
@@ -243,14 +242,15 @@ export function MorePage({
     };
   }, []);
 
-  const delay = Number(status?.real_delay_ms || status?.delay_ms || 0);
-  const infer = Number(status?.infer_ms || 0);
-  const latency =
-    status?.state === "running"
-      ? t("s.4461ca9594", { v0: delay, v1: infer })
-      : status?.worker_alive
-        ? t("s.1a0db8dc43")
-        : "—";
+  // 「往返延迟」那一行随实时链路一起没了：这个产品合成出来的是文件，
+  // 没有音频流，也就没有延迟可报。剩下能如实说的只有「现在有没有活在跑」。
+  const runState = !status
+    ? "—"
+    : status.runtime_ready === false
+      ? t("s.moreRunStateNoRuntime")
+      : status.state === "busy"
+        ? t("s.moreRunStateBusy")
+        : t("s.moreRunStateIdle");
 
   const gpus = provision?.gpus?.length
     ? provision.gpus.join(" · ")
@@ -357,16 +357,7 @@ export function MorePage({
           />
           <ListItem
             title={t("s.fbb8ddd570")}
-            right={
-              <span className="text-[13.5px] text-[var(--ink-muted)]">
-                {status ? statusTitle(status) : "—"}
-                {status?.pid ? ` · pid ${status.pid}` : ""}
-              </span>
-            }
-          />
-          <ListItem
-            title={t("s.746fcbb99c")}
-            right={<span className="text-[13.5px] text-[var(--ink-muted)]">{latency}</span>}
+            right={<span className="text-[13.5px] text-[var(--ink-muted)]">{runState}</span>}
           />
         </Group>
       </Block>

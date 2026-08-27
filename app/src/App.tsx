@@ -246,6 +246,33 @@ export default function App() {
   const [langGateChecked, setLangGateChecked] = useState(false);
 
   const engine = useEngine();
+
+  /**
+   * 合成跑起来 / 跑完的次数。
+   *
+   * RVC 那边统计邀请、关注邀请、首次引导挂的都是实时变声的 running 从真变假；
+   * GPT-SoVITS 没有实时链路，running 永远是假，照抄过来的结果是这三样东西
+   * 一次都不会发生。这里改挂 synth 的事件 —— 对这个产品来说，
+   * 「一段文本合成完」才是用户真正拿到东西的那一刻。
+   */
+  const [synthDone, setSynthDone] = useState(0);
+  /** 用户主动开跑过几次（不论成败）。首次引导挂这个。 */
+  const [synthStarts, setSynthStarts] = useState(0);
+  useEffect(() => {
+    let disposed = false;
+    const offs: Array<() => void> = [];
+    const add = async (event: string, fn: () => void) => {
+      const un = await listen(event, fn);
+      if (disposed) un();
+      else offs.push(un);
+    };
+    void add("synth-chunk", () => setSynthStarts((n) => (n === 0 ? 1 : n)));
+    void add("synth-done", () => setSynthDone((n) => n + 1));
+    return () => {
+      disposed = true;
+      offs.forEach((f) => f());
+    };
+  }, []);
   const plaza = usePlaza();
   const { refreshProvision } = engine;
 
@@ -310,7 +337,7 @@ export default function App() {
   // Ask only after the user has actually got value out of the product —
   // 60 s of clean conversion — not at first launch.
   useEffect(() => {
-    if (!engine.running) return;
+    if (synthDone === 0) return;
     let timer: number | null = null;
     let cancelled = false;
     void (async () => {
@@ -324,7 +351,7 @@ export default function App() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [engine.running]);
+  }, [synthDone]);
 
   const answerTelemetry = async (yes: boolean) => {
     setAskTelemetry(false);
@@ -332,18 +359,15 @@ export default function App() {
     if (yes) void invoke("telemetry_tick").catch(() => {});
   };
 
-  // 「喜欢的话关注一下」——攒够 FOLLOW_AFTER_RUNS 次变声之后问一次。
+  // 「喜欢的话关注一下」——攒够 FOLLOW_AFTER_RUNS 次合成之后问一次。
   //
-  // 数的是**完成**的次数（开启→停止算一次），不是点了几次开启：起了又立刻
-  // 报错停掉的不该算数，那种时候用户正在烦躁，问他要不要关注是最糟的时机。
+  // 数的是**跑完**的次数，不是点了几次开始：开跑就报错的不该算数，那种时候
+  // 用户正在烦躁，问他要不要关注是最糟的时机。
   const [askFollow, setAskFollow] = useState(false);
   // 有二维码的社媒（QQ 群）点开的是图片，不是外链。
   const [qr, setQr] = useState<{ src: string; label: string } | null>(null);
-  const wasRunning = useRef(false);
   useEffect(() => {
-    const was = wasRunning.current;
-    wasRunning.current = engine.running;
-    if (!was || engine.running) return; // 只在 running: true → false 那一下计数
+    if (synthDone === 0) return;
     void (async () => {
       try {
         const cfg = await invoke<Record<string, unknown>>("config_get");
@@ -355,21 +379,20 @@ export default function App() {
         /* 配置读不到就算了，这不是要紧事 */
       }
     })();
-  }, [engine.running]);
+  }, [synthDone]);
 
-  // 第一次点「开启变声」时问一句要不要先看说明。
+  // 第一次开跑合成时问一句要不要先看说明。
   //
-  // 挂在 engine.userStarts 上，不是 engine.starting。starting 在开机预热引擎、
-  // 导入推理库的时候也会为真，界面上根本没人按过东西 —— 挂在它上面的结果是
-  // 软件一启动就弹说明，用户报的就是这个。userStarts 只在 toggleRun 真的走
-  // 开启分支时才加，是「有人按了那个按钮」的唯一凭据。
+  // 挑「刚出第一段声音」而不是「全部跑完」：合成要等一会儿，那段时间用户
+  // 本来就在等，是唯一不打扰人的空档；跑完他正要去听结果，这时候拦一下最讨嫌。
   //
-  // 挑开启的那一刻而不是 running：引擎起来要好几秒，那几秒用户本来就在等，
-  // 是唯一不打扰人的空档；等 running 了他已经在说话了。
+  // 判据是引擎发出的 synth-chunk，也就是活真的起来了 —— 不是按钮被按了。
+  // 按下去到起来之间还有一道模型/运行时检查，卡在那儿的人不该收到
+  // 一句「要不要看说明」。
   const [askGuide, setAskGuide] = useState(false);
   const guideAsked = useRef(false);
   useEffect(() => {
-    if (engine.userStarts === 0 || guideAsked.current) return;
+    if (synthStarts === 0 || guideAsked.current) return;
     guideAsked.current = true;
     void (async () => {
       try {
@@ -379,7 +402,7 @@ export default function App() {
         /* 配置读不到就算了，这不是要紧事 */
       }
     })();
-  }, [engine.userStarts]);
+  }, [synthStarts]);
 
   // 「转到说明页」和「不了」都算表过态，都不再问第二次。
   const closeGuide = (toHelp: boolean) => {
@@ -684,10 +707,6 @@ export default function App() {
             case "settings":
               return (
                 <SettingsPage
-                  status={deviceStatus as never}
-                  onReloadDevices={() => void engine.reloadDevices()}
-                  devicesBusy={engine.devicesBusy}
-                  workerAlive={Boolean(engine.status.worker_alive)}
                   onCheckUpdate={() => void checkUpdate()}
                   updateLine={updateLine}
                   updateBusy={updateBusy}

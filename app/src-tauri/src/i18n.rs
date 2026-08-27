@@ -429,59 +429,6 @@ pub fn t_worker_msg(line: &Value) -> String {
     text
 }
 
-/// If status has message_code, replace message with localized string.
-pub fn localize_status(status: &mut Value) {
-    let code = status
-        .get("message_code")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    if code.is_empty() {
-        return;
-    }
-    // Stale boot code: worker used to leave `engine.starting` in status.json
-    // after becoming idle (merge write never cleared message_code). Prefer the
-    // free-form `message` / state when the process is clearly past boot.
-    let state = status
-        .get("state")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if matches!(
-        code.as_str(),
-        "engine.launching" | "engine.starting" | "engine.importing"
-    ) && state != "starting"
-    {
-        if let Some(obj) = status.as_object_mut() {
-            obj.insert("message_code".into(), Value::String(String::new()));
-            obj.insert("message".into(), Value::String(String::new()));
-        }
-        return;
-    }
-    let mut vars = HashMap::new();
-    if let Some(obj) = status.get("message_params").and_then(|v| v.as_object()) {
-        for (k, v) in obj {
-            let s = match v {
-                Value::String(s) => s.clone(),
-                Value::Number(n) => n.to_string(),
-                Value::Bool(b) => b.to_string(),
-                _ => continue,
-            };
-            vars.insert(k.clone(), s);
-        }
-    }
-    let key = if code.starts_with("msg.") {
-        code.clone()
-    } else {
-        format!("msg.{code}")
-    };
-    let text = t_vars(&key, &vars);
-    if text != key {
-        if let Some(obj) = status.as_object_mut() {
-            obj.insert("message".into(), Value::String(text));
-        }
-    }
-}
-
 /// 测试里改语言用的闸门。
 ///
 /// 当前语言是**进程级**的一份全局状态。谁在测试里 `set_locale` 一下就走人，
@@ -639,21 +586,6 @@ mod tests {
         let name = te("s.1cf582864a", &"model.zip");
         assert!(name.contains("model.zip"), "got {name}");
         assert!(!name.contains("{name}"), "got {name}");
-    }
-
-    #[test]
-    fn stale_importing_code_is_cleared_when_idle() {
-        let mut st = serde_json::json!({
-            "state": "idle",
-            "message_code": "engine.importing",
-            "message": "正在导入推理库（可能需要十几秒）…",
-        });
-        localize_status(&mut st);
-        assert_eq!(
-            st.get("message_code").and_then(|v| v.as_str()).unwrap_or("x"),
-            ""
-        );
-        assert_eq!(st.get("message").and_then(|v| v.as_str()).unwrap_or("x"), "");
     }
 
     #[test]

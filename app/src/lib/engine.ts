@@ -1,9 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import {  tStatic as t, tStatic  } from "../i18n";
 
-/** Mirrors User_Data/runtime_control/status.json + shell extras. */
-/** 输出模式：变声 / 直通。worker 协议里的字段，界面上没有对应开关。 */
-export type OutputMode = "vc" | "bypass";
+/**
+ * 外壳与 Rust 侧引擎命令之间的这一层。
+ *
+ * 这里以前还有实时变声的一整套：开启 / 停止 / 热推参数 / 换音色不重开流 /
+ * 枚举声卡。那是照搬 RVC 的，GPT-SoVITS Fabric 没有实时链路 ——
+ * `tools/realtime_worker.py` 从来没随附过，`engine_start_vc` 打头那道
+ * 脚本检查必然失败。界面上「开启变声」那个按钮点下去只会报错。
+ *
+ * 现在只剩「运行时装好了没」和「把引擎强行结束掉」两件事，
+ * 合成本身走 synth_start / synth-chunk 那条独立的路。
+ */
 
 export type EngineStatus = {
   state?: string;
@@ -108,69 +116,9 @@ export async function getEngineStatus(): Promise<EngineStatus> {
   return invoke<EngineStatus>("engine_status");
 }
 
-export async function ensureEngine(): Promise<EngineStatus> {
-  if (!isTauri()) {
-    return getEngineStatus();
-  }
-  return invoke<EngineStatus>("engine_ensure");
-}
-
-export async function startWorker(): Promise<EngineStatus> {
-  if (!isTauri()) return getEngineStatus();
-  return invoke<EngineStatus>("engine_start_worker");
-}
-
-export async function startVc(): Promise<EngineStatus> {
-  if (!isTauri()) {
-    return {
-      state: "error",
-      error: tStatic("engine.browserNoVc"),
-      worker_alive: false,
-    };
-  }
-  return invoke<EngineStatus>("engine_start_vc");
-}
-
-export async function stopVc(force = false): Promise<EngineStatus> {
-  if (!isTauri()) return getEngineStatus();
-  return invoke<EngineStatus>("engine_stop_vc", { force });
-}
-
 export async function forceKillEngine(): Promise<EngineStatus> {
   if (!isTauri()) return getEngineStatus();
   return invoke<EngineStatus>("engine_force_kill");
-}
-
-export async function setHot(params: {
-  pitch?: number;
-  formant?: number;
-  /** 变声（vc）或直通（im / bypass）。 */
-  function?: "vc" | "bypass" | "im";
-  threhold?: number;
-  index_rate?: number;
-  rms_mix_rate?: number;
-}): Promise<number> {
-  if (!isTauri()) return 0;
-  return invoke<number>("engine_set_hot", params);
-}
-
-/**
- * 变声中换音色，不重开流。
- *
- * 不传路径：要换成哪个，`voices_select` 刚写进配置里了，shell 自己读得到。
- * 引擎在两块音频之间把 RVC 实例换掉，设备、缓冲区、延迟设置一样不动。
- *
- * worker 没在跑时后端会报错 —— 那不是故障，是「没什么可热更新的」，
- * 调用方按无害处理。
- */
-export async function swapModel(): Promise<number> {
-  if (!isTauri()) return 0;
-  return invoke<number>("engine_swap_model");
-}
-
-export async function listDevices(): Promise<EngineStatus> {
-  if (!isTauri()) return getEngineStatus();
-  return invoke<EngineStatus>("engine_list_devices");
 }
 
 export async function getProvisionStatus(): Promise<ProvisionStatus> {
@@ -198,102 +146,4 @@ export async function startProvision(
 export async function cancelProvision(): Promise<void> {
   if (!isTauri()) return;
   await invoke("provision_cancel");
-}
-
-const LOAD_CODES = new Set([
-  "engine.starting",
-  "engine.importing",
-  "vc.loading_model",
-  "vc.loading_index",
-  "vc.loading_hubert",
-  "vc.loading_net",
-  "vc.warmup",
-  "vc.opening_stream",
-  "vc.swapping",
-]);
-
-const BOOT_CODES = new Set([
-  "engine.launching",
-  "engine.starting",
-  "engine.importing",
-]);
-
-export function loadProgress(st: EngineStatus): number | null {
-  const p = Number(st.progress);
-  if (Number.isFinite(p) && p >= 0 && p < 100) return p;
-  return null;
-}
-
-export function isLoadPhase(st: EngineStatus): boolean {
-  const code = String(st.message_code || "");
-  // 开机导入推理库的码会粘在 status.json 里。引擎已经 idle 之后
-  // 不能再当成「启动中」，否则底栏一直写着「正在导入推理库」。
-  if (BOOT_CODES.has(code)) return st.state === "starting";
-  if (LOAD_CODES.has(code)) return true;
-  if (st.state === "starting") return true;
-  return loadProgress(st) != null;
-}
-
-export function statusTitle(st: EngineStatus): string {
-  const s = st.state || "idle";
-  const code = String(st.message_code || "");
-  if (code === "vc.swapping" || (s === "running" && isLoadPhase(st))) {
-    return tStatic("dock.switching");
-  }
-  if (s === "running") return tStatic("dock.converting");
-  if (s === "starting" || isLoadPhase(st)) return tStatic("dock.starting");
-  if (s === "stopping") return tStatic("dock.stopping");
-  if (s === "error") return tStatic("dock.engineError");
-  if (st.worker_alive) return tStatic("dock.engineReady");
-  return tStatic("dock.engineDown");
-}
-
-export function statusSub(st: EngineStatus): string {
-  const code = String(st.message_code || "");
-  const staleBoot =
-    BOOT_CODES.has(code) && st.state !== "starting";
-  // 加载/切换时优先展示分阶段说明，不要被延迟读数盖掉。
-  if (!staleBoot && isLoadPhase(st) && st.message) {
-    return String(st.message).slice(0, 80);
-  }
-  if (String(st.message_code || "") === "vc.swap_failed" && st.message) {
-    return String(st.message).slice(0, 80);
-  }
-  // 变声跑起来之后，副标题的位置留给延迟读数 —— 标题那行已经写着「变声中」，
-  // 再把 message 重复一遍就是浪费。status.json 是合并写的，message 会一直
-  // 停在最后一次设置的值上，所以这条必须排在 message 前面，否则延迟永远
-  // 显示不出来。
-  // Live reading: device + capture block + wait until the last written
-  // block starts + recent infer. Silence skips do not pull it down;
-  // falling behind (leftover previous block / infer spike) pushes it up.
-  const delay = Number(st.real_delay_ms || st.delay_ms || 0);
-  const infer = Number(st.infer_ms || 0);
-  if (st.state === "running" && (delay > 0 || infer > 0)) {
-    return tStatic("dock.delayLine", {
-      delay,
-      infer,
-    });
-  }
-  // Prefer shell-localized message (worker message_code resolved in Rust).
-  // Fallback to raw message / error / idle labels.
-  // Skip duplicate "engine ready" as subtitle — title already says it.
-  if (st.message && !staleBoot) {
-    const msg = String(st.message).slice(0, 80);
-    const ready = tStatic("dock.engineReady");
-    const readyMsg = tStatic("msg.engine.ready");
-    if (
-      st.state !== "running" &&
-      st.state !== "error" &&
-      (msg === ready ||
-        msg === readyMsg ||
-        msg === "引擎就绪" ||
-        msg === "Engine ready")
-    ) {
-      return tStatic("dock.engineIdle");
-    }
-    return msg;
-  }
-  if (st.state === "error" && st.error) return String(st.error).slice(0, 80);
-  if (st.worker_alive) return tStatic("dock.engineIdle");
-  return tStatic("dock.waitStart");
 }

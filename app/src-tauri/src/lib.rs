@@ -5,7 +5,6 @@
 pub mod catalog;
 mod annot;
 mod asset_scope;
-mod audio_probe;
 mod autostart;
 mod link_check;
 mod config;
@@ -24,7 +23,6 @@ mod mic;
 mod mirrors;
 pub mod paths;
 pub mod plaza;
-mod protocol;
 mod provision;
 mod selfcheck;
 mod separate;
@@ -276,11 +274,6 @@ fn config_set(
     if let Err(e) = voices::persist_profile_patch(&root, &patch) {
         logging::shell_log!("persist profile: {e}");
     }
-    if let Some(hot) = out.get("hot").and_then(|v| v.as_object()) {
-        if !hot.is_empty() && worker::is_worker_alive(&root) {
-            let _ = worker::set_hot(&root, hot.clone());
-        }
-    }
     let _ = app.emit("config-changed", &out);
     Ok(out)
 }
@@ -477,13 +470,7 @@ async fn diagnostics_summary_text(state: State<'_, Mutex<AppState>>) -> Result<S
         .map_err(|e| e.to_string())
 }
 
-/// 链路自检：读事实不出结论，毫秒级（见 link_check.rs）。
-#[tauri::command(async)]
-fn link_check(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    Ok(link_check::gather(&root_clone(&state)?))
-}
-
-/// 新手进度的五步状态（见 link_check.rs 的 onboarding）。
+/// 新手进度的三步状态（见 link_check.rs 的 onboarding）。
 #[tauri::command(async)]
 fn onboarding_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     Ok(link_check::onboarding(&root_clone(&state)?))
@@ -792,89 +779,20 @@ fn product_root(state: State<'_, Mutex<AppState>>) -> Result<String, String> {
     Ok(root_clone(&state)?.to_string_lossy().into_owned())
 }
 
+/// 界面顶上那点状态。
+///
+/// 以前这里回的是实时 worker 的整份 status.json（麦克风电平、往返延迟、
+/// 声卡列表、pid……）。那份东西是 RVC 实时链路的，这个产品没有实时链路，
+/// 字段永远是空的或者假的。现在只回三件真事：运行时装好了没、有没有活在跑、
+/// 引擎资源齐不齐。
 #[tauri::command]
 fn engine_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    Ok(worker::status_for_ui(&root))
-}
-
-#[tauri::command]
-async fn engine_ensure(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    if !paths::runtime_ready(&root) {
-        let mut st = worker::status_for_ui(&root);
-        if let Some(obj) = st.as_object_mut() {
-            obj.insert("state".into(), json!("idle"));
-            obj.insert("error".into(), json!(crate::i18n::t("s.75b84a31d6")));
-            obj.insert("worker_alive".into(), json!(false));
-        }
-        return Ok(st);
-    }
-    // Called on app start and waits up to 90s for the worker. Inline, that is
-    // a 90-second freeze on the first launch after an install.
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(worker::ensure_worker_and_devices(&root, 90_000))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn engine_start_worker(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    if !paths::runtime_ready(&root) {
-        return Ok(json!({"state": "error", "error": crate::i18n::t("s.a36cb645c2"), "pid": 0}));
-    }
-    // Waits up to 90s for the worker to come up. A sync command runs inline on
-    // the IPC thread, so that wait froze the whole window.
-    tauri::async_runtime::spawn_blocking(move || {
-        worker::start_worker(&root)?;
-        Ok(worker::wait_worker_ready(&root, 90_000))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn engine_start_vc(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    if !paths::runtime_ready(&root) {
-        return Ok(json!({"state": "error", "error": crate::i18n::t("s.45309ba4c5"), "pid": 0}));
-    }
-    // The cold start is 20–40s (torch/CUDA) and the wait allows up to 180s.
-    // Run it off the IPC thread or the window is frozen for that whole time —
-    // no status updates, no way to press 停止.
-    tauri::async_runtime::spawn_blocking(move || {
-        // 重新把 app_config 刷进 inuse 再启动。app_config 才是选中音色的权威，
-        // 而 worker 冷启动只认 inuse 那个文件。「其他」页强制结束引擎之后，
-        // 新起的 worker 就是从这个文件里读模型 —— 它但凡漂了一点，用户看到的
-        // 就是「引擎错误：请选择pth文件」，而唯一的解法是回去重新点一次音色，
-        // 也就是手动干这里该干的事。
-        worker::start_vc(&root)?;
-        let st = worker::wait_vc_running(&root, 180_000);
-        if st.get("state").and_then(|v| v.as_str()) == Some("running") {
-            let cfg = crate::config::read(&root);
-            let _ = worker::push_running_hot(&root, &cfg);
-        }
-        Ok(st)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn engine_stop_vc(
-    state: State<'_, Mutex<AppState>>,
-    force: Option<bool>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let f = force.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || {
-        worker::stop_vc(&root, f)?;
-        Ok(worker::status_for_ui(&root))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let busy = synth::is_busy() || train::busy() || separate::busy();
+    Ok(json!({
+        "runtime_ready": paths::runtime_ready(&root),
+        "state": if busy { "busy" } else { "idle" },
+    }))
 }
 
 #[tauri::command]
@@ -1451,7 +1369,6 @@ async fn engine_force_kill(state: State<'_, Mutex<AppState>>) -> Result<Value, S
         sts::cancel_and_wait(3);
         // 语音转换的常驻 python 是我们自己记着的，先按正常路子放掉再强杀。
         sts::release_resident();
-        worker::kill_known_workers(&root);
         worker::kill_runtime_pythons(&root, true);
         // 杀完把「当前音色」重新写回引擎配置。
         //
@@ -1465,116 +1382,10 @@ async fn engine_force_kill(state: State<'_, Mutex<AppState>>) -> Result<Value, S
         if let Err(e) = voices::resync_selected_model(&root) {
             worker::append_log(&root, &crate::i18n::te("s.298dd55e6d", &(e)));
         }
-        Ok(worker::status_for_ui(&root))
+        Ok(json!({"ok": true, "state": "idle"}))
     })
     .await
     .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn engine_set_hot(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    pitch: Option<i32>,
-    formant: Option<f64>,
-    function: Option<String>,
-    threhold: Option<f64>,
-    index_rate: Option<f64>,
-    rms_mix_rate: Option<f64>,
-) -> Result<u64, String> {
-    let root = root_clone(&state)?;
-    let mut payload = Map::new();
-    if let Some(v) = pitch {
-        payload.insert("pitch".into(), json!(v));
-    }
-    if let Some(v) = formant {
-        payload.insert("formant".into(), json!(v));
-    }
-    if let Some(v) = function {
-        // 只认 im/vc，别的一律折成 vc：前端没有的取值传进来等于没生效。
-        let f = match v.as_str() {
-            "bypass" | "im" => "im",
-            _ => "vc",
-        };
-        payload.insert("function".into(), json!(f));
-    }
-    if let Some(v) = threhold {
-        payload.insert("threhold".into(), json!(v));
-    }
-    if let Some(v) = index_rate {
-        payload.insert("index_rate".into(), json!(v));
-    }
-    if let Some(v) = rms_mix_rate {
-        payload.insert("rms_mix_rate".into(), json!(v));
-    }
-    if payload.is_empty() {
-        return Err(crate::i18n::t("s.40018c2fe1").into());
-    }
-    // 底栏拖音高/共鸣以前只 set_hot、不写盘：界面重启后仍显示旧数（来自
-    // app_config），但 inuse 还是 0，引擎按默认起 —— 显示对、声音不对。
-    // 这里顺手落盘并同步 inuse；worker 没起来时只落盘，不算失败。
-    if let Ok(out) = config::update(&root, payload.clone()) {
-        if let Err(e) = voices::persist_profile_patch(&root, &payload) {
-            logging::shell_log!("persist profile: {e}");
-        }
-        let _ = app.emit("config-changed", &out);
-    }
-    match worker::set_hot(&root, payload) {
-        Ok(seq) => Ok(seq),
-        Err(e) if e.contains(&crate::i18n::t("s.b2ba9634d9")) => Ok(0),
-        Err(e) => Err(e),
-    }
-}
-
-/// 变声中换音色。不重开流，只把新模型推给引擎。
-#[tauri::command]
-fn engine_swap_model(state: State<'_, Mutex<AppState>>) -> Result<u64, String> {
-    let root = root_clone(&state)?;
-    worker::swap_model(&root)
-}
-
-#[tauri::command]
-async fn engine_list_devices(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    // Starts the worker if needed (up to 90s) and then polls for up to 20s.
-    tauri::async_runtime::spawn_blocking(move || list_devices_blocking(root))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-fn list_devices_blocking(root: std::path::PathBuf) -> Result<Value, String> {
-    let root = &root;
-    if !paths::runtime_ready(&root) {
-        return Ok(json!({
-            "state": "error",
-            "error": crate::i18n::t("s.9f39847f54"),
-            "input_devices": [],
-            "output_devices": [],
-            "hostapis": []
-        }));
-    }
-    if !worker::is_worker_alive(&root) {
-        worker::start_worker(&root)?;
-        let st = worker::wait_worker_ready(&root, 90_000);
-        if st.get("state").and_then(|v| v.as_str()) == Some("error") {
-            return Ok(st);
-        }
-    }
-    let _ = worker::send_command(&root, "list_devices", Map::new());
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while std::time::Instant::now() < deadline {
-        let st = worker::status_for_ui(&root);
-        let has = st
-            .get("input_devices")
-            .and_then(|v| v.as_array())
-            .map(|a| !a.is_empty())
-            .unwrap_or(false);
-        if has {
-            return Ok(st);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-    Ok(worker::status_for_ui(&root))
 }
 
 #[tauri::command]
@@ -2038,7 +1849,6 @@ pub fn run() {
             hotkeys_apply,
             diagnostics_build,
             diagnostics_self_check,
-            link_check,
             onboarding_status,
             open_sound_settings,
             known_issues_check,
@@ -2066,14 +1876,7 @@ pub fn run() {
             assets_uninstall_vbcable,
             product_root,
             engine_status,
-            engine_ensure,
-            engine_start_worker,
-            engine_start_vc,
-            engine_stop_vc,
             engine_force_kill,
-            engine_set_hot,
-            engine_swap_model,
-            engine_list_devices,
             provision_status,
             provision_start,
             provision_cancel,
@@ -2292,18 +2095,7 @@ pub fn run() {
                 });
             }
 
-            // Regenerate configs/inuse/config.json from app_config on every
-            // start. Setup ships a clean template that overwrites the installed
-            // one, so without this an upgrade looks like "my devices were
-            // reset" — the real settings are in User_Data and just never got
-            // written back down to the engine.
-            {
-                config::persist_perf_caps(&root);
-                let cfg = config::read(&root);
-                if let Err(e) = config::sync_inuse(&root, &cfg) {
-                    logging::shell_log!("inuse sync failed: {e}");
-                }
-            }
+            config::persist_perf_caps(&root);
 
             // 混合显卡笔记本：把界面钉在集显上，独显整张留给推理和训练。
             // 不这么做的话训练一吃满显存，WebView2 拿不到合成表面，整个
@@ -2332,16 +2124,13 @@ pub fn run() {
             let root_bg = root.clone();
             std::thread::spawn(move || {
                 if paths::runtime_ready(&root_bg) {
-                    // 预热之前先收孤儿：上次留下的多余 worker 还占着输出设备，
-                    // 不收掉的话这次认领的那个发不出声。
-                    worker::reap_orphan_workers(&root_bg);
-                    // 训练 / 分离 / 合成的 python 不在 worker 台账里。上次是
-                    // 被强杀的话它们还活着，还攥着显存 —— 界面这边却是「空
-                    // 闲」，用户再点一次就是两个进程抢同一张卡。
+                    // 训练 / 分离 / 合成的 python 上次要是被强杀的，这会儿
+                    // 可能还活着、还攥着显存 —— 界面这边却是「空闲」，
+                    // 用户再点一次就是两个进程抢同一张卡。开机收一次孤儿。
+                    //
+                    // 不再预热常驻 worker：那是实时链路的做法，这个产品的
+                    // 合成是一次一个进程，起不起得来当场就知道。
                     worker::reap_orphan_tool_pythons(&root_bg);
-                    let _ = worker::ensure_worker_and_devices(&root_bg, 90_000);
-                } else {
-                    logging::shell_log!("skip worker prewarm: Runtime not ready");
                 }
             });
             Ok(())
@@ -2353,7 +2142,6 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 if let Ok(g) = app.state::<Mutex<AppState>>().lock() {
                     sts::release_resident();
-                    worker::kill_known_workers(&g.root);
                     worker::kill_runtime_pythons(&g.root, false);
                     let stats = paths::clean_temps(&g.root);
                     paths::log_clean_stats(&crate::i18n::t("s.feecb1e6ad"), &g.root, &stats);

@@ -52,16 +52,13 @@ fn rank(level: &str) -> u8 {
 /// 跑一遍全部规则，严重的排前面。
 pub fn run(root: &Path) -> Vec<Finding> {
     let cfg = crate::config::read(root);
-    let status = crate::protocol::read_status(root);
     let mut out: Vec<Finding> = Vec::new();
 
     out.extend(known_issue_hits(root));
-    out.extend(engine_killed());
     out.extend(chosen_model(&cfg));
     out.extend(train_experiments(root));
     out.extend(pretrained(root));
     out.extend(disk(root));
-    out.extend(audio(&cfg, &status));
 
     out.sort_by_key(|f| rank(f.level));
     out
@@ -86,28 +83,6 @@ fn known_issue_hits(root: &Path) -> Vec<Finding> {
             evidence: vec![Evidence::new("known_issues.json", h.id)],
         })
         .collect()
-}
-
-// ---------------------------------------------------------------- 引擎被杀
-
-fn engine_killed() -> Vec<Finding> {
-    if !crate::crash::saw_fatal_exit() {
-        return Vec::new();
-    }
-    let mut ev = Vec::new();
-    let asio = crate::crash::asio_drivers();
-    if !asio.is_empty() {
-        ev.push(Evidence::new(
-            r"HKLM\SOFTWARE\ASIO",
-            asio.join("、"),
-        ));
-    }
-    vec![Finding {
-        code: "engine.killed_by_system",
-        level: ERROR,
-        title: crate::i18n::t("s.chkWorkerKilled"),
-        evidence: ev,
-    }]
 }
 
 // ---------------------------------------------------------------- 选错模型
@@ -317,56 +292,10 @@ fn free_space_gb(root: &Path) -> Option<f64> {
     crate::paths::free_space_bytes(root).map(|b| b as f64 / 1024.0 / 1024.0 / 1024.0)
 }
 
-// ---------------------------------------------------------------- 音频
-
-/// MME 是 Windows 上最老那套接口，缓冲给得很厚。延迟高到这个份上时，换 WASAPI
-/// 基本都能明显降下来 —— 但这只是「通常」，所以是提示不是错误。
-const MME_DELAY_MS: i64 = 600;
-/// 偶尔一两次欠载正常（显卡被别的程序抢一下）。持续累积才是真跟不上。
-const UNDERRUN_MANY: i64 = 20;
-
-fn audio(cfg: &serde_json::Map<String, Value>, status: &Value) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let api = status
-        .get("sg_hostapi")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .or_else(|| cfg.get("sg_hostapi").and_then(|v| v.as_str()))
-        .unwrap_or("");
-    let delay = status
-        .get("real_delay_ms")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    if api.eq_ignore_ascii_case("MME") && delay > MME_DELAY_MS {
-        out.push(Finding {
-            code: "audio.mme_high_delay",
-            level: INFO,
-            title: crate::i18n::te("s.chkMmeDelay", &delay),
-            evidence: vec![Evidence::new(
-                "runtime_control/status.json",
-                format!("sg_hostapi=MME real_delay_ms={delay}"),
-            )],
-        });
-    }
-    let underrun = status.get("underrun").and_then(|v| v.as_i64()).unwrap_or(0);
-    if underrun > UNDERRUN_MANY {
-        out.push(Finding {
-            code: "audio.underrun",
-            level: WARN,
-            title: crate::i18n::te("s.chkUnderrun", &underrun),
-            evidence: vec![Evidence::new(
-                "runtime_control/status.json",
-                format!("underrun={underrun}"),
-            )],
-        });
-    }
-    out
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn training_snapshots_are_told_apart_from_voice_models() {
@@ -411,21 +340,6 @@ mod tests {
         assert!(train_log_oom("====> Epoch: 500\n").is_none());
     }
 
-    #[test]
-    fn a_high_mme_delay_is_a_hint_and_many_underruns_are_a_warning() {
-        let cfg = serde_json::Map::new();
-        let st = json!({"sg_hostapi": "MME", "real_delay_ms": 900, "underrun": 28});
-        let f = audio(&cfg, &st);
-        assert_eq!(f.len(), 2);
-        assert_eq!(f[0].code, "audio.mme_high_delay");
-        assert_eq!(f[0].level, INFO);
-        assert_eq!(f[1].code, "audio.underrun");
-        assert_eq!(f[1].level, WARN);
-
-        // WASAPI 上同样的延迟不报 —— 这条规则说的是接口，不是延迟本身。
-        let st2 = json!({"sg_hostapi": "Windows WASAPI", "real_delay_ms": 900, "underrun": 0});
-        assert!(audio(&cfg, &st2).is_empty());
-    }
 
     #[test]
     fn findings_are_sorted_with_the_worst_first() {

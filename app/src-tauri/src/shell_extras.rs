@@ -45,14 +45,7 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => focus_main(app),
-            "quit" => {
-                // Stop the stream before leaving, otherwise the worker keeps
-                // holding the audio device after the UI is gone.
-                if let Some(root) = root_of(app) {
-                    let _ = worker::stop_vc(&root, true);
-                }
-                app.exit(0);
-            }
+            "quit" => app.exit(0),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -799,7 +792,6 @@ pub fn diagnostics_manifest(root: &Path) -> Vec<DiagEntry> {
     let mut out = Vec::new();
     for (arc, path) in [
         ("configs/inuse/config.json", paths::inuse_config_path(root)),
-        ("runtime_control/status.json", crate::protocol::status_path(root)),
     ] {
         if path.is_file() {
             out.push(DiagEntry { arc: arc.to_string(), path, clipped: false });
@@ -907,8 +899,9 @@ fn dir_bytes(p: &Path) -> u64 {
 /// 路径里的 Windows 用户名照样抹掉 —— 这段文字比诊断包更容易被贴到公开场合。
 pub fn summary_text(root: &Path) -> String {
     let cfg = config::read(root);
-    let st = worker::status_for_ui(root);
-    let sv = |k: &str| st.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    // 计算后端曾经是从常驻 worker 的 status.json 里读的。那个 worker 随实时
+    // 链路一起没了，这里改由补全信息推断 —— 说不准就说「未知」，不编。
+    let sv = |_k: &str| String::new();
     let cv = |k: &str| cfg.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let dash = crate::i18n::t("s.sumUnknown");
     let or_dash = |s: String| if s.trim().is_empty() { dash.clone() } else { s };
@@ -1062,8 +1055,6 @@ pub fn build_diagnostics(
         "installed_variant": crate::provision::read_package_meta_variant(root),
         "engine_core_missing": crate::engine_assets::engine_core_missing(root),
         "ui_source": crate::ui_assets::source_label(),
-        "worker_alive": worker::is_worker_alive(root),
-        "status": worker::status_for_ui(root),
         "config": Value::Object(cfg.clone()),
         "delay_estimate": delay_estimate(&cfg),
         "log_inventory": crate::logging::inventory(root),
@@ -1256,13 +1247,8 @@ pub fn install_close_handler(app: &AppHandle) {
 
         match action.as_str() {
             "exit" => {
-                // 同 finish_close：stop_vc 要等几秒，先把窗口收掉再等，
-                // 别让用户对着一个不响应的窗口数秒。
                 for win in handle.webview_windows().into_values() {
                     let _ = win.hide();
-                }
-                if let Some(root) = root_of(&handle) {
-                    let _ = worker::stop_vc(&root, true);
                 }
             }
             "tray" => {
@@ -1282,9 +1268,6 @@ pub fn install_close_handler(app: &AppHandle) {
                 *last = Some(now);
                 drop(last);
                 if stuck {
-                    if let Some(root) = root_of(&handle) {
-                        let _ = worker::stop_vc(&root, true);
-                    }
                     handle.exit(0);
                     return;
                 }
@@ -1306,16 +1289,13 @@ pub fn finish_close(app: &AppHandle, to_tray: bool) {
     }
     // 先把所有窗口收掉，再做收尾。
     //
-    // 收尾要停 worker（最多等 3 秒）再清 TEMP，全在主线程上跑。以前是先收尾
-    // 后退出，那几秒里窗口还杵在屏幕上、还不响应 —— 用户报的「关软件会卡顿
-    // 一下再关闭」就是这段。hide 走的是 ShowWindow，不用等消息循环，喊完立刻
-    // 就没了；后面的活照做，只是用户不用盯着一个死窗口等。
+    // 收尾要清 TEMP，在主线程上跑。以前是先收尾后退出，那几秒里窗口还杵在
+    // 屏幕上、还不响应 —— 用户报的「关软件会卡顿一下再关闭」就是这段。
+    // hide 走的是 ShowWindow，不用等消息循环，喊完立刻就没了。
     for w in app.webview_windows().into_values() {
         let _ = w.hide();
     }
     if let Some(root) = root_of(app) {
-        let _ = worker::stop_vc(&root, true);
-        // 退出前清 TEMP：先停 worker 再删，避免文件被占用删不掉。
         let stats = crate::paths::clean_temps(&root);
         crate::paths::log_clean_stats(&crate::i18n::t("s.c5fcd5c0a9"), &root, &stats);
     }
@@ -1613,7 +1593,7 @@ mod tests {
     /// 而 fallback 就是它自己，于是永远注册不上，也没人报错。
     #[test]
     fn every_default_combo_is_well_formed() {
-        for (key, _action, default) in HOTKEYS {
+        for (_key, _action, default) in HOTKEYS {
             assert!(combo_ok(default));
         }
     }
