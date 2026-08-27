@@ -369,7 +369,7 @@ mod tests {
     fn catalog_size_feeds_the_base_pack_download() {
         // 大包以前 size_hint 恒为 0，auto_connections 只给一条连接慢慢爬，
         // 进度条连分母都没有。大小得从内置清单里查出来。
-        let root = std::env::temp_dir().join("rvcf-catalog-size");
+        let root = crate::testutil::scratch("catalog-size");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("configs")).unwrap();
         std::fs::write(
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn base_pack_urls_are_tag_addressed_under_base_models() {
         // 底模组制品只挂 Release 附件（发布仓禁止 LFS），必须按标签直连。
-        let root = std::env::temp_dir().join("rvcf-base-url");
+        let root = crate::testutil::scratch("base-url");
         let _ = std::fs::remove_dir_all(&root);
         for (file, _) in BASE_MODEL_PACKS {
             let u = release_urls(&root, BASE_MODELS_TAG, file);
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn missing_when_root_is_empty() {
-        let tmp = std::env::temp_dir().join("rvcf-engine-core-test");
+        let tmp = crate::testutil::scratch("engine-core-test");
         let _ = std::fs::create_dir_all(&tmp);
         assert_eq!(engine_core_missing(&tmp).len(), 5);
         assert!(!engine_core_ready(&tmp));
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn truncated_first_base_model_does_not_count_as_ready() {
-        let tmp = std::env::temp_dir().join("rvcf-engine-core-trunc");
+        let tmp = crate::testutil::scratch("engine-core-trunc");
         let f = tmp.join("pretrained_models/chinese-hubert-base");
         let _ = std::fs::create_dir_all(&f);
         let _ = std::fs::write(f.join("pretrained_model2.pth"), b"too small");
@@ -432,7 +432,7 @@ mod tests {
     fn hoists_a_single_nested_folder() {
         // 底模包若带单层顶层目录（如 base-hubert-bert/），解出来的
         // pretrained_models 会垫深一层，就绪检查永远找不到文件。
-        let base = std::env::temp_dir().join("rvcf-hoist-test");
+        let base = crate::testutil::scratch("hoist-test");
         let _ = std::fs::remove_dir_all(&base);
         let nested = base.join("base-hubert-bert");
         std::fs::create_dir_all(nested.join("pretrained_models/chinese-hubert-base")).unwrap();
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn lfs_url_is_sha_addressed() {
-        let root = std::env::temp_dir().join("rvcf-lfs-url");
+        let root = crate::testutil::scratch("lfs-url");
         let _ = std::fs::remove_dir_all(&root);
         let u = lfs_urls(&root, TEST_SHA);
         // 没有清单时就只有官方仓库那一条
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn a_release_tag_url_is_built_for_every_mirror() {
         // 备用源必须跟着镜像一起铺开，只有官方仓一条的话 CNB 一挂就全断。
-        let root = std::env::temp_dir().join("rvcf-rel-url");
+        let root = crate::testutil::scratch("rel-url");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("configs")).unwrap();
         std::fs::write(
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn lfs_urls_pick_up_catalog_mirrors() {
         // 引擎资源是首次运行的必经之路，只有一个源的话 CNB 一挂谁都装不上。
-        let root = std::env::temp_dir().join("rvcf-lfs-mirror");
+        let root = crate::testutil::scratch("lfs-mirror");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("configs")).unwrap();
         std::fs::write(

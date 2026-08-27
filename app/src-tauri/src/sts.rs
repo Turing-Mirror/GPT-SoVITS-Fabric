@@ -1882,10 +1882,7 @@ mod tests {
 
     #[test]
     fn sts_log_throttles_intra_file_pct() {
-        let td = std::env::temp_dir().join(format!(
-            "rvcf-sts-log-{}",
-            std::process::id()
-        ));
+        let td = crate::testutil::scratch("sts-log");
         let _ = fs::remove_dir_all(&td);
         fs::create_dir_all(&td).unwrap();
         let p = td.join("sts.log");

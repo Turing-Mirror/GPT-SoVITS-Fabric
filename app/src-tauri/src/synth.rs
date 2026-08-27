@@ -480,7 +480,7 @@ mod tests {
     /// 字段是常事，其余角色必须照常列出。
     #[test]
     fn a_broken_character_pack_is_skipped_not_fatal() {
-        let root = std::env::temp_dir().join("gsvf-synth-scan");
+        let root = crate::testutil::scratch("gsvf-synth-scan");
         let _ = std::fs::remove_dir_all(&root);
         let base = characters_dir(&root);
         std::fs::create_dir_all(base.join("good")).unwrap();
@@ -502,7 +502,7 @@ mod tests {
     /// 输出目录：设置页留空回默认，写了就用用户的。
     #[test]
     fn out_dir_prefers_the_configured_one() {
-        let root = std::env::temp_dir().join("gsvf-synth-outdir");
+        let root = crate::testutil::scratch("gsvf-synth-outdir");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(paths::user_data(&root)).unwrap();
         assert_eq!(out_dir(&root), paths::user_data(&root).join("synth"));

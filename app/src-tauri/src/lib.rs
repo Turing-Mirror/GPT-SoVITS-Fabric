@@ -34,6 +34,8 @@ mod sts;
 mod synth;
 mod store;
 mod telemetry;
+#[cfg(test)]
+mod testutil;
 mod tool_window;
 mod train;
 mod tts;

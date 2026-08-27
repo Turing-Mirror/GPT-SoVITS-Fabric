@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn duplicate_audio_paths_are_reported_on_both_rows() {
-        let dir = std::env::temp_dir().join("annot_dup_test");
+        let dir = crate::testutil::scratch("annot_dup_test");
         let _ = fs::create_dir_all(dir.join("audios"));
         fs::write(dir.join("audios/a.wav"), b"x").unwrap();
         let list = dir.join("x.list");
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn saving_keeps_the_first_original_as_a_backup() {
-        let dir = std::env::temp_dir().join("annot_save_test");
+        let dir = crate::testutil::scratch("annot_save_test");
         let _ = fs::create_dir_all(&dir);
         let list = dir.join("y.list");
         fs::write(&list, "a.wav|s|zh|原始\n").unwrap();
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn a_pipe_typed_into_a_field_becomes_full_width_instead_of_corrupting_the_file() {
-        let dir = std::env::temp_dir().join("annot_pipe_test");
+        let dir = crate::testutil::scratch("annot_pipe_test");
         let _ = fs::create_dir_all(&dir);
         let list = dir.join("z.list");
         let path = list.to_string_lossy().into_owned();
