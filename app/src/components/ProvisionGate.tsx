@@ -12,6 +12,7 @@ import { Btn, HelpMark } from "./ui";
 import { isEngineCoreReady } from "../lib/downloadModels";
 import { MainGpuPicker, MAIN_GPU_AUTO, mainGpuTip } from "./MainGpuPicker";
 import { t } from "../i18n/t";
+import { useI18n } from "../i18n";
 
 type VariantRow = {
   id: string;
@@ -63,6 +64,9 @@ function isCancelError(e: unknown): boolean {
  * Only shown when need_provision; does not change everyday VC flow once ready.
  */
 export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
+  // 订阅语言。这个组件用的是静态 t()，本身不会因为换语言重渲染；下面的
+  // useMemo 还把 locale 当依赖，拿不到它就永远算不出第二遍。
+  const { locale } = useI18n();
   const [info, setInfo] = useState<ProvisionStatus>(initial || {});
   const [variant, setVariant] = useState(
     initial?.recommended_variant && initial.recommended_variant !== "unknown"
@@ -184,7 +188,10 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
       { id: "nvidia", label: t("s.4c65a5e25e") },
       { id: "cpu", label: "CPU" },
     ];
-  }, [info.variants]);
+    // locale 必须进依赖：这几条是 useMemo 算出来的，locale 就绪之前算过一次
+    // 之后就再也不重算 —— 直接写在 JSX 里的会跟着刷新，这里不会，于是同一
+    // 个界面上一半是当前语言、一半停在默认语言。
+  }, [info.variants, locale]);
 
   const selectedSizeLabel = useMemo(() => {
     const row = variants.find((v) => v.id === variant);
