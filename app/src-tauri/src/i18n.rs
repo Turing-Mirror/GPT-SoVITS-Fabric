@@ -519,23 +519,20 @@ mod tests {
 
         assert_eq!(t("tray.show"), "打开主界面");
         assert_eq!(t("tray.quit"), "退出");
+        // 训练那批码是 worker 真会发的（train_worker.py 的 emit），
+        // 拿它当样本比拿引擎码稳 —— 引擎码随实时链路一起没了。
         assert!(
-            t_msg("engine.starting").contains("加载"),
+            t_msg("train.started").contains("训练"),
             "got {:?}",
-            t_msg("engine.starting")
-        );
-        assert!(
-            t_msg("vc.swapping").contains("切换"),
-            "got {:?}",
-            t_msg("vc.swapping")
+            t_msg("train.started")
         );
 
         set_locale("en-US");
         assert_eq!(t("tray.show"), "Open main window");
         assert!(
-            t_msg("engine.starting").to_ascii_lowercase().contains("load"),
+            t_msg("train.started").to_ascii_lowercase().contains("train"),
             "got {:?}",
-            t_msg("engine.starting")
+            t_msg("train.started")
         );
 
         // Non-English packs must resolve (embedded), not fall back to the key.

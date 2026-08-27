@@ -1290,9 +1290,9 @@ pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, Str
         *g = true;
     }
     cancel_flag().store(false, Ordering::SeqCst);
-    // 训练是这里最吃显存的一件事。离线语音转换留下的常驻 python 还攥着
-    // hubert + rmvpe + net_g，先放掉再开，别让训练从第一步就 OOM。
-    crate::sts::release_resident();
+    // 训练是这里最吃显存的一件事。合成留下的常驻 worker 还攥着 GPT + SoVITS
+    // 两份权重，先放掉再开，别让训练从第一步就 OOM。
+    crate::synth::shutdown();
     // 先把输出目录判掉：训了几小时最后落不下去，那几小时就白烧了。
     let out_dir = match normalize_output_dir(&req.output_dir) {
         Ok(d) => d,

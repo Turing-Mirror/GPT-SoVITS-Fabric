@@ -6,8 +6,8 @@
  *
  * Usage:
  *   const { t, locale, setLocale } = useI18n();
- *   t("dock.start")
- *   t("dock.current", { name: "Foo" })
+ *   t("synth.title")
+ *   t("s.synthRoleLine", { name: "Foo" })
  */
 import {
   createContext,

@@ -2,7 +2,7 @@
  * Non-React translate. Safe for lib modules and for components after
  * I18nProvider remounts on locale change (see index.tsx).
  *
- * Keys: semantic (`dock.start`) or auto (`s.<hash>`).
+ * Keys: semantic (`more.resTitle`) or auto (`s.<hash>`).
  */
 import { fallbackPack, interpolate, lookup, packOf } from "./dict";
 import { DEFAULT_LOCALE, type LocaleCode } from "./types";

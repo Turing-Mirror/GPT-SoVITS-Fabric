@@ -1059,7 +1059,7 @@ pub fn build_diagnostics(
         "delay_estimate": delay_estimate(&cfg),
         "log_inventory": crate::logging::inventory(root),
         "tools": {
-            "sts": crate::sts::status(root),
+            "synth": crate::synth::is_busy(),
             "tts": {
                 "runtime_ready": paths::runtime_ready(root),
                 "model_path": cfg.get("pth_path").and_then(|v| v.as_str()).unwrap_or(""),
@@ -1182,6 +1182,27 @@ pub fn build_consult_pack(root: &Path, note: &str) -> Result<PathBuf, String> {
 /// integer tells them nothing.
 fn now_stamp() -> String {
     chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
+}
+
+/// 在文件管理器里定位一条路径：目录就打开它，文件就选中它，
+/// 两者都不在就退到最近的父目录。
+///
+/// 调用方给的可能是用户几个月前选过的目录，早已不在了 —— 那时候弹一个
+/// 「路径不存在」比什么都不做更有用，但打开它的父目录更有用。
+pub fn reveal_path(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if p.is_dir() {
+        std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
+        return reveal(&p.join("x"));
+    }
+    if p.is_file() {
+        return reveal(p);
+    }
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        return reveal(&parent.join("x"));
+    }
+    Err(crate::i18n::t("s.stsInputDirMissing"))
 }
 
 /// Reveal a file in the OS file manager.

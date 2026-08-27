@@ -28,7 +28,7 @@ export function fallbackPack(): Dict {
   return PACKS["zh-CN"];
 }
 
-/** Dot-path lookup: "dock.start" → packs.dock.start ; "s.ab12" → packs.s.ab12 */
+/** Dot-path lookup: "more.resTitle" → packs.more.resTitle ; "s.ab12" → packs.s.ab12 */
 export function lookup(dict: Dict, key: string): unknown {
   const parts = key.split(".").filter(Boolean);
   if (!parts.length) return undefined;

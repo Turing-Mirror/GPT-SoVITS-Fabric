@@ -19,7 +19,6 @@ mod i18n;
 mod known_issues;
 mod legacy;
 mod logging;
-mod mic;
 mod mirrors;
 pub mod paths;
 pub mod plaza;
@@ -28,7 +27,6 @@ mod selfcheck;
 mod separate;
 mod vcredist;
 mod shell_extras;
-mod sts;
 mod synth;
 mod store;
 mod telemetry;
@@ -889,73 +887,6 @@ fn tools_open_help(app: AppHandle, section: Option<String>) -> Result<(), String
     tool_window::focus_main_help(&app, section.as_deref().unwrap_or("train"))
 }
 
-#[tauri::command]
-async fn sts_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || Ok(sts::status(&root)))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn sts_pick_input(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-    folder: bool,
-) -> Option<String> {
-    let p = sts::pick_input(Some(&window), folder)?;
-    if let Ok(root) = root_clone(&state) {
-        sts::remember_input(&root, &p);
-    }
-    Some(p)
-}
-
-#[tauri::command]
-fn sts_pick_output(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-) -> Option<String> {
-    let p = sts::pick_output(Some(&window))?;
-    if let Ok(root) = root_clone(&state) {
-        sts::remember_output(&root, &p);
-    }
-    Some(p)
-}
-
-#[tauri::command]
-async fn sts_list_input(
-    state: State<'_, Mutex<AppState>>,
-    input: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || Ok(sts::list_input(&root, &input)))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn sts_delete_input(
-    state: State<'_, Mutex<AppState>>,
-    input: String,
-    path: String,
-) -> Result<(), String> {
-    sts::delete_input_file(&root_clone(&state)?, &input, &path)
-}
-
-#[tauri::command]
-fn sts_reveal_input(path: String) -> Result<(), String> {
-    sts::reveal_path(&path)
-}
-
-#[tauri::command]
-fn sts_default_input(state: State<'_, Mutex<AppState>>) -> Result<String, String> {
-    let root = root_clone(&state)?;
-    let dir = sts::default_input_dir(&root);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    sts::remember_input(&root, &dir.to_string_lossy());
-    Ok(dir.to_string_lossy().into_owned())
-}
-
 // --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
 
 #[tauri::command]
@@ -1021,106 +952,6 @@ fn synth_reveal_output(state: State<'_, Mutex<AppState>>) -> Result<(), String> 
     crate::shell_extras::reveal(&dir.join("x"))
 }
 
-#[tauri::command]
-async fn sts_record_start(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    input: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || sts::record(&app, &root, &input))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn sts_record_stop() {
-    sts::cancel_record();
-}
-
-/// 设置页「测试麦克风」：只开设备读电平，不起引擎、不写文件。
-#[tauri::command]
-async fn mic_test_start(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || mic::test(&app, &root))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn mic_test_stop() {
-    mic::stop();
-}
-
-#[tauri::command]
-async fn sts_start(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    input: String,
-    output: String,
-    pitch: i32,
-    f0method: String,
-    index_rate: f64,
-    // Optional override: offline conversion target voice (.pth). Empty = homepage current.
-    model_path: Option<String>,
-    // Optional .index for that voice. Empty = library binding / config.
-    index_path: Option<String>,
-    filter_radius: Option<u32>,
-    resample_sr: Option<u32>,
-    rms_mix_rate: Option<f64>,
-    protect: Option<f64>,
-    format: Option<String>,
-    sid: Option<u32>,
-    f0_file: Option<String>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let model_path = model_path.unwrap_or_default();
-    let index_path = index_path.unwrap_or_default();
-    let opts = sts::ConvertOpts::from_raw(
-        filter_radius,
-        resample_sr,
-        rms_mix_rate,
-        protect,
-        format,
-        sid,
-        f0_file,
-    );
-    tauri::async_runtime::spawn_blocking(move || {
-        sts::run(
-            &app,
-            &root,
-            &input,
-            &output,
-            pitch,
-            &f0method,
-            index_rate,
-            &model_path,
-            &index_path,
-            opts,
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn sts_cancel() {
-    sts::cancel();
-}
-
-#[tauri::command]
-fn sts_reveal(
-    state: State<'_, Mutex<AppState>>,
-    path: Option<String>,
-) -> Result<(), String> {
-    let root = root_clone(&state)?;
-    sts::reveal_output(&root, path.as_deref().unwrap_or(""))
-}
-
-
 // --- .list 标注管理 --------------------------------------------------------
 //
 // 标注是这个软件里最贵的东西：一句一句校出来的。所以读、写、选三条命令
@@ -1147,7 +978,7 @@ async fn annot_save(path: String, rows: Vec<annot::Row>) -> Result<Value, String
 
 #[tauri::command]
 fn annot_reveal(path: String) -> Result<(), String> {
-    sts::reveal_path(&path)
+    shell_extras::reveal_path(&path)
 }
 
 // --- 文字合成 TTS（文字 → SAPI → 可选 RVC）--------------------------------
@@ -1357,28 +1188,15 @@ async fn engine_force_kill(state: State<'_, Mutex<AppState>>) -> Result<Value, S
     tauri::async_runtime::spawn_blocking(move || {
         // 先把语音转换收掉。
         //
-        // 用户报的是「其他页结束变声引擎，语音转换还在跑」。以前不动它是有意
-        // 的 —— `kill_runtime_pythons(root, true)` 只收孤儿进程，怕误伤几小时
-        // 的长任务。但这个按钮写的是「强制结束变声引擎 / 解决卡死」，用户按下去
-        // 的预期就是全停；不停反而要他再去别处找开关。
-        //
-        // 走正常的取消路径而不是直接杀：转换那边收到取消会 kill 掉自己的子进程
-        // 并把 BUSY 放掉，文件不会写到一半。收不掉才让后面的强杀兜底。
+        // 走正常的取消路径而不是直接杀：合成那边收到取消会自己收尾，
+        // 输出文件不会写到一半。收不掉才让后面的强杀兜底。
         //
         // 界面在按之前会问一句（App.tsx 的 killAsk），不闷声吃掉长任务。
-        sts::cancel_and_wait(3);
-        // 语音转换的常驻 python 是我们自己记着的，先按正常路子放掉再强杀。
-        sts::release_resident();
+        synth::cancel();
+        synth::shutdown();
         worker::kill_runtime_pythons(&root, true);
-        // 杀完把「当前音色」重新写回引擎配置。
-        //
-        // 强杀是在引擎已经不正常的时候按的，它中途可能正在写 configs/inuse，
-        // 也可能写了一半就没了。下一次「开启变声」读的就是那份配置，读到
-        // 半截的 pth_path 就会用错模型或者干脆起不来 —— 用户的解法是「切到
-        // 另一个音色再切回来」，因为那一下会把模型路径整个重写一遍。
-        //
-        // 那一下现在由强杀自己做。它本来就该是「恢复到已知good状态」的按钮，
-        // 而不是只负责杀进程。
+        // 杀完把「当前角色」重新写回配置：强杀是在已经不正常的时候按的，
+        // 中途可能正写着配置。不重写的话下一次合成读到的可能是半截路径。
         if let Err(e) = voices::resync_selected_model(&root) {
             worker::append_log(&root, &crate::i18n::te("s.298dd55e6d", &(e)));
         }
@@ -1912,27 +1730,13 @@ pub fn run() {
             separate_cancel,
             separate_reveal,
             tools_open_downloads,
-            sts_status,
-            sts_pick_input,
-            sts_pick_output,
             tts_pick_output,
             tts_reset_output,
-            sts_list_input,
-            sts_delete_input,
-            sts_reveal_input,
-            sts_default_input,
             synth_status,
             synth_characters,
             synth_start,
             synth_cancel,
             synth_reveal_output,
-            sts_record_start,
-            sts_record_stop,
-            mic_test_start,
-            mic_test_stop,
-            sts_start,
-            sts_cancel,
-            sts_reveal,
             tts_status,
             tts_speak,
             voice_audition,
@@ -1968,17 +1772,12 @@ pub fn run() {
             {
                 asset_scope::grant_file(app.handle(), wp);
             }
-            // 上次会话自选的输入/输出目录也要续放行。选择命令里的放行只在
-            // 当次会话活着 —— 不补这笔的话，重启后语音转换列表里上次录的
-            // 音频一按播放就静默 404，用户只会看到「播放失败」。
+            // 上次会话自选的输出目录也要续放行。选择命令里的放行只在当次会话
+            // 活着 —— 不补这笔的话，重启后上次合成出来的音频一按播放就静默
+            // 404，用户只会看到「播放失败」。
             {
                 let cfg = config::read(&root);
-                for key in [
-                    sts::LAST_INPUT,
-                    sts::LAST_OUTPUT,
-                    tts::OUT_READ,
-                    tts::OUT_VOICE,
-                ] {
+                for key in [tts::OUT_READ, tts::OUT_VOICE] {
                     if let Some(dir) = cfg.get(key).and_then(|v| v.as_str()) {
                         let dir = dir.trim();
                         if !dir.is_empty() {
@@ -2141,7 +1940,7 @@ pub fn run() {
             // 退出时再清一遍，把本会话分离/下载留下的中间文件收掉。
             if let tauri::RunEvent::Exit = event {
                 if let Ok(g) = app.state::<Mutex<AppState>>().lock() {
-                    sts::release_resident();
+                    synth::shutdown();
                     worker::kill_runtime_pythons(&g.root, false);
                     let stats = paths::clean_temps(&g.root);
                     paths::log_clean_stats(&crate::i18n::t("s.feecb1e6ad"), &g.root, &stats);

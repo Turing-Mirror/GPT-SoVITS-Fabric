@@ -450,8 +450,8 @@ export default function App() {
   };
   const requestForceKill = async () => {
     try {
-      const st = await invoke<{ busy?: boolean }>("sts_status");
-      if (st?.busy) {
+      const st = await invoke<{ state?: string }>("engine_status");
+      if (st?.state === "busy") {
         setKillAsk(true);
         return;
       }
