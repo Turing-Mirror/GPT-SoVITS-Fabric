@@ -1127,16 +1127,11 @@
     "stageSovits": "SoVITS fine-tune",
     "stageGpt": "GPT fine-tune",
     "start": "Start training",
-    "running": "Training",
     "openFolder": "Open experiment folder",
-    "finished": "Done. See the new character in the library",
-    "progressLabel": "Overall {n}%",
     "logTitle": "Log",
     "logNote": "Tail only; full log lives in the experiment folder",
     "logEmpty": "Not started yet.",
-    "logSession": "=== Session started (target {v}) ===",
-    "logLine": "[{n}%] stage artifacts verified",
-    "logDone": "=== done: all stages complete ==="
+    "notWired": "The training pipeline is not wired up yet; this page only shows the shape of each stage."
   },
   "help": {
     "title": "Help",

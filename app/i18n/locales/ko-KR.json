@@ -1127,16 +1127,11 @@
     "stageSovits": "SoVITS 파인튜닝",
     "stageGpt": "GPT 파인튜닝",
     "start": "학습 시작",
-    "running": "학습 중",
     "openFolder": "실험 폴더 열기",
-    "finished": "완료되었습니다. 라이브러리에서 새 캐릭터를 확인하세요",
-    "progressLabel": "전체 진행률 {n}%",
     "logTitle": "실행 로그",
     "logNote": "마지막 몇 줄만 표시됩니다. 전체 로그는 실험 폴더에 있습니다",
     "logEmpty": "아직 시작되지 않았습니다.",
-    "logSession": "=== 세션 시작 (대상 {v}) ===",
-    "logLine": "[{n}%] 단계 산출물 검증 통과",
-    "logDone": "=== done: 모든 단계 완료 ==="
+    "notWired": "학습 파이프라인이 아직 연결되지 않았습니다. 이 페이지는 각 단계의 형태만 보여 줍니다."
   },
   "help": {
     "title": "도움말",

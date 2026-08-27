@@ -1127,16 +1127,11 @@
     "stageSovits": "SoVITS ファインチューニング",
     "stageGpt": "GPT ファインチューニング",
     "start": "学習開始",
-    "running": "学習中",
     "openFolder": "実験フォルダを開く",
-    "finished": "完了。新しいキャラクターをライブラリで確認できます",
-    "progressLabel": "全体進捗 {n}%",
     "logTitle": "ログ",
     "logNote": "末尾のみ表示。完全なログは実験フォルダにあります",
     "logEmpty": "まだ開始していません。",
-    "logSession": "=== セッション開始（ターゲット {v}）===",
-    "logLine": "[{n}%] 段階成果物の検証に合格",
-    "logDone": "=== done: 全ステージ完了 ==="
+    "notWired": "学習パイプラインは未接続です。このページは各段階の形を示しているだけです。"
   },
   "help": {
     "title": "ヘルプ",

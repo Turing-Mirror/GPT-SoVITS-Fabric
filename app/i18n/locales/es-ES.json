@@ -1127,16 +1127,11 @@
     "stageSovits": "Ajuste fino SoVITS",
     "stageGpt": "Ajuste fino GPT",
     "start": "Iniciar entrenamiento",
-    "running": "Entrenando",
     "openFolder": "Abrir carpeta del experimento",
-    "finished": "Completado. Mira el nuevo personaje en la biblioteca",
-    "progressLabel": "Global {n}%",
     "logTitle": "Registro",
     "logNote": "Solo el final; el registro completo vive en la carpeta",
     "logEmpty": "Todavía sin iniciar.",
-    "logSession": "=== Sesión iniciada (objetivo {v}) ===",
-    "logLine": "[{n}%] artefactos de etapa verificados",
-    "logDone": "=== done: todas las etapas completas ==="
+    "notWired": "La cadena de entrenamiento aún no está conectada; esta página solo muestra la forma de cada etapa."
   },
   "help": {
     "title": "Ayuda",

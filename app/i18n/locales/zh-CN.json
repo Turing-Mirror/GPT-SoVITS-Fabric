@@ -1127,16 +1127,11 @@
     "stageSovits": "SoVITS 微调",
     "stageGpt": "GPT 微调",
     "start": "开始训练",
-    "running": "训练中",
     "openFolder": "打开实验目录",
-    "finished": "已完成，可在角色库查看新角色",
-    "progressLabel": "总进度 {n}%",
     "logTitle": "运行日志",
     "logNote": "仅保留末尾若干行，完整日志见实验目录",
     "logEmpty": "尚未开始训练。",
-    "logSession": "=== 训练会话开始（目标版本 {v}）===",
-    "logLine": "[进度 {n}%] 阶段产物校验通过",
-    "logDone": "=== done: 全部阶段完成 ==="
+    "notWired": "训练流程尚未接通，此页仅展示各阶段的形态。"
   },
   "help": {
     "title": "说明",

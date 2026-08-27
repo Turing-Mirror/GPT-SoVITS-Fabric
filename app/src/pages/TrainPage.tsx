@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field, Select, Slider } from "../components/controls";
 import { t } from "../i18n/t";
@@ -7,8 +7,19 @@ import { t } from "../i18n/t";
  * 训练台 —— 数据集准备与微调的统一入口。
  *
  * 流水线四阶段：数据集工具链（分离 / 切片 / 打标 / 校对）→ 训练集格式化 →
- * SoVITS 微调 → GPT 微调。浏览器预览模式下以演示数据呈现各阶段形态；
- * 接通 train_worker 后由引擎上报真实阶段进度。
+ * SoVITS 微调 → GPT 微调。
+ *
+ * **这一页现在只是形状，还没接引擎。** 它调的 `tools/train_worker.py`
+ * 没有随包出去，而那份脚本本身是 RVC 的训练流程，跟 GPT-SoVITS 的两段
+ * 微调不是一回事，接之前得先重写。
+ *
+ * 在接通之前，这里刻意什么都不做：以前「开始训练」按下去会走一个定时器，
+ * 进度条爬到 100%、四个阶段依次打勾、日志里打出「训练完成」—— 全是假的，
+ * 一个字节都没算过。按钮点了没反应是不好，但比谎报训练完成好得多：
+ * 后者会让人以为自己有了一个模型。
+ *
+ * 接引擎时要恢复的是：真实的数据集体检数字、按 engine_core 实际存在与否
+ * 点亮的底模标记、以及由 worker 上报的阶段进度。
  */
 
 const VERSIONS = ["v2ProPlus", "v2Pro", "v4", "v2", "v1"] as const;
@@ -27,60 +38,15 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** 演示用数据集体检摘要。 */
-function demoDataset() {
-  return { total: 1286, short: 14, loud: 3, hours: "9.6" };
-}
-
 export function TrainPage() {
   const [version, setVersion] = useState<Version>("v2ProPlus");
-  const ds = useMemo(demoDataset, []);
 
   const [epochs, setEpochs] = useState(24);
   const [batchSize, setBatchSize] = useState(8);
   const [lr, setLr] = useState(0.0001);
 
-  const [stage, setStage] = useState(-1);
-  const [states, setStates] = useState<StageState[]>(["idle", "idle", "idle", "idle"]);
-  const [progress, setProgress] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
-  const timerRef = useRef<number | null>(null);
-
-  const running = stage >= 0 && stage < STAGE_KEYS.length;
-
-  function startTraining() {
-    if (running) return;
-    setStates(["running", "idle", "idle", "idle"]);
-    setStage(0);
-    setProgress(0);
-    setLog([t("train.logSession", { v: version })]);
-    if (timerRef.current != null) window.clearInterval(timerRef.current);
-    let tick = 0;
-    timerRef.current = window.setInterval(() => {
-      tick += 1;
-      setProgress((p) => {
-        const next = p + 1.6 + Math.random() * 2.2;
-        const s = Math.min(STAGE_KEYS.length - 1, Math.floor(next / 25));
-        setStage(s);
-        setStates((prev) =>
-          prev.map((st, i) => (i < s ? ("done" as const) : i === s ? ("running" as const) : st)),
-        );
-        if (tick % 3 === 0) {
-          setLog((lines) =>
-            [...lines, t("train.logLine", { n: Math.round(Math.min(100, next)) })].slice(-80),
-          );
-        }
-        if (next >= 100) {
-          if (timerRef.current != null) window.clearInterval(timerRef.current);
-          setStates(["done", "done", "done", "done"]);
-          setStage(STAGE_KEYS.length);
-          setLog((lines) => [...lines, t("train.logDone")].slice(-80));
-          return 100;
-        }
-        return next;
-      });
-    }, 220);
-  }
+  const states: StageState[] = ["idle", "idle", "idle", "idle"];
+  const progress = 0;
 
   return (
     <PagePad>
@@ -111,13 +77,11 @@ export function TrainPage() {
             }
           />
           <div className="flex items-center gap-2 flex-wrap">
-            {[
-              { k: "hubert", ok: true },
-              { k: "bert", ok: true },
-              { k: "s1v3", ok: version !== "v1" && version !== "v2" },
-              { k: "sv", ok: version === "v2Pro" || version === "v2ProPlus" },
-              { k: "vocoder", ok: version === "v4" },
-            ].map(({ k, ok }) => (
+            {/* 打勾要以「这台机器上真的有这份权重」为准，那要问 engine_core。
+                接通之前一个都不打 —— 打了就是在替用户断言他有。 */}
+            {["hubert", "bert", "s1v3", "sv", "vocoder"].map((k) => {
+              const ok = false;
+              return (
               <span
                 key={k}
                 className={[
@@ -127,10 +91,10 @@ export function TrainPage() {
                     : "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-[var(--ink-muted)]",
                 ].join(" ")}
               >
-                {ok ? "✓ " : ""}
                 {t(`train.base_${k}`)}
               </span>
-            ))}
+              );
+            })}
           </div>
           <div className="text-[12.5px] text-[var(--help)]">{t("train.baseHint")}</div>
         </div>
@@ -147,10 +111,12 @@ export function TrainPage() {
           </div>
           <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 grid grid-cols-2 max-[560px]:grid-cols-1 gap-x-6 gap-y-3">
             {[
-              { label: t("train.statTotal"), value: String(ds.total), warn: false },
-              { label: t("train.statHours"), value: `${ds.hours} h`, warn: false },
-              { label: t("train.statShort"), value: String(ds.short), warn: ds.short > 0 },
-              { label: t("train.statLoud"), value: String(ds.loud), warn: ds.loud > 0 },
+              // 接通之前一律给「—」。摆一组编出来的数字（1286 条 / 9.6 小时）
+              // 比空着更糟：它看起来像是真的读过素材。
+              { label: t("train.statTotal"), value: "—", warn: false },
+              { label: t("train.statHours"), value: "—", warn: false },
+              { label: t("train.statShort"), value: "—", warn: false },
+              { label: t("train.statLoud"), value: "—", warn: false },
             ].map((s) => (
               <div key={s.label} className="flex items-center justify-between">
                 <span className="text-[12.5px] text-[var(--help)]">{s.label}</span>
@@ -225,24 +191,18 @@ export function TrainPage() {
             />
           </div>
           <div className="flex items-center gap-3 mt-3 flex-wrap">
-            <Btn primary busy={running} onClick={startTraining}>
-              {running ? t("train.running") : t("train.start")}
+            <Btn primary disabled>
+              {t("train.start")}
             </Btn>
-            {!isTauri() ? (
-              <Btn disabled>{t("train.openFolder")}</Btn>
-            ) : (
-              <Btn>{t("train.openFolder")}</Btn>
-            )}
-            <span className="text-[12px] text-[var(--meta)] tabular-nums">
-              {progress >= 100 ? t("train.finished") : t("train.progressLabel", { n: Math.round(progress) })}
-            </span>
+            <Btn disabled>{t("train.openFolder")}</Btn>
+            <span className="text-[12px] text-[var(--meta)]">{t("train.notWired")}</span>
           </div>
         </div>
       </Block>
 
       <Block title={t("train.logTitle")} note={t("train.logNote")}>
         <pre className="max-w-[860px] rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto max-h-[220px] m-0 whitespace-pre-wrap tabular-nums">
-{log.length ? log.join("\n") : t("train.logEmpty")}
+{t("train.logEmpty")}
         </pre>
       </Block>
     </PagePad>

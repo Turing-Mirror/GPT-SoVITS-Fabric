@@ -1127,16 +1127,11 @@
     "stageSovits": "Affinage SoVITS",
     "stageGpt": "Affinage GPT",
     "start": "Lancer l’entraînement",
-    "running": "En cours",
     "openFolder": "Ouvrir le dossier d’expérience",
-    "finished": "Terminé. Voir le nouveau personnage dans la bibliothèque",
-    "progressLabel": "Global {n} %",
     "logTitle": "Journal",
     "logNote": "Fin seulement ; le journal complet est dans le dossier",
     "logEmpty": "Pas encore démarré.",
-    "logSession": "=== Session lancée (cible {v}) ===",
-    "logLine": "[{n} %] artefacts d’étape vérifiés",
-    "logDone": "=== done : toutes les étapes terminées ==="
+    "notWired": "La chaîne d’entraînement n’est pas encore raccordée ; cette page ne montre que la forme de chaque étape."
   },
   "help": {
     "title": "Aide",
