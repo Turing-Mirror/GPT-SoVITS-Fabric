@@ -17,28 +17,38 @@
 //!
 //! # 与 worker 的约定
 //!
-//! `tools/train_worker.py` 由这里 spawn，stdout 一行一条 JSON，形状与
-//! `tools/synth_worker.py` 同一套（那份已经随包发了，可以对着看）：
+//! `tools/train_worker.py` 由这里 spawn，参数走一个 JSON 文件（数据集路径里
+//! 有中文和空格是常态），stdout 一行一条 JSON：
 //!
 //! ```text
-//! {"event":"stage",    "stage":"prepare|format|sovits|gpt", "index":n, "total":4}
-//! {"event":"progress", "stage":"...", "done":n, "total":n, "epoch":n, "message":"..."}
-//! {"event":"ckpt",     "stage":"sovits|gpt", "epoch":n, "path":"..."}
-//! {"event":"done",     "out":"<音色目录>"}
-//! {"event":"error",    "message":"...", "code":"oom|cancelled|..."}
+//! {"phase":"start"}
+//! {"phase":"env",   "device":"cuda", "version":"v2ProPlus", ...}
+//! {"phase":"stage", "stage":"prepare|format|sovits|gpt", "done":n, "total":n,
+//!                   "message_code":"train.xxx", "message_params":{…},
+//!                   "message":"（兜底原文）"}
+//! {"phase":"checkpoint", "stage":"sovits|gpt", "path":"…", "bytes":n}
+//! {"phase":"done",  "weights":{"sovits":"…","gpt":"…"}}
+//! {"phase":"error", "message_code":"train.xxx", "message_params":{…}}
 //! ```
 //!
-//! **那份脚本目前没有随包发。** 它要 import 的 `GPT_SoVITS` 源码树跟着
-//! engine-core 走，不在这个仓里；预检因此会在 `worker_script` 那一关拦住，
-//! 报「安装不完整」而不是跑到一半炸。前端的训练台也还没接过来（`TrainPage`
-//! 里写着为什么）。这个文件先把**壳这一侧的契约**定死：参数、校验、阶段
-//! 模型、产物表、清理判据 —— 这些都是纯逻辑，能在这台机器上跑测试。
+//! 文案一律走 `message_code`（对应语言包 `msg.train.*`），由 `t_worker_msg`
+//! 按用户当前语言取词；worker 自带的 `message` 只是兜底 —— 新加的 code 还没
+//! 进语言包时界面至少有句话，而不是一片空白。
 //!
-//! # 还没动的一处
+//! # 验到哪一步了
 //!
-//! `msg.train.*` 那 43 条仍然是 RVC 的语域（音高算法、检索索引、聚类、采样率）。
-//! 它们是**由 worker 发出来的**消息，worker 还没写，现在把它们改成 GSV 的词
-//! 等于凭空编一套将来对不上的文案。等 worker 落地时连同它的错误码一起重写。
+//! 脚本写完了，协议两头对过了：worker 的五条失败路径都实跑过（空数据集、
+//! 有现成标注、坏版本、请求文件缺失、没参数），输出的行原样抄进了
+//! `the_lines_the_worker_actually_prints_come_out_as_sentences`；轮数解析和
+//! OOM 判定拿一个假 trainer 跑过。`msg.train.*` 与 worker 发的 code 双向钉死
+//! （多一条少一条都红）。
+//!
+//! **没跑过的是真正干活的那三段**：它调用的 `GPT_SoVITS` 源码树跟着 engine-core
+//! 走，不在这个仓里，本机也没有 N 卡和 Runtime。所以脚本里凡是依赖上游布局的
+//! 地方（三个 prepare_datasets 脚本、s2_train / s1_train、两份 config 模板、
+//! 底模路径）都写成「不在就明确报缺哪个文件」，而不是猜一个默认值继续 ——
+//! 第一次在真机上跑时，错的地方会自己报出名字，而不是在某个 epoch 中间炸。
+//! config 也是读上游模板再改我们关心的那几个键，不写死一整份。
 //!
 //! 和 `separate.rs` 同一个形状（一次性子进程 + JSON 行进度），但多两件事：
 //!
@@ -867,7 +877,7 @@ fn last_interrupted(root: &Path) -> Option<Value> {
 }
 
 /// 从一份没写完的训练日志里挖出实验名和最后一轮。日志格式见 `begin_run`
-/// （头部是请求 JSON）和 `note_progress`（`progress stage stage=train 99/200 …`）。
+/// （头部是请求 JSON）和 `note_progress`（`progress stage stage=sovits 99/200 …`）。
 fn parse_interrupted(text: &str) -> Option<(String, u32, u32)> {
     let exp = text
         .lines()
@@ -880,10 +890,15 @@ fn parse_interrupted(text: &str) -> Option<(String, u32, u32)> {
         })?;
     let mut last = None;
     for line in text.lines() {
-        let Some(at) = line.find("stage=train ") else {
+        // 只有两段微调值得提示续跑：格式化那一步重跑一遍就有，而微调是几个
+        // 小时。`stage=` 后面跟的是 worker 报的阶段名。
+        let Some(at) = ["stage=sovits ", "stage=gpt "]
+            .iter()
+            .find_map(|k| line.find(k).map(|i| i + k.len()))
+        else {
             continue;
         };
-        let tail = line[at + "stage=train ".len()..].split_whitespace().next()?;
+        let tail = line[at..].split_whitespace().next()?;
         let (a, b) = tail.split_once('/')?;
         if let (Ok(a), Ok(b)) = (a.parse::<u32>(), b.parse::<u32>()) {
             last = Some((a, b));
@@ -1709,20 +1724,21 @@ mod tests {
     fn an_unfinished_train_log_reports_where_it_stopped() {
         // 壳被强杀 → 日志里没有 `=== done (…) ===`，界面据此告诉用户
         // 「上次断在第几轮、切片还在、可以续跑」。
-        let text = "=== train run 2026-08-18 11:42:56 ===\n                    {\n  \"exp\": \"tomori\",\n  \"total_epoch\": 200\n}\n                    2026-08-18 11:43:22 progress stage stage=train 0/200 准备训练…\n                    2026-08-18 11:58:45 progress stage stage=train 99/200 第 99 / 200 轮\n";
+        // 格式化阶段的行不算数：那一步重跑一遍就有，值得提示的是微调。
+        let text = "=== train run 2026-08-18 11:42:56 ===\n                    {\n  \"exp\": \"tomori\",\n  \"total_epoch\": 200\n}\n                    2026-08-18 11:43:22 progress stage stage=format 3/3 训练集就绪\n                    2026-08-18 11:43:30 progress stage stage=sovits 0/200 微调 SoVITS…\n                    2026-08-18 11:58:45 progress stage stage=sovits 99/200 第 99 / 200 轮\n";
         assert_eq!(parse_interrupted(text), Some(("tomori".into(), 99, 200)));
     }
 
     #[test]
     fn a_run_that_never_reached_epoch_one_is_not_worth_a_prompt() {
         // 只跑到「准备训练」就断了，没有中间产物可续，提示反而添乱。
-        let text = "{\n  \"exp\": \"tomori\"\n}\n                    progress stage stage=train 0/200 准备训练…\n";
+        let text = "{\n  \"exp\": \"tomori\"\n}\n                    progress stage stage=sovits 0/200 微调 SoVITS…\n";
         assert_eq!(parse_interrupted(text), None);
     }
 
     #[test]
     fn a_log_without_an_exp_name_is_ignored() {
-        let text = "progress stage stage=train 9/200 第 9 / 200 轮\n";
+        let text = "progress stage stage=gpt 9/200 第 9 / 200 轮\n";
         assert_eq!(parse_interrupted(text), None);
     }
 
@@ -1813,6 +1829,174 @@ mod tests {
             assert!(preflight(&base, &bad).is_err(), "{bad:?} 应当被拒");
         }
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// worker 报的每一个 `message_code`，语言包里必须真的有。
+    ///
+    /// 这一条钉的是壳与 worker 之间唯一一条**跨语言**的契约。对不上不会报错：
+    /// `t_worker_msg` 查不到 key 就回落到 worker 自带的那句英文兜底 —— 于是
+    /// 中文界面上冒出一句英文，而且只在那个分支真的走到时才看得见（缺底模、
+    /// OOM、转写失败，全是不常走的路）。RVC 那边有一条等价的契约测试，
+    /// GSV 一直缺，因为 worker 一直不存在。
+    #[test]
+    fn every_message_code_the_worker_emits_exists_in_the_language_pack() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("engine-payload/tools/train_worker.py"),
+        )
+        .expect("train_worker.py 必须随 payload 发出去");
+
+        // 四种发 code 的写法。**按调用形状取，不是把所有小写字面量都当 code**
+        // —— 那样会把 say() 的阶段名、dict 的键名、文档里的例子一起收进来，
+        // 测试就从「钉住契约」变成「钉住我的正则」。
+        //
+        //   say(<stage>, "<code>", …)    第二个字符串参数
+        //   Fail("<code>", …)            第一个
+        //   need(<path>, "<code>", …)    第二个
+        //   message_code="train.<code>"  字面量
+        fn args(src: &str, pat: &str) -> Vec<Vec<String>> {
+            let mut out = Vec::new();
+            let mut at = 0;
+            while let Some(i) = src[at..].find(pat) {
+                let head = at + i + pat.len();
+                at = head;
+                let Some(close) = src[head..].find(')') else { break };
+                out.push(
+                    src[head..head + close]
+                        .split('"')
+                        .skip(1)
+                        .step_by(2)
+                        .map(str::to_string)
+                        .collect(),
+                );
+            }
+            out
+        }
+
+        let mut codes: Vec<String> = Vec::new();
+        for a in args(&src, "say(") {
+            if let Some(c) = a.get(1) {
+                codes.push(c.clone());
+            }
+        }
+        for pat in ["Fail(", "need("] {
+            let idx = usize::from(pat == "need(");
+            for a in args(&src, pat) {
+                if let Some(c) = a.get(idx) {
+                    codes.push(c.clone());
+                }
+            }
+        }
+        let lit = "message_code=\"train.";
+        for (i, _) in src.match_indices(lit) {
+            let rest = &src[i + lit.len()..];
+            if let Some(end) = rest.find('"') {
+                codes.push(rest[..end].to_string());
+            }
+        }
+        codes.retain(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_'));
+        codes.sort();
+        codes.dedup();
+        assert!(codes.len() > 20, "只认出 {} 个 code，正则多半失效了", codes.len());
+
+        let _g = crate::i18n::testing::pin("zh-CN");
+        let mut missing: Vec<String> = Vec::new();
+        for c in &codes {
+            let key = format!("msg.train.{c}");
+            if crate::i18n::t(&key) == key {
+                missing.push(key);
+            }
+        }
+        assert!(missing.is_empty(), "语言包里没有这些 code：{missing:?}");
+    }
+
+    /// worker 真实输出的那几行，喂进壳的解析器，看取出来的是不是人话。
+    ///
+    /// 这几行是把 `train_worker.py` 拿五种输入实跑之后原样抄下来的（空数据集、
+    /// 有现成标注、坏版本、请求文件缺失、没参数），不是照着协议手写的 ——
+    /// 手写的话，写错的地方两边会一起错。
+    #[test]
+    fn the_lines_the_worker_actually_prints_come_out_as_sentences() {
+        let _g = crate::i18n::testing::pin("zh-CN");
+        let log = crate::testutil::scratch("worker-lines");
+        let _ = std::fs::remove_dir_all(&log);
+        std::fs::create_dir_all(&log).unwrap();
+        let log = log.join("train.log");
+        let mut progress = Progress::default();
+
+        let lines = [
+            r#"{"phase":"start"}"#,
+            r#"{"phase":"env","device":"cpu","version":"v2ProPlus","is_half":false}"#,
+            r#"{"phase":"stage","stage":"prepare","message_code":"train.skip_prepare","message":"using the existing annotation file","message_params":{"name":"tomori.list","count":"1"},"done":1,"total":1}"#,
+            r#"{"phase":"stage","stage":"sovits","message_code":"train.sovits_started","message":"fine-tuning SoVITS","done":0,"total":24}"#,
+            r#"{"phase":"checkpoint","stage":"sovits","path":"logs/tomori/logs_s2/G_100.pth","bytes":123}"#,
+            r#"{"phase":"error","message_code":"train.bert_missing","message":"the BERT base model is missing","message_params":{}}"#,
+        ];
+        for l in lines {
+            let v: Value = serde_json::from_str(l).expect(l);
+            note_progress(&log, &v, &mut progress);
+        }
+
+        // 最后一条是错误，取出来必须是中文那句，不是 worker 自带的英文兜底，
+        // 更不是 key 本身。
+        let last: Value = serde_json::from_str(lines[5]).unwrap();
+        let msg = crate::i18n::t_worker_msg(&last);
+        assert!(msg.contains("cnhubert") || msg.contains("BERT"), "{msg}");
+        assert!(!msg.starts_with("msg."), "取到的是 key 不是文案：{msg}");
+        assert_ne!(msg, "the BERT base model is missing", "回落到英文兜底了");
+
+        // 带参数的那条要把参数填进去。
+        let skip: Value = serde_json::from_str(lines[2]).unwrap();
+        let msg = crate::i18n::t_worker_msg(&skip);
+        assert!(msg.contains("tomori.list"), "{msg}");
+
+        // 进度状态跟着最后一条 stage 走 —— 断点续跑读的就是它。
+        assert_eq!(progress.stage, "error");
+        let body = std::fs::read_to_string(&log).unwrap();
+        assert!(body.contains("stage=sovits 0/24"), "{body}");
+        assert!(body.contains("checkpoint"), "checkpoint 行要原样落盘：{body}");
+
+        let _ = std::fs::remove_dir_all(log.parent().unwrap());
+    }
+
+    /// worker 必须真的在 payload 里。少了它，预检会报「安装不完整」，
+    /// 而这件事在打包之后才发现就太晚了。
+    #[test]
+    fn the_worker_script_ships_with_the_payload() {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("engine-payload/tools/train_worker.py");
+        assert!(p.is_file(), "{} 不在", p.display());
+    }
+
+    /// 反过来也要管：语言包里挂着 worker 根本不发的 code，就是下一批死文案。
+    #[test]
+    fn the_language_pack_has_no_message_code_the_worker_never_emits() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("engine-payload/tools/train_worker.py"),
+        )
+        .expect("train_worker.py");
+        let pack = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../i18n/locales/zh-CN.json"),
+        )
+        .expect("zh-CN.json");
+        let v: Value = serde_json::from_str(&pack).expect("zh-CN.json 不是合法 JSON");
+        let train = v
+            .get("msg")
+            .and_then(|m| m.get("train"))
+            .and_then(|t| t.as_object())
+            .expect("msg.train");
+
+        // 两种形式都算数：`say(…, "oom", …)` 和 `message_code="train.usage"`。
+        let mut stale: Vec<&String> = train
+            .keys()
+            .filter(|k| {
+                !src.contains(&format!("\"{k}\"")) && !src.contains(&format!("\"train.{k}\""))
+            })
+            .collect();
+        stale.sort();
+        assert!(stale.is_empty(), "worker 不发这些，删掉：{stale:?}");
     }
 
     #[test]

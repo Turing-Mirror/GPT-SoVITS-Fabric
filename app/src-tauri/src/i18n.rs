@@ -522,17 +522,17 @@ mod tests {
         // 训练那批码是 worker 真会发的（train_worker.py 的 emit），
         // 拿它当样本比拿引擎码稳 —— 引擎码随实时链路一起没了。
         assert!(
-            t_msg("train.started").contains("训练"),
+            t_msg("train.train_failed").contains("训练"),
             "got {:?}",
-            t_msg("train.started")
+            t_msg("train.train_failed")
         );
 
         set_locale("en-US");
         assert_eq!(t("tray.show"), "Open main window");
         assert!(
-            t_msg("train.started").to_ascii_lowercase().contains("train"),
+            t_msg("train.train_failed").to_ascii_lowercase().contains("train"),
             "got {:?}",
-            t_msg("train.started")
+            t_msg("train.train_failed")
         );
 
         // Non-English packs must resolve (embedded), not fall back to the key.
