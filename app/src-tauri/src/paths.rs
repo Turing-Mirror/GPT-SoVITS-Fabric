@@ -261,17 +261,12 @@ pub fn clean_temps(root: &Path) -> CleanStats {
             }
         }
     }
-    // 一次性工具请求
-    for name in [
-        "separate_request.json",
-        "train_request.json",
-        "tts_request.json",
-        "tts_sapi.wav",
-        "tts_out.wav",
-        "sts_request.json",
-        "record_request.json",
-        "record_stop",
-    ] {
+    // 一次性工具请求。**只列这个产品真会写的名字** —— 这张表原来还带着
+    // tts_request.json / tts_sapi.wav / tts_out.wav（RVC 的 SAPI 朗读）、
+    // sts_request.json（离线变声）、record_stop（录音），GSV 里没有任何东西
+    // 会创建它们，扫描等于空跑。和四个仓的临时文件清理器扫着别人的前缀是
+    // 同一个模子。
+    for name in ["separate_request.json", "train_request.json"] {
         let p = cache.join(name);
         if p.is_file() {
             let sz = p.metadata().map(|m| m.len()).unwrap_or(0);

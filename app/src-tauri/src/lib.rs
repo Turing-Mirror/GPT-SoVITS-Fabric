@@ -36,7 +36,6 @@ mod testutil;
 mod wallpaper;
 mod tool_window;
 mod train;
-mod tts;
 mod ui_assets;
 pub mod update;
 mod voices;
@@ -1006,102 +1005,6 @@ fn annot_reveal(path: String) -> Result<(), String> {
     shell_extras::reveal_path(&path)
 }
 
-// --- 文字合成 TTS（文字 → SAPI → 可选 RVC）--------------------------------
-
-#[tauri::command]
-async fn tts_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    // 列系统嗓子要起一次 PowerShell，几百毫秒。放在 IPC 线程上就是开窗那一下
-    // 界面先白半秒。
-    tauri::async_runtime::spawn_blocking(move || Ok(tts::status(&root)))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn tts_speak(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    text: String,
-    voice: String,
-    rate: i32,
-    pitch: i32,
-    use_rvc: bool,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        tts::run(&app, &root, &text, &voice, rate, pitch, use_rvc)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// 用指定音色念一句固定的话，用来当场听一下这个音色像不像。
-///
-/// 不额外附带样音：产品自带的 SAPI 朗读加上离线换声，本来就能凑出一段人声，
-/// 省掉一份要考虑体积和授权的内置音频。念的那句话跟着界面语言走。
-#[tauri::command]
-async fn voice_audition(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    model_path: String,
-    voice: Option<String>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let text = crate::i18n::t("s.auditionText");
-        tts::run_with_model(
-            &app,
-            &root,
-            &text,
-            voice.as_deref().unwrap_or(""),
-            0,
-            0,
-            true,
-            &model_path,
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn tts_cancel() {
-    tts::cancel();
-}
-
-/// 在文件管理器里打开合成结果所在的目录。`use_rvc` 决定开哪一路。
-#[tauri::command]
-fn tts_reveal(state: State<'_, Mutex<AppState>>, use_rvc: bool) -> Result<(), String> {
-    let dir = tts::out_dir_for(&root_clone(&state)?, use_rvc);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    shell_extras::reveal(&dir.join("x"))
-}
-
-/// 选朗读 / 变声的输出目录。`window` 是为了让选择框挂在调用它的那扇窗上 ——
-/// 不传的话对话框会认错父窗口，把工具窗挤到后台去。
-#[tauri::command]
-fn tts_pick_output(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-    use_rvc: bool,
-) -> Result<Option<String>, String> {
-    let root = root_clone(&state)?;
-    let picked = tts::pick_output(&root, Some(&window), use_rvc);
-    // 输出目录可以在任何盘上；试听播放的正是写进这里的文件。
-    if let Some(ref p) = picked {
-        asset_scope::grant_dir(window.app_handle(), std::path::Path::new(p));
-    }
-    Ok(picked)
-}
-
-/// 把某一路的输出目录恢复成默认。
-#[tauri::command]
-fn tts_reset_output(state: State<'_, Mutex<AppState>>, use_rvc: bool) -> Result<(), String> {
-    tts::reset_output(&root_clone(&state)?, use_rvc);
-    Ok(())
-}
-
 // --- 附加资源（分离模型 / 训练底模）-----------------------------------------
 
 #[tauri::command]
@@ -1767,18 +1670,11 @@ pub fn run() {
             separate_cancel,
             separate_reveal,
             tools_open_downloads,
-            tts_pick_output,
-            tts_reset_output,
             synth_status,
             synth_characters,
             synth_start,
             synth_cancel,
             synth_reveal_output,
-            tts_status,
-            tts_speak,
-            voice_audition,
-            tts_cancel,
-            tts_reveal,
             extra_list,
             extra_download,
             extra_cancel,
@@ -1813,9 +1709,13 @@ pub fn run() {
             // 上次会话自选的输出目录也要续放行。选择命令里的放行只在当次会话
             // 活着 —— 不补这笔的话，重启后上次合成出来的音频一按播放就静默
             // 404，用户只会看到「播放失败」。
+            //
+            // 这里以前放行的是 RVC 那两个 TTS 目录（朗读 / 变声），而这个产品
+            // 的合成输出走 `synth_out_dir` —— 也就是说这一笔从来没放行到正确的
+            // 目录上，改过输出目录的用户重启之后一按播放就是 404。
             {
                 let cfg = config::read(&root);
-                for key in [tts::OUT_READ, tts::OUT_VOICE] {
+                for key in [synth::OUT_DIR_KEY] {
                     if let Some(dir) = cfg.get(key).and_then(|v| v.as_str()) {
                         let dir = dir.trim();
                         if !dir.is_empty() {

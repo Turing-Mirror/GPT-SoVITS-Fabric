@@ -5,9 +5,13 @@ import { t } from "../i18n/t";
  * 底部状态条（替代 RVC-Fabric 的实时变声 Dock）。
  *
  * GPT-SoVITS Fabric 没有常驻变声流，底栏只承担三件事：当前角色、引擎状态、
- * 去合成台的主行动按钮。等 synth_worker 接通后，statusTitle/statusSub 由
- * 引擎状态驱动；浏览器预览下显示演示文案。
- */
+ * 去合成台的主行动按钮。
+ *
+ * `statusTitle` / `statusSub` 现在由运行时是否就绪驱动（见 App.tsx）。
+ *
+ * **`roleName` 还没人传**，所以左上角常年显示「未选择角色」—— 当前角色是
+ * SynthPage 里的局部状态，底栏在它外面，看不到。要修得先把选中的角色提到
+ * App 或存进配置，那是另一件事，不在这里顺手做。 */
 
 type Props = {
   roleName?: string;

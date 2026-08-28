@@ -51,10 +51,14 @@ pub fn characters_dir(root: &Path) -> PathBuf {
     paths::user_data(root).join("characters")
 }
 
+/// 合成输出目录的配置键。启动时要按它续放行资产作用域，所以得是个常量 ——
+/// 两处各写一遍字符串，改一处忘一处的后果是「重启之后播放失败」。
+pub const OUT_DIR_KEY: &str = "synth_out_dir";
+
 /// 合成输出默认目录。设置页可改（synth_out_dir），空值回这里。
 pub fn out_dir(root: &Path) -> PathBuf {
     let custom = crate::config::read(root)
-        .get("synth_out_dir")
+        .get(OUT_DIR_KEY)
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim()

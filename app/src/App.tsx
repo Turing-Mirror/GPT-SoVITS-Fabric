@@ -915,8 +915,20 @@ export default function App() {
       <NativeDialogHint />
 
 <StatusBar
-        statusTitle={t("statusbar.idleTitle")}
-        statusSub={t("statusbar.idleSub")}
+        // 这两行以前写死成「合成引擎接入中 · M1 开发阶段：界面先行，推理内核
+        // 随后接通」，永远不变。M1 早就接通了（synth_worker.py 随包发，
+        // SynthPage 走 synth_start），也就是说底栏在对每一个用户常年谎报
+        // 「引擎还没接」。现在按运行时是否就绪给两句真话。
+        statusTitle={
+          engine.provision.runtime_ready
+            ? t("statusbar.readyTitle")
+            : t("statusbar.needRuntimeTitle")
+        }
+        statusSub={
+          engine.provision.runtime_ready
+            ? undefined
+            : t("statusbar.needRuntimeSub")
+        }
         onOpenSynth={() => setPage("synth")}
       />
       {page === "home" ? (
