@@ -379,6 +379,58 @@ mod tests {
     use super::*;
 
     #[test]
+    /// worker 和它依赖的两棵 vendored 树必须真的在 payload 里。
+    ///
+    /// 这三样以前一样都没有 —— `separate.rs` 整个文件从 RVC 抄过来，脚本却没跟
+    /// 着抄。结果是分离功能从第一天起就必然报「安装不完整」，而这件事打包之后
+    /// 才看得出来。
+    #[test]
+    fn the_separation_stack_ships_with_the_payload() {
+        let tools = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("engine-payload/tools");
+        assert!(tools.join("separate_worker.py").is_file(), "separate_worker.py 不在");
+        // core_present() 查的就是这一份；缺了会在 import 上崩，预检要认得出来。
+        assert!(
+            tools.join("pymss_core").join("__init__.py").is_file(),
+            "pymss_core 不在"
+        );
+        assert!(
+            tools.join("pymss").join("model_registry.py").is_file(),
+            "pymss 不在 —— worker 从这里取 create_separator"
+        );
+    }
+
+    /// worker 报的 `sep.*` 码，语言包里必须真的有。
+    ///
+    /// 和训练那侧同一条契约：对不上不会报错，只会在中文界面上冒出 worker
+    /// 自带的兜底原文，而且只在出错那一刻才看得见。
+    #[test]
+    fn every_sep_code_the_worker_emits_exists_in_the_language_pack() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("engine-payload/tools/separate_worker.py"),
+        )
+        .expect("separate_worker.py");
+
+        let mut codes: Vec<String> = Vec::new();
+        for (i, _) in src.match_indices("\"sep.") {
+            let rest = &src[i + "\"sep.".len()..];
+            if let Some(end) = rest.find('"') {
+                codes.push(rest[..end].to_string());
+            }
+        }
+        codes.sort();
+        codes.dedup();
+        assert_eq!(codes.len(), 4, "认出来的码：{codes:?}");
+
+        let _g = crate::i18n::testing::pin("zh-CN");
+        for c in &codes {
+            let key = format!("msg.sep.{c}");
+            assert_ne!(crate::i18n::t(&key), key, "语言包里没有 {key}");
+        }
+    }
+
+    #[test]
     fn model_dir_lives_in_the_install_not_the_home_dir() {
         // PyMSS 默认写 ~/.cache/pymss：卸载带不走，用户也找不到。
         let d = model_dir(Path::new("C:\\App"));
