@@ -1,4 +1,44 @@
-//! 训练音色。
+//! 训练角色（GPT-SoVITS 的两段微调）。
+//!
+//! # 流水线
+//!
+//! 训练台四个阶段，与 `TrainPage` 上那四个勾一一对应：
+//!
+//! 1. **数据集工具链** —— UVR5 人声分离 → 切片 → ASR 打标 → 人工校对，
+//!    产出 `<数据集>/<名字>.list`（`音频路径|说话人|语种|文本`）。校对在
+//!    「标注」工具窗里做，不在这条链上。
+//! 2. **训练集格式化** —— 上游 `prepare_datasets` 的三步：BERT 文本特征、
+//!    cnhubert SSL 特征 + 32k 重采样、语义 token。产物见 `STAGE_ARTIFACTS`。
+//! 3. **SoVITS 微调**（s2）—— 产出 `logs_s2/` 下的检查点。
+//! 4. **GPT 微调**（s1）—— 产出 `logs_s1/` 下的检查点。
+//!
+//! 阶段 2 之前的东西可以重来（删了再跑一遍就有），阶段 3、4 的检查点不能 ——
+//! `CLEANUP_KINDS` 那张表按这条线划的。
+//!
+//! # 与 worker 的约定
+//!
+//! `tools/train_worker.py` 由这里 spawn，stdout 一行一条 JSON，形状与
+//! `tools/synth_worker.py` 同一套（那份已经随包发了，可以对着看）：
+//!
+//! ```text
+//! {"event":"stage",    "stage":"prepare|format|sovits|gpt", "index":n, "total":4}
+//! {"event":"progress", "stage":"...", "done":n, "total":n, "epoch":n, "message":"..."}
+//! {"event":"ckpt",     "stage":"sovits|gpt", "epoch":n, "path":"..."}
+//! {"event":"done",     "out":"<音色目录>"}
+//! {"event":"error",    "message":"...", "code":"oom|cancelled|..."}
+//! ```
+//!
+//! **那份脚本目前没有随包发。** 它要 import 的 `GPT_SoVITS` 源码树跟着
+//! engine-core 走，不在这个仓里；预检因此会在 `worker_script` 那一关拦住，
+//! 报「安装不完整」而不是跑到一半炸。前端的训练台也还没接过来（`TrainPage`
+//! 里写着为什么）。这个文件先把**壳这一侧的契约**定死：参数、校验、阶段
+//! 模型、产物表、清理判据 —— 这些都是纯逻辑，能在这台机器上跑测试。
+//!
+//! # 还没动的一处
+//!
+//! `msg.train.*` 那 43 条仍然是 RVC 的语域（音高算法、检索索引、聚类、采样率）。
+//! 它们是**由 worker 发出来的**消息，worker 还没写，现在把它们改成 GSV 的词
+//! 等于凭空编一套将来对不上的文案。等 worker 落地时连同它的错误码一起重写。
 //!
 //! 和 `separate.rs` 同一个形状（一次性子进程 + JSON 行进度），但多两件事：
 //!
@@ -28,9 +68,19 @@ static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 /// 训练子进程本身会再 fork 出 worker 进程，光靠 cancel 标志杀不干净，得留句柄。
 static CHILD: Mutex<Option<u32>> = Mutex::new(None);
 
-/// 界面只暴露这三档。原版还有 v1 和无 f0 的组合，那些对着我们的用户没有意义
-/// —— 选错了只会训出更差的模型。
-pub const SAMPLE_RATES: [&str; 3] = ["32k", "40k", "48k"];
+/// 可训练的版本。与 `TrainPage` 的 `VERSIONS` 一致，顺序也一致（第一个是默认）。
+///
+/// v3/v4 走的是 LoRA 路径（上游 `s2_train_v3_lora.py`），和这里的全参微调不是
+/// 一条线；`docs/DECISIONS.md` D5 把它标成待定，所以先不开。
+pub const TRAIN_VERSIONS: [&str; 3] = ["v2ProPlus", "v2Pro", "v2"];
+
+/// 轮数 / 批大小 / 学习率的可接受范围。
+///
+/// 卡在这里而不是只靠界面的滑杆：命令是能直接 invoke 的，而一个 0 的批大小
+/// 或者 1e9 的学习率不会报错，只会安静地训出一个废模型 —— 几个小时之后才知道。
+pub const EPOCH_RANGE: (u32, u32) = (1, 200);
+pub const BATCH_RANGE: (u32, u32) = (1, 64);
+pub const LR_RANGE: (f64, f64) = (1e-6, 1e-2);
 
 fn cancel_flag() -> Arc<AtomicBool> {
     CANCEL
@@ -44,34 +94,6 @@ fn worker_script(root: &Path) -> PathBuf {
 
 pub fn exp_root(root: &Path) -> PathBuf {
     root.join("logs")
-}
-
-fn pretrained_dir(root: &Path) -> PathBuf {
-    root.join("assets").join("pretrained_v2")
-}
-
-/// 静音样本：filelist 末尾要拼 `mute{sr}.wav`。只看目录在不在会让缺文件的
-/// 安装过了预检，训到最后一步才炸。
-fn mute_ready(root: &Path, sr: Option<&str>) -> bool {
-    let d = root.join("logs").join("mute").join("0_gt_wavs");
-    let check = |rate: &str| d.join(format!("mute{rate}.wav")).is_file();
-    match sr {
-        Some(rate) => check(rate),
-        None => SAMPLE_RATES.iter().all(|rate| check(rate)),
-    }
-}
-
-/// 某个采样率的底模齐不齐。两个文件缺一不可，只有 G 没有 D 训不起来。
-pub fn pretrained_ready(root: &Path, sr: &str) -> bool {
-    let d = pretrained_dir(root);
-    // 底模都在 100 MB 以上；下到一半的半截文件不能算数。
-    let ok = |name: String| {
-        d.join(name)
-            .metadata()
-            .map(|m| m.is_file() && m.len() > 10_000_000)
-            .unwrap_or(false)
-    };
-    ok(format!("f0G{sr}.pth")) && ok(format!("f0D{sr}.pth"))
 }
 
 /// 已有的实验（`logs/<名字>`）。`mute` 是随包发的静音样本，不是用户的实验。
@@ -148,15 +170,18 @@ fn experiments(root: &Path) -> Vec<Value> {
 ///
 /// 明确不在表里：`*.pth`（训练存档和权重）、`*.index`（检索索引）、
 /// `*.log`（日志）、`config.json`。前两样删了不可再生。
-pub const STAGE_ARTIFACTS: [&str; 7] = [
-    "0_gt_wavs",
-    "1_16k_wavs",
-    "2a_f0",
-    "2b-f0nsf",
-    "3_feature768",
-    "total_fea.npy",
-    "filelist.txt",
+pub const STAGE_ARTIFACTS: [&str; 5] = [
+    "2-name2text.txt",
+    "3-bert",
+    "4-cnhubert",
+    "5-wav32k",
+    "6-name2semantic.tsv",
 ];
+
+/// 两段微调的检查点目录。**不在 `STAGE_ARTIFACTS` 里** —— 那张表是「删了能再
+/// 生成」的中间产物，这两个删了就是几个小时白烧。清理那边按 `checkpoints`
+/// 单独一类处理，用户得自己勾。
+pub const CHECKPOINT_DIRS: [&str; 2] = ["logs_s2", "logs_s1"];
 
 /// 中间产物一共占多少字节。
 pub fn stage_artifact_bytes(exp_dir: &Path) -> u64 {
@@ -446,80 +471,31 @@ fn probe_loudness(root: &Path, files: &[(PathBuf, f64)]) -> Option<(f64, f64)> {
     Some((mean, ratio))
 }
 
-/// 可清理的三类。分开列、分开勾 —— 三样的后果完全不同，混成一个「一键清理」
+/// 可清理的两类。分开列、分开勾 —— 后果完全不同，混成一个「一键清理」
 /// 就等于让用户在不知道后果的情况下按下去。
 ///
 /// | 类别 | 匹配 | 删掉之后 |
 /// |---|---|---|
-/// | snapshots  | `assets/weights/<exp>_e\d+_s\d+.pth` | 无影响 |
-/// | checkpoints| `logs/<exp>/[GD]_\d+.pth`             | 不能续训 |
-/// | dataset    | `STAGE_ARTIFACTS`                     | 不能续训，要从预处理重来 |
+/// | checkpoints | `logs/<exp>/{logs_s1,logs_s2}/**` | 不能续训，两段微调都要重来 |
+/// | dataset     | `STAGE_ARTIFACTS`                 | 要从格式化那一步重跑 |
 ///
-/// 永不触碰：`assets/weights/<exp>.pth`（正式权重）、`User_Data/models/**`
-/// （已发布的音色）、`logs/<exp>/*.index`（检索索引）、各类 `.log`。
-pub const CLEANUP_KINDS: [&str; 3] = ["snapshots", "checkpoints", "dataset"];
-
-/// 「训练途中另存的小模型」：`<exp>_e12_s3456.pth`。
+/// 永不触碰：训练输出目录下已经成形的角色（`User_Data/models/**`）、各类 `.log`。
 ///
-/// 判据必须把正式权重 `<exp>.pth` 排除在外 —— 那是训练的最终产物，删了就没了。
-pub fn is_epoch_snapshot(exp: &str, name: &str) -> bool {
-    let Some(stem) = name.strip_suffix(".pth") else {
-        return false;
-    };
-    let Some(rest) = stem.strip_prefix(exp) else {
-        return false;
-    };
-    // `<exp>.pth` 本身：rest 是空串，不算。
-    let Some(rest) = rest.strip_prefix("_e") else {
-        return false;
-    };
-    let Some((epoch, step)) = rest.split_once("_s") else {
-        return false;
-    };
-    !epoch.is_empty()
-        && epoch.chars().all(|c| c.is_ascii_digit())
-        && !step.is_empty()
-        && step.chars().all(|c| c.is_ascii_digit())
-}
-
-/// 「训练存档」：`G_35200.pth` / `D_35200.pth`。
-pub fn is_train_checkpoint(name: &str) -> bool {
-    let Some(stem) = name.strip_suffix(".pth") else {
-        return false;
-    };
-    let Some(rest) = stem.strip_prefix('G').or_else(|| stem.strip_prefix('D')) else {
-        return false;
-    };
-    let Some(digits) = rest.strip_prefix('_') else {
-        return false;
-    };
-    !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
-}
+/// RVC 那版还有第三类 `snapshots`（`assets/weights/<exp>_eN_sM.pth`，训练途中
+/// 另存的小模型）。GPT-SoVITS 没有这个东西：中途的检查点就在 `logs_s?/` 里，
+/// 最终权重直接落到输出目录，两者已经分别对应上面两类了。
+pub const CLEANUP_KINDS: [&str; 2] = ["checkpoints", "dataset"];
 
 /// 某一类在盘上的文件清单。扫描和删除都调它 —— 只有一处判据。
 fn cleanup_targets(root: &Path, exp: &str, kind: &str) -> Vec<PathBuf> {
     let exp_dir = exp_root(root).join(exp);
     match kind {
-        "snapshots" => {
-            let dir = root.join("assets").join("weights");
-            list_files(&dir)
-                .into_iter()
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|s| s.to_str())
-                        .map(|n| is_epoch_snapshot(exp, n))
-                        .unwrap_or(false)
-                })
-                .collect()
-        }
-        "checkpoints" => list_files(&exp_dir)
-            .into_iter()
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|s| s.to_str())
-                    .map(is_train_checkpoint)
-                    .unwrap_or(false)
-            })
+        // 两段微调的检查点整目录算一类。不按文件名认（`G_*.pth` / `epoch=*.ckpt`
+        // 两套命名，还会随上游版本变），按目录认 —— 目录是我们和 worker 之间
+        // 约定死的，文件名不是。
+        "checkpoints" => CHECKPOINT_DIRS
+            .iter()
+            .flat_map(|d| list_files(&exp_dir.join(d)))
             .collect(),
         "dataset" => STAGE_ARTIFACTS
             .iter()
@@ -530,10 +506,21 @@ fn cleanup_targets(root: &Path, exp: &str, kind: &str) -> Vec<PathBuf> {
     }
 }
 
+/// 目录下的文件（递归）。检查点目录里上游会再分子目录，只扫一层会漏。
 fn list_files(dir: &Path) -> Vec<PathBuf> {
-    std::fs::read_dir(dir)
-        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.is_file()).collect())
-        .unwrap_or_default()
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(list_files(&p));
+        } else if p.is_file() {
+            out.push(p);
+        }
+    }
+    out
 }
 
 /// 每个实验、每一类各占多少、各有几个文件。
@@ -826,20 +813,17 @@ pub fn busy() -> bool {
 pub fn status(root: &Path) -> Value {
     let nvidia = is_nvidia(root);
     let busy = *BUSY.lock().unwrap_or_else(|e| e.into_inner());
-    let pre: Vec<Value> = SAMPLE_RATES
-        .iter()
-        .map(|sr| json!({ "sample_rate": sr, "ready": pretrained_ready(root, sr) }))
-        .collect();
     json!({
         "runtime_ready": paths::runtime_ready(root),
         "worker_present": worker_script(root).is_file(),
-        "mute_present": mute_ready(root, None),
-        "hubert_present": root.join("assets").join("hubert").join("hubert_base.pt").is_file(),
+        // 底模就绪与否交给 engine_assets 判 —— 缺哪几组它自己报得出来，
+        // 界面不必再拼一遍「hubert 在不在、mute 在不在」这种 RVC 的清单。
+        "engine_core_ready": crate::engine_assets::engine_core_ready(root),
+        "engine_core_missing": crate::engine_assets::engine_core_missing(root),
         "nvidia": nvidia,
-        "pretrained": pre,
+        "versions": TRAIN_VERSIONS,
         "experiments": experiments(root),
         "suggested_batch": suggested_batch(),
-        "rmvpe_present": rmvpe_ready(root),
         // 产品所在盘还剩多少。训练要在 logs/<实验>/ 下写切片、音高、特征，
         // 写到一半盘满了是「跑了四十分钟然后失败」，值得在开始之前就拦。
         "disk_free_bytes": paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null),
@@ -910,15 +894,6 @@ fn parse_interrupted(text: &str) -> Option<(String, u32, u32)> {
     (done > 0).then_some((exp, done, total))
 }
 
-/// rmvpe 是默认音高算法。文件不在或下到一半，预处理跑完才会炸。
-fn rmvpe_ready(root: &Path) -> bool {
-    root.join("assets")
-        .join("rmvpe")
-        .join("rmvpe.pt")
-        .metadata()
-        .map(|m| m.is_file() && m.len() > 1_000_000)
-        .unwrap_or(false)
-}
 
 pub fn cancel() {
     cancel_flag().store(true, Ordering::SeqCst);
@@ -948,19 +923,25 @@ fn emit(app: &AppHandle, payload: Value) {
     let _ = app.emit("train-progress", payload);
 }
 
-/// 训练请求。字段和 `tools/train_worker.py` 的 `normalize()` 一一对应。
+/// 训练请求。字段和 `tools/train_worker.py` 的 `normalize()` 一一对应，
+/// 也和 `TrainPage` 上的那几个控件一一对应。
+///
+/// 这里原来是 RVC 的一套：`sample_rate`（32k/40k/48k）、`f0_method`
+/// （rmvpe/harvest/pm/dio）、以及训完之后建检索索引。GPT-SoVITS 一个都没有 ——
+/// 它的输入固定 32k、不提 f0、也没有索引这回事。照抄过来的结果是界面上摆着
+/// 一排这个产品根本不存在的旋钮。
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct TrainReq {
     pub exp: String,
     pub dataset: String,
-    pub sample_rate: String,
+    /// 见 `TRAIN_VERSIONS`。决定用哪一组底模、走哪条微调路径。
+    pub version: String,
     pub total_epoch: u32,
     pub batch_size: u32,
+    /// 学习率。上游 s1/s2 的默认量级都在 1e-4 附近。
+    pub learning_rate: f64,
     pub save_every: u32,
-    pub f0_method: String,
     pub resume: bool,
-    #[serde(default)]
-    pub save_every_weights: bool,
     /// 训好的音色放哪。空 = `User_Data/models`（老行为）。
     ///
     /// 一个音色连模型带索引三四百 MB，训十个就是几个 G。允许挪到别的盘，
@@ -969,8 +950,6 @@ pub struct TrainReq {
     #[serde(default)]
     pub output_dir: String,
 }
-
-const F0_METHODS: [&str; 4] = ["rmvpe", "harvest", "pm", "dio"];
 
 /// 原版 `default_batch_size = VRAM_GB // 2`。查不到就给 4（6GB 卡的稳妥值）。
 fn suggested_batch() -> u32 {
@@ -1038,31 +1017,36 @@ fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
     if !worker_script(root).is_file() {
         return Err(crate::i18n::t("s.5164f3e0db").into());
     }
-    if !SAMPLE_RATES.contains(&req.sample_rate.as_str()) {
-        return Err(crate::i18n::te("s.ab1660b1a1", &(req.sample_rate)));
+    if !TRAIN_VERSIONS.contains(&req.version.as_str()) {
+        return Err(crate::i18n::te("s.trainVersionUnsupported", &(req.version)));
     }
-    if !F0_METHODS.contains(&req.f0_method.as_str()) {
-        return Err(crate::i18n::te("s.trainF0Unsupported", &(req.f0_method)));
+    // 范围校验放在预检里，不只放在界面的滑杆上：命令是能直接 invoke 的，而一个
+    // 0 的批大小或者 1e9 的学习率不会报错，只会安静地训出一个废模型 ——
+    // 几个小时之后才知道。
+    if req.total_epoch < EPOCH_RANGE.0 || req.total_epoch > EPOCH_RANGE.1 {
+        return Err(crate::i18n::te("s.trainEpochRange", &req.total_epoch.to_string()));
     }
-    if req.f0_method == "rmvpe" && !rmvpe_ready(root) {
-        return Err(crate::i18n::t("s.trainRmvpeMissing").into());
+    if req.batch_size < BATCH_RANGE.0 || req.batch_size > BATCH_RANGE.1 {
+        return Err(crate::i18n::te("s.trainBatchRange", &req.batch_size.to_string()));
     }
-    if !pretrained_ready(root, &req.sample_rate) {
-        return Err(crate::i18n::te("s.c7a9f88925", &req.sample_rate));
-    }
-    if !root
-        .join("assets")
-        .join("hubert")
-        .join("hubert_base.pt")
-        .is_file()
+    if !(req.learning_rate.is_finite()
+        && req.learning_rate >= LR_RANGE.0
+        && req.learning_rate <= LR_RANGE.1)
     {
-        return Err(crate::i18n::t("s.c2b2787278").into());
+        return Err(crate::i18n::te(
+            "s.trainLrRange",
+            &format!("{}", req.learning_rate),
+        ));
     }
-    if !mute_ready(root, Some(&req.sample_rate)) {
-        return Err(crate::i18n::t("s.625da2c547").into());
+    // 底模不再是 RVC 那套按采样率分的 pretrained_v2 + hubert_base.pt + 静音样本，
+    // 而是 engine-core 里的 s1v3 / hubert+bert / v2ProPlus 三组 —— 判据统一
+    // 交给 engine_assets，缺哪一组它自己报得出来。
+    if !crate::engine_assets::engine_core_ready(root) {
+        return Err(crate::i18n::t("s.trainEngineCoreMissing").into());
     }
-    // resume 的时候数据集可以不在了 —— 切片已经在实验目录里，原始素材删掉也无妨。
-    let have_slices = count_dir(&exp_root(root).join(&req.exp).join("1_16k_wavs")) > 0;
+    // resume 的时候数据集可以不在了 —— 格式化产物已经在实验目录里，原始素材
+    // 删掉也无妨。判据用格式化那一步的第一个产物。
+    let have_slices = exp_root(root).join(&req.exp).join(STAGE_ARTIFACTS[0]).exists();
     if !(req.resume && have_slices) && !Path::new(&req.dataset).is_dir() {
         return Err(crate::i18n::t("s.6c4b38602a").into());
     }
@@ -1311,13 +1295,12 @@ pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, Str
         &json!({
             "exp": req.exp,
             "dataset": req.dataset,
-            "sample_rate": req.sample_rate,
+            "version": req.version,
             "total_epoch": req.total_epoch,
             "batch_size": req.batch_size,
+            "learning_rate": req.learning_rate,
             "save_every": req.save_every,
-            "f0_method": req.f0_method,
             "resume": req.resume,
-            "save_every_weights": req.save_every_weights,
             "output_dir": req.output_dir,
             "device": device,
         }),
@@ -1367,15 +1350,14 @@ fn run_inner(
     let payload = json!({
         "exp": req.exp.trim(),
         "dataset": req.dataset,
-        "sample_rate": req.sample_rate,
+        "version": req.version,
         "total_epoch": req.total_epoch,
         "batch_size": req.batch_size,
+        "learning_rate": req.learning_rate,
         "save_every": req.save_every,
-        "f0_method": req.f0_method,
         "device": device,
         "is_half": device == "cuda",
         "resume": req.resume,
-        "save_every_weights": req.save_every_weights,
         "output_dir": req.output_dir,
     });
     std::fs::write(
@@ -1470,38 +1452,6 @@ fn run_inner(
 mod tests {
     use super::*;
 
-    /// 后缀表和 Python 那份必须逐字一致。
-    ///
-    /// 界面报「找到 120 个音频」而预处理只认 80 个，用户会拿这个假数字判断数据
-    /// 集够不够。两边各写一份就一定会漂，所以这里直接读 Python 源码来比。
-    /// 「另存的小模型」和正式权重只差一个后缀段。认错了就是把用户训练的最终
-    /// 成果删了 —— 这条判据必须窄。
-    #[test]
-    fn epoch_snapshots_are_told_apart_from_the_final_weight() {
-        assert!(is_epoch_snapshot("miku", "miku_e12_s3456.pth"));
-        assert!(is_epoch_snapshot("miku", "miku_e1_s1.pth"));
-        // 正式权重：删了不可再生。
-        assert!(!is_epoch_snapshot("miku", "miku.pth"));
-        // 别的实验的东西不归这次清理管。
-        assert!(!is_epoch_snapshot("miku", "rin_e12_s3456.pth"));
-        // 形似但不是：缺 step、缺数字、后缀不对。
-        assert!(!is_epoch_snapshot("miku", "miku_e12.pth"));
-        assert!(!is_epoch_snapshot("miku", "miku_e_s1.pth"));
-        assert!(!is_epoch_snapshot("miku", "miku_e12_s34.index"));
-        // 名字里正好带 _e.._s.. 的音色不能被误伤。
-        assert!(!is_epoch_snapshot("miku", "miku_extra.pth"));
-    }
-
-    #[test]
-    fn training_checkpoints_are_matched_by_their_own_shape() {
-        assert!(is_train_checkpoint("G_35200.pth"));
-        assert!(is_train_checkpoint("D_0.pth"));
-        assert!(!is_train_checkpoint("miku.pth"));
-        assert!(!is_train_checkpoint("G.pth"));
-        assert!(!is_train_checkpoint("Gundam_1.pth"));
-        assert!(!is_train_checkpoint("added_miku.index"));
-    }
-
     /// 失败清单要能从上游 preprocess.py 的日志格式里抠出「哪个文件、为什么」，
     /// 且只挑失败的，成功行和起止标记都不算。
     #[test]
@@ -1556,38 +1506,34 @@ mod tests {
         let root = crate::testutil::scratch("cleanup");
         let _ = std::fs::remove_dir_all(&root);
         let exp = root.join("logs").join("miku");
-        let weights = root.join("assets").join("weights");
-        std::fs::create_dir_all(exp.join("1_16k_wavs")).unwrap();
-        std::fs::create_dir_all(&weights).unwrap();
-        std::fs::write(exp.join("1_16k_wavs").join("a.wav"), vec![0u8; 300]).unwrap();
-        std::fs::write(exp.join("G_100.pth"), vec![0u8; 200]).unwrap();
-        std::fs::write(exp.join("D_100.pth"), vec![0u8; 200]).unwrap();
-        std::fs::write(exp.join("added_miku.index"), vec![0u8; 7]).unwrap();
+        let models = root.join("User_Data").join("models");
+        std::fs::create_dir_all(exp.join("5-wav32k")).unwrap();
+        // 上游在检查点目录下还会再分子目录，list_files 要递归才扫得到。
+        std::fs::create_dir_all(exp.join("logs_s2").join("eval")).unwrap();
+        std::fs::create_dir_all(exp.join("logs_s1")).unwrap();
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(exp.join("5-wav32k").join("a.wav"), vec![0u8; 300]).unwrap();
+        std::fs::write(exp.join("2-name2text.txt"), vec![0u8; 20]).unwrap();
+        std::fs::write(exp.join("logs_s2").join("G_100.pth"), vec![0u8; 200]).unwrap();
+        std::fs::write(exp.join("logs_s2").join("eval").join("D_100.pth"), vec![0u8; 100]).unwrap();
+        std::fs::write(exp.join("logs_s1").join("epoch=8.ckpt"), vec![0u8; 100]).unwrap();
         std::fs::write(exp.join("train.log"), vec![0u8; 5]).unwrap();
-        std::fs::write(weights.join("miku_e5_s50.pth"), vec![0u8; 100]).unwrap();
-        std::fs::write(weights.join("miku.pth"), vec![0u8; 999]).unwrap();
+        std::fs::write(models.join("miku.pth"), vec![0u8; 999]).unwrap();
 
         let scan = cleanup_scan(&root);
         let row = &scan.as_array().unwrap()[0];
         assert_eq!(row["exp"], "miku");
-        assert_eq!(row["kinds"]["snapshots"]["bytes"].as_u64(), Some(100));
         assert_eq!(row["kinds"]["checkpoints"]["bytes"].as_u64(), Some(400));
-        assert_eq!(row["kinds"]["dataset"]["bytes"].as_u64(), Some(300));
-        assert_eq!(row["total_bytes"].as_u64(), Some(800));
+        assert_eq!(row["kinds"]["dataset"]["bytes"].as_u64(), Some(320));
+        assert_eq!(row["total_bytes"].as_u64(), Some(720));
 
-        // 只勾两类，第三类必须原样留着。
-        let freed = cleanup_apply(
-            &root,
-            "miku",
-            &["snapshots".to_string(), "checkpoints".to_string()],
-        )
-        .unwrap();
-        assert_eq!(freed, 500);
-        assert!(!weights.join("miku_e5_s50.pth").exists());
-        assert!(!exp.join("G_100.pth").exists());
-        assert!(exp.join("1_16k_wavs").join("a.wav").is_file(), "没勾的类别不能动");
-        assert!(weights.join("miku.pth").is_file(), "正式权重永远不动");
-        assert!(exp.join("added_miku.index").is_file(), "索引永远不动");
+        // 只勾一类，另一类必须原样留着。
+        let freed = cleanup_apply(&root, "miku", &["checkpoints".to_string()]).unwrap();
+        assert_eq!(freed, 400);
+        assert!(!exp.join("logs_s2").join("G_100.pth").exists());
+        assert!(!exp.join("logs_s1").join("epoch=8.ckpt").exists());
+        assert!(exp.join("5-wav32k").join("a.wav").is_file(), "没勾的类别不能动");
+        assert!(models.join("miku.pth").is_file(), "训好的角色永远不动");
         assert!(exp.join("train.log").is_file(), "日志永远不动");
 
         // 认不出来的类别名直接忽略，不做任何事。
@@ -1603,25 +1549,24 @@ mod tests {
         let root = crate::testutil::scratch("reset-stages");
         let _ = std::fs::remove_dir_all(&root);
         let exp = root.join("logs").join("miku");
-        std::fs::create_dir_all(exp.join("1_16k_wavs")).unwrap();
-        std::fs::create_dir_all(exp.join("2a_f0")).unwrap();
-        std::fs::create_dir_all(exp.join("3_feature768")).unwrap();
-        std::fs::write(exp.join("1_16k_wavs").join("a.wav"), vec![0u8; 100]).unwrap();
-        std::fs::write(exp.join("2a_f0").join("a.npy"), vec![0u8; 50]).unwrap();
-        std::fs::write(exp.join("filelist.txt"), b"x").unwrap();
-        // 这三样不可再生，绝不能碰。
-        std::fs::write(exp.join("G_2333.pth"), b"snapshot").unwrap();
-        std::fs::write(exp.join("added_miku.index"), b"index").unwrap();
+        std::fs::create_dir_all(exp.join("5-wav32k")).unwrap();
+        std::fs::create_dir_all(exp.join("3-bert")).unwrap();
+        std::fs::create_dir_all(exp.join("4-cnhubert")).unwrap();
+        std::fs::create_dir_all(exp.join("logs_s2")).unwrap();
+        std::fs::write(exp.join("5-wav32k").join("a.wav"), vec![0u8; 100]).unwrap();
+        std::fs::write(exp.join("3-bert").join("a.pt"), vec![0u8; 50]).unwrap();
+        std::fs::write(exp.join("2-name2text.txt"), b"x").unwrap();
+        // 这两样不可再生，绝不能碰。
+        std::fs::write(exp.join("logs_s2").join("G_2333.pth"), b"checkpoint").unwrap();
         std::fs::write(exp.join("train.log"), b"log").unwrap();
 
         assert_eq!(stage_artifact_bytes(&exp), 151);
         let freed = reset_stages(&root, "miku").unwrap();
         assert_eq!(freed, 151);
-        assert!(!exp.join("1_16k_wavs").exists());
-        assert!(!exp.join("2a_f0").exists());
-        assert!(!exp.join("filelist.txt").exists());
-        assert!(exp.join("G_2333.pth").is_file(), "训练存档不能删");
-        assert!(exp.join("added_miku.index").is_file(), "索引不能删");
+        assert!(!exp.join("5-wav32k").exists());
+        assert!(!exp.join("3-bert").exists());
+        assert!(!exp.join("2-name2text.txt").exists());
+        assert!(exp.join("logs_s2").join("G_2333.pth").is_file(), "微调检查点不能删");
         assert!(exp.join("train.log").is_file(), "日志不能删");
 
         let _ = std::fs::remove_dir_all(&root);
@@ -1738,54 +1683,6 @@ mod tests {
     }
 
     #[test]
-    fn mute_ready_needs_the_wav_not_just_the_folder() {
-        let base = crate::testutil::scratch("train-mute");
-        let _ = std::fs::remove_dir_all(&base);
-        let d = base.join("logs").join("mute").join("0_gt_wavs");
-        std::fs::create_dir_all(&d).unwrap();
-        assert!(!mute_ready(&base, None));
-        assert!(!mute_ready(&base, Some("48k")));
-        std::fs::write(d.join("mute48k.wav"), b"x").unwrap();
-        assert!(mute_ready(&base, Some("48k")));
-        assert!(!mute_ready(&base, None));
-        std::fs::write(d.join("mute32k.wav"), b"x").unwrap();
-        std::fs::write(d.join("mute40k.wav"), b"x").unwrap();
-        assert!(mute_ready(&base, None));
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn pretrained_needs_both_g_and_d() {
-        let base = crate::testutil::scratch("train-pretrained");
-        let _ = std::fs::remove_dir_all(&base);
-        let d = base.join("assets").join("pretrained_v2");
-        std::fs::create_dir_all(&d).unwrap();
-        assert!(!pretrained_ready(&base, "48k"));
-
-        let big = vec![0u8; 10_000_001];
-        std::fs::write(d.join("f0G48k.pth"), &big).unwrap();
-        assert!(!pretrained_ready(&base, "48k"));
-
-        std::fs::write(d.join("f0D48k.pth"), &big).unwrap();
-        assert!(pretrained_ready(&base, "48k"));
-        assert!(!pretrained_ready(&base, "40k"));
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn a_truncated_pretrained_download_is_not_ready() {
-        // 下到一半的 .pth 存在但没用；只判存在会让训练在加载底模时才炸。
-        let base = crate::testutil::scratch("train-trunc");
-        let _ = std::fs::remove_dir_all(&base);
-        let d = base.join("assets").join("pretrained_v2");
-        std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("f0G48k.pth"), b"half a file").unwrap();
-        std::fs::write(d.join("f0D48k.pth"), b"half a file").unwrap();
-        assert!(!pretrained_ready(&base, "48k"));
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
     fn mute_is_not_listed_as_a_user_experiment() {
         // 语言是进程级全局状态，别的测试改了会让这里的 t() 前后取到两种语言。
         let _g = crate::i18n::testing::pin("zh-CN");
@@ -1806,31 +1703,6 @@ mod tests {
         assert_eq!(exps[0]["slices"], json!(1));
         assert_eq!(exps[0]["resumable"], json!(true));
         let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn rmvpe_ready_rejects_missing_and_tiny_files() {
-        let base = crate::testutil::scratch("train-rmvpe");
-        let _ = std::fs::remove_dir_all(&base);
-        let d = base.join("assets").join("rmvpe");
-        std::fs::create_dir_all(&d).unwrap();
-        assert!(!rmvpe_ready(&base));
-        std::fs::write(d.join("rmvpe.pt"), b"half").unwrap();
-        assert!(!rmvpe_ready(&base));
-        std::fs::write(d.join("rmvpe.pt"), vec![0u8; 1_000_001]).unwrap();
-        assert!(rmvpe_ready(&base));
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn bad_f0_method_is_not_called_a_sample_rate() {
-        let _g = crate::i18n::testing::pin("zh-CN");
-        let msg = crate::i18n::te("s.trainF0Unsupported", &"crepe");
-        assert!(msg.contains("crepe"), "{msg}");
-        assert!(
-            !msg.contains("采样率"),
-            "wrong key reused the sample-rate string: {msg}"
-        );
     }
 
     #[test]
@@ -1911,20 +1783,55 @@ mod tests {
         let base = crate::testutil::scratch("train-preflight");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let req = TrainReq {
+        let ok = || TrainReq {
             exp: "x".into(),
             dataset: base.to_string_lossy().into(),
-            sample_rate: "48k".into(),
+            version: "v2ProPlus".into(),
             total_epoch: 10,
             batch_size: 8,
+            learning_rate: 1e-4,
             save_every: 5,
-            f0_method: "rmvpe".into(),
             resume: false,
-            save_every_weights: false,
             output_dir: String::new(),
         };
         // 没 Runtime 就该在这里停，而不是起个进程再失败。
-        assert!(preflight(&base, &req).is_err());
+        assert!(preflight(&base, &ok()).is_err());
+
+        // 参数范围也在预检里判 —— 命令是能直接 invoke 的，界面的滑杆拦不住
+        // 一个 0 的批大小或者 1e9 的学习率，而那两样不会报错，只会安静地
+        // 训出一个废模型。
+        for bad in [
+            TrainReq { version: "v3".into(), ..ok() },
+            TrainReq { total_epoch: 0, ..ok() },
+            TrainReq { total_epoch: EPOCH_RANGE.1 + 1, ..ok() },
+            TrainReq { batch_size: 0, ..ok() },
+            TrainReq { batch_size: BATCH_RANGE.1 + 1, ..ok() },
+            TrainReq { learning_rate: 0.0, ..ok() },
+            TrainReq { learning_rate: 1.0, ..ok() },
+            TrainReq { learning_rate: f64::NAN, ..ok() },
+        ] {
+            assert!(preflight(&base, &bad).is_err(), "{bad:?} 应当被拒");
+        }
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_parameter_ranges_match_what_the_ui_offers() {
+        // TrainPage 上那三个滑杆的默认值必须落在预检认的范围里，否则用户什么
+        // 都不改、直接点「开始训练」就会被自己的预检拦下来。
+        assert!((EPOCH_RANGE.0..=EPOCH_RANGE.1).contains(&24));
+        assert!((BATCH_RANGE.0..=BATCH_RANGE.1).contains(&8));
+        assert!(LR_RANGE.0 <= 0.0001 && 0.0001 <= LR_RANGE.1);
+        // 版本表的第一项是界面的默认选择。
+        assert_eq!(TRAIN_VERSIONS[0], "v2ProPlus");
+    }
+
+    #[test]
+    fn stage_artifacts_and_checkpoints_never_overlap() {
+        // 两张表混了就是灾难：清理「中间产物」时把微调检查点一起删掉，
+        // 那是几个小时白烧，而且不可再生。
+        for a in STAGE_ARTIFACTS {
+            assert!(!CHECKPOINT_DIRS.contains(&a), "{a} 同时在两张表里");
+        }
     }
 }
