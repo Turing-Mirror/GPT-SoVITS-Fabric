@@ -979,75 +979,17 @@
     "roleErrMissingWeight": "The pack is missing {} — it could not synthesise anything, so it was refused.",
     "rolePackFilter": "Character pack",
     "rolePackPickTitle": "Choose a character pack to import",
-    "rolePackCancelled": "No character pack was chosen."
+    "rolePackCancelled": "No character pack was chosen.",
+    "extraCatOther": "Other",
+    "extraBlurbOther": "Additional resources that do not fall into the categories above.",
+    "extraEmptyOther": "No resources are available right now."
   },
   "extras": {
     "engineTitle": "Engine resources",
     "engineDesc": "Chinese HuBERT, Chinese RoBERTa and the GPT-SoVITS base models. Both synthesis and training need them. The first setup downloads only the runtime; these arrive when something needs them.",
     "missingList": " Missing: {list}",
     "countItems": "{n} items",
-    "items": {
-      "pymss-vocal": {
-        "label": "Vocal extraction",
-        "notes": "First choice for cleaning training material — extracts dry vocals from songs."
-      },
-      "pymss-denoise": {
-        "label": "Denoise",
-        "notes": "Removes background noise and electrical hum. Download when dry vocal material is noisy."
-      },
-      "pymss-deecho": {
-        "label": "De-echo",
-        "notes": "Removes room echo and delay tails. Useful in spacious recording environments."
-      },
-      "pymss-dereverb": {
-        "label": "De-reverb",
-        "notes": "Suppresses reverb for a drier vocal."
-      },
-      "pymss-inst": {
-        "label": "Instrumental extract",
-        "notes": "Extracts the accompaniment track (the opposite of vocal extraction)."
-      },
-      "pymss-karaoke": {
-        "label": "Karaoke (remove vocal)",
-        "notes": "Removes the lead vocal while keeping the accompaniment, for backing tracks."
-      },
-      "pymss-bve": {
-        "label": "Background vocals (advanced)",
-        "notes": "Separates background harmony tracks. Rarely needed for training material."
-      },
-      "pymss-harmonic": {
-        "label": "Harmonic/noise (advanced)",
-        "notes": "Separate harmonics and noise. Advanced use."
-      },
-      "pymss-hp2": {
-        "label": "HP2 high quality (advanced)",
-        "notes": "The larger, heavier HP2 series — higher quality and bigger (about 1.5 GB). “Vocal extraction” is enough for daily use."
-      },
-      "pymss-mgm": {
-        "label": "MGM fusion (advanced)",
-        "notes": "MGM v4 multi-band fusion model. Advanced use."
-      },
-      "pymss-sp": {
-        "label": "SP spectrum series (advanced)",
-        "notes": "SP spectral series. Large download; only needed for special cases."
-      },
-      "pymss-wind": {
-        "label": "Orchestral/wind (advanced)",
-        "notes": "Separates orchestral/wind accompaniment. Rarely needed."
-      },
-      "pretrained-v2-32k": {
-        "label": "Base model 32k",
-        "notes": "Needed to train 32k characters. Less VRAM; slightly lower quality than 48k."
-      },
-      "pretrained-v2-40k": {
-        "label": "Base model 40k",
-        "notes": "Needed to train 40k characters. Pick one of 32k/40k/48k — no need for all."
-      },
-      "pretrained-v2-48k": {
-        "label": "Base model 48k",
-        "notes": "For training custom characters. Download only the sample rate you use; 48k is best quality, more VRAM. Includes G/D/f0G/f0D like RVC pretrained_v2."
-      }
-    }
+    "items": {}
   },
   "onboarding": {
     "languageTitle": "Choose language",

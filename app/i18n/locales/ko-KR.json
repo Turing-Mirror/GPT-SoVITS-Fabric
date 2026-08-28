@@ -979,75 +979,17 @@
     "roleErrMissingWeight": "이 팩에는 {}이(가) 없습니다. 설치해도 합성할 수 없어 거부했습니다.",
     "rolePackFilter": "캐릭터 팩",
     "rolePackPickTitle": "가져올 캐릭터 팩 선택",
-    "rolePackCancelled": "캐릭터 팩을 선택하지 않았습니다."
+    "rolePackCancelled": "캐릭터 팩을 선택하지 않았습니다.",
+    "extraCatOther": "기타",
+    "extraBlurbOther": "위 분류에 속하지 않는 추가 리소스입니다.",
+    "extraEmptyOther": "현재 내려받을 수 있는 리소스가 없습니다."
   },
   "extras": {
     "engineTitle": "엔진 리소스",
     "engineDesc": "중국어 HuBERT, 중국어 RoBERTa, GPT-SoVITS 기반 모델입니다. 합성과 학습 모두에 필요합니다. 최초 설치에서는 런타임만 내려받고, 이 파일들은 필요해질 때 내려받습니다.",
     "missingList": " 부족: {list}",
     "countItems": "총 {n}개",
-    "items": {
-      "pymss-vocal": {
-        "label": "보컬 추출",
-        "notes": "학습 소재 정리의 첫 선택. 노래에서 무반주 보컬을 추출합니다."
-      },
-      "pymss-denoise": {
-        "label": "노이즈 제거",
-        "notes": "배경 소음과 전기 잡음을 제거합니다. 무반주 음성에 노이즈가 많을 때 내려받으세요."
-      },
-      "pymss-deecho": {
-        "label": "에코 제거",
-        "notes": "룸 에코와 지연 꼬리를 제거합니다. 녹음 환경이 넓을 때 유용합니다."
-      },
-      "pymss-dereverb": {
-        "label": "잔향 제거",
-        "notes": "리버브를 억제해 보컬을 더 건조하게 만듭니다."
-      },
-      "pymss-inst": {
-        "label": "반주 추출",
-        "notes": "반주 트랙을 추출합니다(보컬 추출의 반대 용도)."
-      },
-      "pymss-karaoke": {
-        "label": "노래방(보컬 제거)",
-        "notes": "메인 보컬을 최대한 제거하고 반주를 남겨 반주 트랙을 만듭니다."
-      },
-      "pymss-bve": {
-        "label": "배경 코러스(고급)",
-        "notes": "백그라운드 화음 트랙을 분리합니다. 학습 소재에는 거의 필요 없습니다."
-      },
-      "pymss-harmonic": {
-        "label": "하모닉/노이즈(고급)",
-        "notes": "하모닉과 노이즈 분리. 고급 용도."
-      },
-      "pymss-hp2": {
-        "label": "HP2 고품질(고급)",
-        "notes": "더 크고 무거운 HP2 시리즈. 품질은 높지만 용량도 큽니다(약 1.5GB). 일상적으로는 '보컬 추출'로 충분합니다."
-      },
-      "pymss-mgm": {
-        "label": "MGM 융합(고급)",
-        "notes": "MGM v4 다중 대역 융합 모델. 고급 용도."
-      },
-      "pymss-sp": {
-        "label": "SP 스펙트럼 시리즈(고급)",
-        "notes": "SP 스펙트럼 시리즈. 용량 큼, 특수 상황용."
-      },
-      "pymss-wind": {
-        "label": "관현/관악기(고급)",
-        "notes": "관현악/관악 반주를 분리합니다. 보통은 필요 없습니다."
-      },
-      "pretrained-v2-32k": {
-        "label": "베이스 모델 32k",
-        "notes": "32k 샘플링 학습에 필요. VRAM 절약, 품질은 48k보다 약간 낮음."
-      },
-      "pretrained-v2-40k": {
-        "label": "베이스 모델 40k",
-        "notes": "40k 학습에 필요. 32k/40k/48k 중 하나만 받으면 됨."
-      },
-      "pretrained-v2-48k": {
-        "label": "베이스 모델 48k",
-        "notes": "전용 보이스 학습용. 쓰는 샘플링만 받으세요. 48k 품질 최고·VRAM 더 큼. G/D/f0G/f0D 포함, RVC pretrained_v2와 동일."
-      }
-    }
+    "items": {}
   },
   "onboarding": {
     "languageTitle": "언어 선택",

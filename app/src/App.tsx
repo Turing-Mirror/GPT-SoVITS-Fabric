@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StatusBar } from "./components/StatusBar";
+import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { OnboardingBar } from "./components/OnboardingBar";
 import { Nudge } from "./components/Nudge";
 import { Btn } from "./components/ui";
@@ -84,9 +85,7 @@ export default function App() {
   const [compactNav, setCompactNav] = useState(false);
   // 「下载模型」：用户主动打开，或音频工具缺引擎资源时跳转。
   const [extrasReason, setExtrasReason] = useState("");
-  const [extrasFilter, setExtrasFilter] = useState<"all" | "separate" | "train">(
-    "all",
-  );
+  const [extrasFilter, setExtrasFilter] = useState<ExtrasFilter>("all");
   const [scrollToDownloads, setScrollToDownloads] = useState(0);
   // Self-update: check reports the catalog's latest; applying swaps the
   // external frontend/ dir and takes effect on restart.
@@ -548,11 +547,13 @@ export default function App() {
   // 忘一个是迟早的；而且用户在弹框里下完东西，关掉之后回到的还是「其他」页，
   // 跟他刚做的事没有任何关系。
   const openDownloadModels = useCallback(
-    (reason?: string, filter?: "all" | "separate" | "train") => {
+    (reason?: string, filter?: ExtrasFilter) => {
       plaza.markSeen();
       setPage("plaza");
       setExtrasReason(reason || "");
-      setExtrasFilter(filter === "train" || filter === "separate" ? filter : "all");
+      // 别在这儿收窄组别：清单里将来多一个类，这行会把它悄悄改成 "all"，
+      // 跳过去落在哪个页签全凭运气。合法性由 ExtrasFilter 这个类型管。
+      setExtrasFilter(filter || "all");
       // 加一 = 「再滚一次」。广场很长，不滚过去用户看不见自己被带到哪了。
       setScrollToDownloads((n) => n + 1);
     },

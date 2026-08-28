@@ -979,75 +979,17 @@
     "roleErrMissingWeight": "Al paquete le falta {}: no podría sintetizar nada, así que se ha rechazado.",
     "rolePackFilter": "Paquete de personaje",
     "rolePackPickTitle": "Elija el paquete de personaje que desea importar",
-    "rolePackCancelled": "No se ha elegido ningún paquete de personaje."
+    "rolePackCancelled": "No se ha elegido ningún paquete de personaje.",
+    "extraCatOther": "Otros",
+    "extraBlurbOther": "Recursos adicionales que no entran en las categorías anteriores.",
+    "extraEmptyOther": "Por ahora no hay recursos disponibles."
   },
   "extras": {
     "engineTitle": "Recursos del motor",
     "engineDesc": "HuBERT en chino, RoBERTa en chino y los modelos base de GPT-SoVITS. Hacen falta tanto para sintetizar como para entrenar. La instalación inicial solo descarga el entorno de ejecución; estos llegan cuando algo los necesita.",
     "missingList": " Falta: {list}",
     "countItems": "{n} elementos",
-    "items": {
-      "pymss-vocal": {
-        "label": "Extracción de voz",
-        "notes": "Primera opción para limpiar material de entrenamiento: extrae voces secas de las canciones."
-      },
-      "pymss-denoise": {
-        "label": "Reducción de ruido",
-        "notes": "Elimina el ruido de fondo y el zumbido eléctrico. Descárguelo cuando el material seco sea ruidoso."
-      },
-      "pymss-deecho": {
-        "label": "Quitar eco",
-        "notes": "Elimina el eco de sala y las colas de retardo. Útil en entornos de grabación amplios."
-      },
-      "pymss-dereverb": {
-        "label": "Quitar reverb",
-        "notes": "Suprime la reverberación para una voz más seca."
-      },
-      "pymss-inst": {
-        "label": "Extraer instrumental",
-        "notes": "Extrae la pista de acompañamiento (lo contrario de la extracción de voz)."
-      },
-      "pymss-karaoke": {
-        "label": "Karaoke (quitar voz)",
-        "notes": "Elimina la voz principal conservando el acompañamiento, para pistas de fondo."
-      },
-      "pymss-bve": {
-        "label": "Coros de fondo (avanzado)",
-        "notes": "Separa las pistas de armonía de fondo. Rara vez necesario para material de entrenamiento."
-      },
-      "pymss-harmonic": {
-        "label": "Armónico/ruido (avanzado)",
-        "notes": "Separa armónicos y ruido. Uso avanzado."
-      },
-      "pymss-hp2": {
-        "label": "HP2 alta calidad (avanzado)",
-        "notes": "La serie HP2, más grande y pesada — mayor calidad y tamaño (unos 1,5 GB). Para el uso diario basta «Extracción de voz»."
-      },
-      "pymss-mgm": {
-        "label": "Fusión MGM (avanzado)",
-        "notes": "Modelo de fusión multibanda MGM v4. Uso avanzado."
-      },
-      "pymss-sp": {
-        "label": "Serie espectro SP (avanzado)",
-        "notes": "Serie de espectro SP. Grande; solo casos especiales."
-      },
-      "pymss-wind": {
-        "label": "Orquesta/viento (avanzado)",
-        "notes": "Separa el acompañamiento orquestal/de viento. Rara vez necesario."
-      },
-      "pretrained-v2-32k": {
-        "label": "Modelo base 32k",
-        "notes": "Necesario para entrenar a 32k. Menos VRAM; calidad un poco menor que 48k."
-      },
-      "pretrained-v2-40k": {
-        "label": "Modelo base 40k",
-        "notes": "Necesario para 40k. Elige uno entre 32k/40k/48k."
-      },
-      "pretrained-v2-48k": {
-        "label": "Modelo base 48k",
-        "notes": "Para entrenar voces propias. Baja solo el sample rate que uses; 48k mejor calidad, más VRAM. Incluye G/D/f0G/f0D como RVC pretrained_v2."
-      }
-    }
+    "items": {}
   },
   "onboarding": {
     "languageTitle": "Elegir idioma",

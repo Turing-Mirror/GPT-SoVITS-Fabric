@@ -979,75 +979,17 @@
     "roleErrMissingWeight": "このパックには {} がありません。導入しても合成できないため、受け付けませんでした。",
     "rolePackFilter": "キャラクターパック",
     "rolePackPickTitle": "読み込むキャラクターパックを選択",
-    "rolePackCancelled": "キャラクターパックが選択されていません。"
+    "rolePackCancelled": "キャラクターパックが選択されていません。",
+    "extraCatOther": "その他",
+    "extraBlurbOther": "上記の分類に入らない追加リソースです。",
+    "extraEmptyOther": "現在ダウンロードできるリソースはありません。"
   },
   "extras": {
     "engineTitle": "エンジンリソース",
     "engineDesc": "中国語 HuBERT、中国語 RoBERTa、および GPT-SoVITS のベースモデルです。合成にも学習にも必要です。初回セットアップではランタイムのみを取得し、これらは必要になった時点で取得します。",
     "missingList": " 不足：{list}",
     "countItems": "全 {n} 件",
-    "items": {
-      "pymss-vocal": {
-        "label": "ボーカル抽出",
-        "notes": "学習素材の整理に最適。楽曲から乾いたボーカルを抽出します。"
-      },
-      "pymss-denoise": {
-        "label": "ノイズ除去",
-        "notes": "環境ノイズや電気的ハムを除去します。乾き声にノイズが多い場合にダウンロードしてください。"
-      },
-      "pymss-deecho": {
-        "label": "エコー除去",
-        "notes": "部屋の反響や残響を除去します。録音環境が広い場合に有効です。"
-      },
-      "pymss-dereverb": {
-        "label": "残響除去",
-        "notes": "リバーブ感を抑え、ボーカルをよりドライにします。"
-      },
-      "pymss-inst": {
-        "label": "伴奏抽出",
-        "notes": "伴奏トラックを抽出します（ボーカル抽出と逆の用途）。"
-      },
-      "pymss-karaoke": {
-        "label": "カラオケ（ボーカル除去）",
-        "notes": "主唱をできるだけ除去し伴奏を残します。伴奏トラック作成に用います。"
-      },
-      "pymss-bve": {
-        "label": "背景コーラス（上級）",
-        "notes": "バックコーラストラックを分離します。学習素材にはほぼ不要です。"
-      },
-      "pymss-harmonic": {
-        "label": "ハーモニック/ノイズ（上級）",
-        "notes": "ハーモニックとノイズを分離。上級用途。"
-      },
-      "pymss-hp2": {
-        "label": "HP2 高品質（上級）",
-        "notes": "より大きく重い HP2 シリーズ。品質は高い反面、サイズも大きくなります（約 1.5GB）。日常には「ボーカル抽出」で十分です。"
-      },
-      "pymss-mgm": {
-        "label": "MGM 融合（上級）",
-        "notes": "MGM v4 多帯域融合モデル。上級用途。"
-      },
-      "pymss-sp": {
-        "label": "SP スペクトル系列（上級）",
-        "notes": "SP スペクトル系列。容量が大きく特殊用途のみ。"
-      },
-      "pymss-wind": {
-        "label": "管弦伴奏（上級）",
-        "notes": "管弦楽・管楽器系の伴奏を分離します。通常は不要です。"
-      },
-      "pretrained-v2-32k": {
-        "label": "ベースモデル 32k",
-        "notes": "32k サンプルレート学習に必要。VRAM 節約、品質は 48k よりやや低い。"
-      },
-      "pretrained-v2-40k": {
-        "label": "ベースモデル 40k",
-        "notes": "40k 学習に必要。32k/40k/48k のいずれか一つで可。"
-      },
-      "pretrained-v2-48k": {
-        "label": "ベースモデル 48k",
-        "notes": "専用音色の学習に必要。使うサンプルレートだけ取得。48k は最高品質で VRAM 多め。G/D/f0G/f0D を含み RVC pretrained_v2 と同等。"
-      }
-    }
+    "items": {}
   },
   "onboarding": {
     "languageTitle": "言語を選択",

@@ -979,75 +979,17 @@
     "roleErrMissingWeight": "Il manque {} dans ce pack : il ne pourrait rien synthétiser, il a donc été refusé.",
     "rolePackFilter": "Pack de personnage",
     "rolePackPickTitle": "Choisissez le pack de personnage à importer",
-    "rolePackCancelled": "Aucun pack de personnage n’a été choisi."
+    "rolePackCancelled": "Aucun pack de personnage n’a été choisi.",
+    "extraCatOther": "Autres",
+    "extraBlurbOther": "Ressources supplémentaires n'entrant dans aucune des catégories ci-dessus.",
+    "extraEmptyOther": "Aucune ressource n'est disponible pour l'instant."
   },
   "extras": {
     "engineTitle": "Ressources moteur",
     "engineDesc": "HuBERT chinois, RoBERTa chinois et les modèles de base GPT-SoVITS. Nécessaires à la synthèse comme à l’entraînement. L’installation initiale ne télécharge que l’environnement d’exécution ; ces fichiers arrivent lorsqu’ils deviennent nécessaires.",
     "missingList": " Manque : {list}",
     "countItems": "{n} éléments",
-    "items": {
-      "pymss-vocal": {
-        "label": "Extraction vocale",
-        "notes": "Premier choix pour nettoyer le matériau d'entraînement — extrait les voix sèches des chansons."
-      },
-      "pymss-denoise": {
-        "label": "Débruitage",
-        "notes": "Supprime le bruit de fond et le ronflement électrique. À télécharger quand les voix sèches sont bruitées."
-      },
-      "pymss-deecho": {
-        "label": "Anti-écho",
-        "notes": "Supprime l'écho de pièce et les queues de retard. Utile dans les environnements d'enregistrement spacieux."
-      },
-      "pymss-dereverb": {
-        "label": "Déréverbération",
-        "notes": "Supprime la réverbération pour une voix plus sèche."
-      },
-      "pymss-inst": {
-        "label": "Extraction instrumentale",
-        "notes": "Extrait la piste d'accompagnement (l'inverse de l'extraction vocale)."
-      },
-      "pymss-karaoke": {
-        "label": "Karaoké (retirer voix)",
-        "notes": "Retire la voix principale en gardant l'accompagnement, pour des playback."
-      },
-      "pymss-bve": {
-        "label": "Chœurs de fond (avancé)",
-        "notes": "Sépare les pistes d'harmonie d'accompagnement. Rarement nécessaire pour le matériau d'entraînement."
-      },
-      "pymss-harmonic": {
-        "label": "Harmonique/bruit (avancé)",
-        "notes": "Sépare harmoniques et bruit. Usage avancé."
-      },
-      "pymss-hp2": {
-        "label": "HP2 haute qualité (avancé)",
-        "notes": "La série HP2, plus grande et lourde — meilleure qualité, plus grosse taille (environ 1,5 Go). Au quotidien, « Extraction vocale » suffit."
-      },
-      "pymss-mgm": {
-        "label": "Fusion MGM (avancé)",
-        "notes": "Modèle de fusion multi-bandes MGM v4. Usage avancé."
-      },
-      "pymss-sp": {
-        "label": "Série spectre SP (avancé)",
-        "notes": "Série spectre SP. Volumineuse ; cas particuliers seulement."
-      },
-      "pymss-wind": {
-        "label": "Orchestre/vents (avancé)",
-        "notes": "Sépare l'accompagnement orchestral/à vent. Rarement nécessaire."
-      },
-      "pretrained-v2-32k": {
-        "label": "Modèle de base 32k",
-        "notes": "Requis pour entraîner en 32k. Moins de VRAM ; qualité un peu inférieure au 48k."
-      },
-      "pretrained-v2-40k": {
-        "label": "Modèle de base 40k",
-        "notes": "Requis pour 40k. Choisissez l’un de 32k/40k/48k."
-      },
-      "pretrained-v2-48k": {
-        "label": "Modèle de base 48k",
-        "notes": "Pour entraîner des voix perso. Ne prenez que le sample rate utile ; 48k = meilleure qualité, plus de VRAM. Inclut G/D/f0G/f0D comme RVC pretrained_v2."
-      }
-    }
+    "items": {}
   },
   "onboarding": {
     "languageTitle": "Choisir la langue",

@@ -5,12 +5,13 @@ import { Btn } from "./ui";
 import { SegmentControl } from "./SegmentControl";
 import { askConfirm } from "../lib/webDialog";
 import { t } from "../i18n/t";
+import { categoriesOf, groupOf, type Category } from "../lib/extraGroups";
 import {
   getAssetsStatus,
   type AssetsStatus,
 } from "../lib/downloadModels";
 
-export type ExtraGroup = "train" | "separate" | "other";
+export type ExtraGroup = Category;
 
 type Item = {
   key: string;
@@ -54,8 +55,6 @@ export type ExtrasFilter = "all" | ExtraGroup;
 /** 单页条数。和广场更新日志一样固定 5，不做无限滚。 */
 const PER_PAGE = 5;
 
-type Category = "separate" | "train";
-
 function mb(n: number) {
   if (!n) return "";
   return n >= 1024 * 1024 * 1024
@@ -63,10 +62,11 @@ function mb(n: number) {
     : `${Math.round(n / 1024 / 1024)} MB`;
 }
 
-function inferGroup(key: string): string {
-  if (key.startsWith("pretrained")) return "train";
-  if (key.startsWith("pymss") || key.startsWith("uvr")) return "separate";
-  return "other";
+/** 页签文案。清单里没出现过的组别不会被画出来，所以这张表只要覆盖全集。 */
+function categoryLabel(cat: Category): string {
+  if (cat === "separate") return t("s.8fd038283b");
+  if (cat === "train") return t("s.ba65bd5595");
+  return t("s.extraCatOther");
 }
 
 /** Prefer locale pack extras.items.<key>; fall back to catalog Chinese with prefix strip. */
@@ -86,7 +86,16 @@ function extraNotes(it: Item): string {
 }
 
 function categoryBlurb(cat: Category): string {
-  return cat === "separate" ? t("s.63fa37071e") : t("s.5b422f44dd");
+  if (cat === "separate") return t("s.63fa37071e");
+  if (cat === "train") return t("s.5b422f44dd");
+  return t("s.extraBlurbOther");
+}
+
+/** 某一类下面一条都没有时说的话。 */
+function categoryEmpty(cat: Category): string {
+  if (cat === "separate") return t("s.7e9782377b");
+  if (cat === "train") return t("s.2b9ddc0b69");
+  return t("s.extraEmptyOther");
 }
 
 /**
@@ -125,8 +134,10 @@ export function ExtrasPanel({
   const [busyKey, setBusyKey] = useState("");
   const [removeKey, setRemoveKey] = useState("");
   const [coreBusy, setCoreBusy] = useState(false);
+  // 初值只是个占位：清单还没拉回来，谁都不知道有哪些类。真正的落点在
+  // 下面那个 effect 里 —— 清单到手之后按「有内容的类」纠正一次。
   const [category, setCategory] = useState<Category>(
-    filter === "train" ? "train" : "separate",
+    filter && filter !== "all" ? filter : "train",
   );
   const [page, setPage] = useState(0);
   const busyRef = useRef(false);
@@ -154,7 +165,7 @@ export function ExtrasPanel({
     setList(null);
     setAssets(null);
     setPage(0);
-    setCategory(filter === "train" ? "train" : "separate");
+    setCategory(filter && filter !== "all" ? filter : "train");
     setCoreProg(null);
     void load();
     let disposed = false;
@@ -183,10 +194,21 @@ export function ExtrasPanel({
     // 这个 effect 要的是「挂载时拉一次，filter 变了再拉一次」。
   }, [filter]);
 
-  const filtered = useMemo(() => {
-    const all = list?.items || [];
-    return all.filter((i) => (i.group || inferGroup(i.key)) === category);
-  }, [list, category]);
+  /** 清单里真正出现过的类，按 CATEGORY_ORDER 排。空清单时是空数组。 */
+  const categories = useMemo(() => categoriesOf(list?.items || []), [list]);
+
+  // 清单回来之后把页签落到一个真有内容的类上。写死页签会让落在别的组别里的
+  // 资源在界面上彻底消失 —— SVC 那边就是这么丢掉四条推理必需模型的。
+  useEffect(() => {
+    if (!categories.length || categories.includes(category)) return;
+    setCategory(categories[0]);
+    setPage(0);
+  }, [categories, category]);
+
+  const filtered = useMemo(
+    () => (list?.items || []).filter((i) => groupOf(i) === category),
+    [list, category],
+  );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE) || 1);
   const pageClamped = Math.min(page, totalPages - 1);
@@ -286,11 +308,7 @@ export function ExtrasPanel({
         : 0;
 
   const emptyHint =
-    list?.available === false
-      ? t("s.122abe360d")
-      : category === "train"
-        ? t("s.2b9ddc0b69")
-        : t("s.7e9782377b");
+    list?.available === false ? t("s.122abe360d") : categoryEmpty(category);
 
   const locked = engineReady === false;
   const anyBusy = !!busyKey || !!removeKey || coreBusy;
@@ -304,18 +322,17 @@ export function ExtrasPanel({
           {title ? (
             <h3 className="m-0 text-[17px] font-semibold">{title}</h3>
           ) : null}
-          <SegmentControl<Category>
-            className={title ? "" : "ml-auto"}
-            value={category}
-            onChange={(v) => {
-              setCategory(v);
-              setPage(0);
-            }}
-            options={[
-              { id: "separate", label: t("s.8fd038283b") },
-              { id: "train", label: t("s.ba65bd5595") },
-            ]}
-          />
+          {categories.length > 1 ? (
+            <SegmentControl<Category>
+              className={title ? "" : "ml-auto"}
+              value={category}
+              onChange={(v) => {
+                setCategory(v);
+                setPage(0);
+              }}
+              options={categories.map((c) => ({ id: c, label: categoryLabel(c) }))}
+            />
+          ) : null}
         </div>
         <p className="m-0 mb-3 text-[12.5px] text-[var(--ink-muted)] leading-snug">
           {categoryBlurb(category)}

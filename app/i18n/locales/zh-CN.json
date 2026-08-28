@@ -979,75 +979,17 @@
     "roleErrMissingWeight": "角色包缺少 {}，装进去也合成不了，已拒收。",
     "rolePackFilter": "角色包",
     "rolePackPickTitle": "选择要导入的角色包",
-    "rolePackCancelled": "未选择角色包。"
+    "rolePackCancelled": "未选择角色包。",
+    "extraCatOther": "其他",
+    "extraBlurbOther": "未归入上述分类的附加资源。",
+    "extraEmptyOther": "暂时没有可下载的资源。"
   },
   "extras": {
     "engineTitle": "引擎资源",
     "engineDesc": "中文 HuBERT、中文 RoBERTa 与 GPT-SoVITS 底模。合成与训练角色都需要。首次补全仅下载运行时，此项在使用到时再下载。",
     "missingList": " 当前缺少：{list}",
     "countItems": "共 {n} 项",
-    "items": {
-      "pymss-vocal": {
-        "label": "人声提取",
-        "notes": "训练前清理素材的首选，从歌曲中提取人声干声。"
-      },
-      "pymss-denoise": {
-        "label": "降噪",
-        "notes": "去除环境底噪与电流声。干声素材噪声较多时再下载。"
-      },
-      "pymss-deecho": {
-        "label": "去回声",
-        "notes": "去除房间回声与拖尾。录音环境空旷时适用。"
-      },
-      "pymss-dereverb": {
-        "label": "去混响",
-        "notes": "抑制混响，使人声更干净。"
-      },
-      "pymss-inst": {
-        "label": "伴奏提取",
-        "notes": "提取伴奏轨道（与人声提取用途相反）。"
-      },
-      "pymss-karaoke": {
-        "label": "卡拉OK 消人声",
-        "notes": "尽量去除主唱保留伴奏，用于制作伴奏轨。"
-      },
-      "pymss-bve": {
-        "label": "背景和声（进阶）",
-        "notes": "分离背景和声轨。训练素材一般用不到。"
-      },
-      "pymss-harmonic": {
-        "label": "和声/噪声（进阶）",
-        "notes": "谐波与噪声分离。进阶用途。"
-      },
-      "pymss-hp2": {
-        "label": "HP2 高质量（进阶）",
-        "notes": "更大更重的 HP2 系列，质量更高、体积也更大（约 1.5GB）。日常使用「人声提取」即可。"
-      },
-      "pymss-mgm": {
-        "label": "MGM 融合（进阶）",
-        "notes": "MGM v4 多频段融合模型。进阶用途。"
-      },
-      "pymss-sp": {
-        "label": "SP 频谱系列（进阶）",
-        "notes": "SP 频谱系列。体积不小，仅特殊场景需要。"
-      },
-      "pymss-wind": {
-        "label": "管弦伴奏（进阶）",
-        "notes": "管弦/吹管类伴奏分离。一般用不到。"
-      },
-      "pretrained-v2-32k": {
-        "label": "底模 32k",
-        "notes": "训练 32k 采样率音色时需要。显存更省，音质相对 48k 略低。"
-      },
-      "pretrained-v2-40k": {
-        "label": "底模 40k",
-        "notes": "训练 40k 采样率音色时需要。与 32k/48k 三选一即可，不必全下。"
-      },
-      "pretrained-v2-48k": {
-        "label": "底模 48k",
-        "notes": "训练专属音色时需要。只下您选的采样率那一套即可；48k 音质最好、显存占用更高。含 G/D/f0G/f0D，与 RVC 原版 pretrained_v2 一致。"
-      }
-    }
+    "items": {}
   },
   "onboarding": {
     "languageTitle": "选择界面语言",
