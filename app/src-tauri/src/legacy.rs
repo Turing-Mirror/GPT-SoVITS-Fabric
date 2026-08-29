@@ -1,24 +1,34 @@
-//! The two advanced entries the Tk shell kept in 「其他」.
+//! 「其他」页里那两个高级入口 —— 直接开上游自己的 Gradio 界面。
 //!
-//! * **原版实时面板** — `gui_v1.py`, the upstream FreeSimpleGUI realtime window.
-//! * **原版 WebUI** — `infer-web.py`, the upstream training / inference Gradio
-//!   app on 127.0.0.1:7897.
+//! * **原版推理界面** — `GPT_SoVITS/inference_webui.py`，上游的合成界面，
+//!   端口 9872。壳里的合成台覆盖不到的旋钮（采样步数、超采样、分桶推理
+//!   那些）都在那边。
+//! * **原版 WebUI** — `webui.py`，上游的训练/工具全家桶，端口 9874。
 //!
-//! Both were in the Python shell (`open_legacy_gui` / `open_webui`) and both
-//! were lost in the migration: the panel button shipped with no handler at all
-//! and the WebUI entry was simply absent. Neither is an everyday feature, but
-//! removing them was not a decision anybody made.
+//! **这两条以前指的是 RVC 的脚本**（`gui_v1.py` 的 FreeSimpleGUI 实时窗口、
+//! `infer-web.py` 的 7897 端口 Gradio），而这个产品从来没随包发过那两个
+//! 文件 —— 「其他」页上两个按钮点下去，恒定报「脚本不存在」。RVC 那两个
+//! 参数（`--pycmd` / `--port` / `--noautoopen` / A 卡的 `--dml`）上游一个
+//! 都不认，也一并去掉：上游的端口写在 `config.py` 里，不走命令行。
 //!
-//! Cold start is 20–40s (torch/CUDA), so these return as soon as the process is
-//! spawned and the UI says so rather than pretending it is instant.
+//! 冷启动 20–40 秒（torch/CUDA），所以进程一拉起来就返回，界面照实说
+//! 「正在启动」，不假装是瞬间的。
 
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::{config, logging, paths, worker};
 
-pub const WEBUI_PORT: u16 = 7897;
-pub const WEBUI_URL: &str = "http://127.0.0.1:7897";
+/// 上游 `config.py` 里的 `webui_port_main`。改这里没用，要跟着上游走。
+pub const WEBUI_PORT: u16 = 9874;
+/// 上游 `config.py` 里的 `webui_port_infer_tts`。
+pub const INFER_WEBUI_PORT: u16 = 9872;
+
+/// URL 由端口算出来，不写第二遍 —— 两处各写一遍就会出现「进程听 A、
+/// 浏览器开 B」这种查半天的错。
+fn local_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
+}
 
 fn runtime_python(root: &Path, windowed: bool) -> Result<std::path::PathBuf, String> {
     let p = if windowed {
@@ -81,65 +91,52 @@ fn spawn_detached(
     Ok(pid)
 }
 
-/// 打开原版实时面板（gui_v1）。
+/// 打开上游的原版推理界面（`GPT_SoVITS/inference_webui.py`，端口 9872）。
+///
+/// 和 WebUI 一样是 Gradio，所以同样把 URL 交回给调用方去开。
 pub fn open_realtime_panel(root: &Path) -> Result<serde_json::Value, String> {
-    let script = root.join("gui_v1.py");
+    let script = root
+        .join("GPT_SoVITS")
+        .join("inference_webui.py");
     if !script.is_file() {
         return Err(crate::i18n::te("s.0c5475c6d8", &(script.display())));
     }
-    let py = runtime_python(root, true)?;
+    let pyw = runtime_python(root, true)?;
     let pid = spawn_detached(
         root,
-        &py,
+        &pyw,
         &[script.to_string_lossy().into_owned()],
-        "realtime_gui.log",
-        true,
+        "infer_webui.log",
+        false,
     )?;
     Ok(serde_json::json!({
         "ok": true,
         "pid": pid,
+        "url": local_url(INFER_WEBUI_PORT),
         "message": &crate::i18n::t("s.2bd41b71bb"),
     }))
 }
 
-/// 打开原版 WebUI（infer-web.py）。Returns the URL for the caller to open.
+/// 打开上游的原版 WebUI（`webui.py`，端口 9874）。URL 交回给调用方去开。
 pub fn open_webui(root: &Path) -> Result<serde_json::Value, String> {
-    let script = root.join("infer-web.py");
+    let script = root.join("webui.py");
     if !script.is_file() {
         return Err(crate::i18n::te("s.fb5c249625", &(script.display())));
     }
     let pyw = runtime_python(root, true)?;
-    let py = runtime_python(root, false)?;
-
-    let mut args = vec![
-        script.to_string_lossy().into_owned(),
-        "--pycmd".into(),
-        py.to_string_lossy().into_owned(),
-        "--port".into(),
-        WEBUI_PORT.to_string(),
-        "--noautoopen".into(),
-    ];
-    // Same switch the Python shell used: the legacy A-card build needs --dml or
-    // it falls back to CPU and looks broken. meta 里非 nvidia 系、也不是新 cpu
-    // 变体的旧值，一律按旧 A 卡包对待。
-    if config::read(root)
-        .get("accel")
-        .and_then(|v| v.as_str())
-        .map(|s| s.eq_ignore_ascii_case("dml"))
-        .unwrap_or(false)
-        || crate::provision::read_package_meta_variant(root)
-            .as_deref()
-            .map(|v| !v.starts_with("nvidia") && v != "cpu")
-            .unwrap_or(false)
-    {
-        args.push("--dml".into());
-    }
-
-    let pid = spawn_detached(root, &pyw, &args, "webui.log", false)?;
+    // 上游不认命令行参数：端口在 config.py 里，加速方式看环境变量。
+    // RVC 那三个（--pycmd / --port / --noautoopen）传过去只会让它报未知参数。
+    let pid = spawn_detached(
+        root,
+        &pyw,
+        &[script.to_string_lossy().into_owned()],
+        "webui.log",
+        false,
+    )?;
     Ok(serde_json::json!({
         "ok": true,
         "pid": pid,
-        "url": WEBUI_URL,
+        "url": local_url(WEBUI_PORT),
         "message": &crate::i18n::t("s.c75f611a0a"),
     }))
 }
@@ -153,13 +150,17 @@ mod tests {
         let empty = crate::testutil::scratch("legacy-empty");
         let _ = std::fs::create_dir_all(&empty);
         let e = open_realtime_panel(&empty).unwrap_err();
-        assert!(e.contains("gui_v1.py"), "got {e}");
+        assert!(e.contains("inference_webui.py"), "got {e}");
         let e = open_webui(&empty).unwrap_err();
-        assert!(e.contains("infer-web.py"), "got {e}");
+        assert!(e.contains("webui.py"), "got {e}");
     }
 
+    /// 端口必须是上游 `config.py` 里的那两个 —— 写错的话按钮拉起来的进程
+    /// 在监听 A，浏览器去开 B，用户看到「连接被拒绝」，而进程其实好好地跑着。
     #[test]
-    fn webui_url_matches_the_port() {
-        assert!(WEBUI_URL.ends_with(&WEBUI_PORT.to_string()));
+    fn the_ports_match_upstream_config() {
+        assert_eq!(WEBUI_PORT, 9874, "上游 config.py 的 webui_port_main");
+        assert_eq!(INFER_WEBUI_PORT, 9872, "上游 config.py 的 webui_port_infer_tts");
+        assert_eq!(local_url(WEBUI_PORT), "http://127.0.0.1:9874");
     }
 }

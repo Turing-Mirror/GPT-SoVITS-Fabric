@@ -287,28 +287,23 @@ fn catalog_from_data(data: &Value, source: &str) -> Value {
     })
 }
 
+/// 这个角色装没装。
+///
+/// 判据必须和安装落点、以及合成台的扫描目录三者一致 —— 这里以前查的是
+/// `User_Data/models/<id>/` 下有没有 `.pth`，那是 RVC 音色的位置。装进
+/// characters 之后 models 下什么都没有，于是广场上每一张卡片都永远显示
+/// 「未安装」，用户会把同一个包反复装下来。
+///
+/// 「装上了」的定义跟着 `characters::install_zip` 的硬校验走：两份权重齐全。
+/// 只有目录、或者只有其中一份，在合成台点下去照样报错，不该算装好。
 fn is_voice_installed(root: &Path, voice_id: &str) -> bool {
-    let Ok(name) = safe_model_dir_name(voice_id) else {
-        return false;
-    };
-    let dir = paths::models_dir(root).join(name);
-    if !dir.is_dir() {
+    let id = crate::characters::safe_id(voice_id);
+    if id.is_empty() {
         return false;
     }
-    // has any .pth
-    if let Ok(rd) = fs::read_dir(&dir) {
-        for e in rd.flatten() {
-            if e.path()
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .eq_ignore_ascii_case("pth")
-            {
-                return true;
-            }
-        }
-    }
-    false
+    let dir = paths::user_data(root).join("characters").join(id);
+    dir.join("models").join("sovits.pth").is_file()
+        && dir.join("models").join("gpt.ckpt").is_file()
 }
 
 /// Fetch / merge online catalog; annotate installed flags.
@@ -589,72 +584,6 @@ fn format_size(n: u64) -> String {
 // safe zip extract
 // ---------------------------------------------------------------------------
 
-/// Voice packs go through the same extractor as every other archive.
-///
-/// This used to be a second, near-identical implementation. Two copies of a
-/// path-safety check is one copy too many — the one in `extract` is the one
-/// with tests.
-fn safe_extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
-    crate::extract::extract_zip(zip_path, dest).map_err(|e| crate::i18n::te("s.007e8f085e", &(e)))
-}
-
-fn find_content_root(tmp: &Path) -> PathBuf {
-    // If single top-level dir containing .pth, use it
-    let Ok(rd) = fs::read_dir(tmp) else {
-        return tmp.to_path_buf();
-    };
-    let entries: Vec<_> = rd.flatten().map(|e| e.path()).collect();
-    if entries.len() == 1 && entries[0].is_dir() {
-        return entries[0].clone();
-    }
-    // find dir that has pth
-    if find_first(tmp, "pth").is_some() {
-        return tmp.to_path_buf();
-    }
-    for e in &entries {
-        if e.is_dir() && find_first(e, "pth").is_some() {
-            return e.clone();
-        }
-    }
-    tmp.to_path_buf()
-}
-
-fn find_first(dir: &Path, ext: &str) -> Option<PathBuf> {
-    fn walk(d: &Path, ext: &str, depth: u32) -> Option<PathBuf> {
-        if depth > 4 {
-            return None;
-        }
-        let rd = fs::read_dir(d).ok()?;
-        let mut files = Vec::new();
-        let mut dirs = Vec::new();
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_file() {
-                if p.extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .eq_ignore_ascii_case(ext)
-                {
-                    files.push(p);
-                }
-            } else if p.is_dir() {
-                dirs.push(p);
-            }
-        }
-        files.sort();
-        if let Some(f) = files.into_iter().next() {
-            return Some(f);
-        }
-        for d in dirs {
-            if let Some(f) = walk(&d, ext, depth + 1) {
-                return Some(f);
-            }
-        }
-        None
-    }
-    walk(dir, ext, 0)
-}
-
 /// 清单条目里所有多语言字段，原样搬进本地音色的 `config.json`。
 ///
 /// 清单里 `name` 是中文主名（千早爱音），`name_i18n` 才是各语言的写法。装的时候
@@ -747,192 +676,106 @@ fn write_voice_config(
 /// `name_i18n` 之类的多语言字段，装进本地 `config.json` 才能让模型页按当前
 /// 语言显示名字。
 #[allow(clippy::too_many_arguments)]
+/// 装一个角色包 zip。
+///
+/// **这里以前装的是 RVC 的音色**：从 zip 里翻出第一个 `.pth`、可选的
+/// `.index`，写一份 `config.json`，落到 `User_Data/models/<id>/`。而这个
+/// 产品的合成台读的是 `User_Data/characters/<id>/`（`synth::list_characters`），
+/// 单位也不是一份权重而是一整个角色（`config.json` + `models/sovits.pth` +
+/// `models/gpt.ckpt` + `dataset/<id>.list` + `audios/`）。
+///
+/// 后果是：用户在广场点安装、进度跑完、卡片显示「已安装」，回到合成台角色
+/// 下拉依然是空的 —— 装是真装了，装进了一个引擎从来不看的目录。
+///
+/// 现在统一走 `characters::install_zip`：那条路径的 zip-slip 防护、单条目与
+/// 整包体积上限、「两份权重缺一不可」的校验都已经有测试钉着，没有理由在这里
+/// 再写第二份。**不做「不是角色包就退回旧行为」的兜底** —— 退回去等于把包
+/// 装到没人读的地方，报错反而是对的。
+///
+/// 清单里才有的那几样（作者主页、来源仓库、封面 URL、多语言名）在装完之后
+/// 合并进角色自己的 `config.json`：第三方打的包里那份通常只有名字，不补的话
+/// 装完就再也查不到它是从哪来的。
 pub fn install_voice_pack_zip(
     root: &Path,
     zip_path: &Path,
     voice_id: &str,
     display_name: &str,
-    tag: &str,
+    _tag: &str,
     official: bool,
     entry: Option<&Value>,
 ) -> Result<Value, String> {
     if !zip_path.is_file() {
         return Err(crate::i18n::te("s.760364197e", &(zip_path.display())));
     }
-    let tmp = paths::update_cache(root).join(format!(
-        "voice_extract_{}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&tmp);
-    fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
-    let result = (|| {
-        safe_extract_zip(zip_path, &tmp)?;
-        let content = find_content_root(&tmp);
-        let pth = find_first(&content, "pth")
-            .ok_or_else(|| crate::i18n::t("s.41e7454584"))?;
-        let size = pth.metadata().map(|m| m.len()).unwrap_or(0);
-        if size < MIN_PTH_BYTES {
-            return Err(crate::i18n::t("s.713173a2d7").into());
-        }
-        // optional pack config
-        let pack_cfg = {
-            let cfg = content.join("config.json");
-            if cfg.is_file() {
-                fs::read_to_string(cfg)
-                    .ok()
-                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-                    .and_then(|v| v.as_object().cloned())
-                    .unwrap_or_default()
-            } else {
-                Map::new()
-            }
-        };
-        let vid = safe_model_dir_name(
-            if !voice_id.is_empty() {
-                voice_id
-            } else if let Some(s) = pack_cfg
-                .get("voice_id")
-                .or_else(|| pack_cfg.get("id"))
-                .and_then(|v| v.as_str())
-            {
-                s
-            } else if !display_name.is_empty() {
-                display_name
-            } else {
-                zip_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("voice")
-            },
-        )?;
-        let name = if !display_name.is_empty() {
-            display_name.to_string()
-        } else {
-            pack_cfg
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&vid)
-                .to_string()
-        };
-        let tag = if tag.is_empty() {
-            pack_cfg
-                .get("tag")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&crate::i18n::t("s.c4301894a2"))
-                .to_string()
-        } else {
-            tag.to_string()
-        };
-        let dest_dir = paths::models_dir(root).join(&vid);
-        if dest_dir.is_dir() {
-            // clear previous
-            for e in fs::read_dir(&dest_dir).map_err(|e| e.to_string())? {
-                let p = e.map_err(|e| e.to_string())?.path();
-                if p.is_file() {
-                    let _ = fs::remove_file(&p);
-                } else if p.is_dir() {
-                    let _ = fs::remove_dir_all(&p);
-                }
-            }
-        }
-        fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-        let dest_pth = dest_dir.join(pth.file_name().unwrap_or_default());
-        fs::copy(&pth, &dest_pth).map_err(|e| crate::i18n::te("s.8c8dade1e1", &(e)))?;
+    let mut info = crate::characters::install_zip(root, zip_path)?;
 
-        let mut index_path = String::new();
-        if let Some(idx) = find_first(&content, "index") {
-            if idx.metadata().map(|m| m.len()).unwrap_or(0) > 1000 {
-                let dest_idx = dest_dir.join(idx.file_name().unwrap_or_default());
-                fs::copy(&idx, &dest_idx).map_err(|e| e.to_string())?;
-                index_path = dest_idx
-                    .canonicalize()
-                    .unwrap_or(dest_idx)
-                    .to_string_lossy()
-                    .into_owned();
-            }
-        }
-        // cover
-        for name in ["cover.png", "cover.jpg", "cover.jpeg", "cover.webp"] {
-            let c = content.join(name);
-            if c.is_file() {
-                let _ = fs::copy(&c, dest_dir.join(name));
-                break;
-            }
-        }
-        // copy profiles if present
-        let prof_src = content.join("profiles");
-        if prof_src.is_dir() {
-            let prof_dst = dest_dir.join("profiles");
-            let _ = fs::create_dir_all(&prof_dst);
-            if let Ok(rd) = fs::read_dir(&prof_src) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.is_file() {
-                        let _ = fs::copy(&p, prof_dst.join(p.file_name().unwrap_or_default()));
-                    }
-                }
-            }
-        }
+    // 广场条目里的 id / 名字优先于包内声明：清单是我们自己维护的，包是别人打的。
+    let id = info
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let dir = PathBuf::from(
+        info.get("dir")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default(),
+    );
 
-        let mut extra = Map::new();
+    let cfg_path = dir.join("config.json");
+    let mut cfg: Map<String, Value> = fs::read_to_string(&cfg_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+
+    if !display_name.is_empty() {
+        cfg.insert("name".into(), json!(display_name));
+        info["name"] = json!(display_name);
+    }
+    if !voice_id.is_empty() {
+        cfg.insert("catalog_id".into(), json!(voice_id));
+    }
+    cfg.insert("id".into(), json!(id));
+    cfg.insert(
+        "source".into(),
+        json!(if official { "online_pack" } else { "thirdparty_pack" }),
+    );
+    cfg.insert("fabric_official".into(), json!(official));
+
+    if let Some(e) = entry {
         for k in [
             "author",
             "author_url",
             "source_url",
+            "released",
             "date",
             "series",
             "group",
-            "cover",
+            "name_en",
+            "name_ja",
+            "name_zh_hant",
+            "series_en",
+            "series_ja",
+            "series_zh_hant",
         ] {
-            if let Some(v) = pack_cfg.get(k) {
-                extra.insert(k.to_string(), v.clone());
-            }
-        }
-        // 作者主页 / 来源仓库多半只写在清单里 —— 第三方的 zip 是别人打的包，
-        // 里面那份 config.json 通常只有名字和标签。不从 entry 兜底，装完的
-        // 音色就再也查不到它是从哪来的、是谁做的。
-        if let Some(e) = entry {
-            for k in ["author_url", "source_url"] {
-                if extra.contains_key(k) {
-                    continue;
-                }
+            // 包里已经写了的不覆盖：作者自己填的比清单里我们转录的更可信。
+            if cfg.get(k).and_then(|v| v.as_str()).unwrap_or("").is_empty() {
                 if let Some(v) = e.get(k).filter(|v| !v.as_str().unwrap_or("").is_empty()) {
-                    extra.insert(k.to_string(), v.clone());
+                    cfg.insert(k.to_string(), v.clone());
                 }
             }
         }
-        // 第三方 zip 里没有 cover，封面 URL 只在清单 —— 不补上，安装后的
-        // 模型页/首页就永远没有封面（官方包自带 cover 已优先，不受影响）。
-        if !extra.contains_key("cover") {
-            if let Some(v) = entry.and_then(entry_cover) {
-                extra.insert("cover".into(), v);
+        if cfg.get("cover").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if let Some(v) = entry_cover(e) {
+                cfg.insert("cover".into(), v);
             }
         }
-        // 多语言字段：清单里那条优先（广场下载走这条），包里自带的兜底
-        // （第三方 zip 自己写的 config.json）。
-        if let Some(e) = entry {
-            copy_i18n_fields(e, &mut extra);
-        }
-        copy_i18n_fields(&Value::Object(pack_cfg.clone()), &mut extra);
-        let source = if official {
-            "online_pack"
-        } else {
-            "thirdparty_pack"
-        };
-        Ok(write_voice_config(
-            &dest_dir,
-            &dest_pth,
-            &name,
-            &tag,
-            &vid,
-            &index_path,
-            source,
-            official,
-            &extra,
-        ))
-    })();
-    let _ = fs::remove_dir_all(&tmp);
-    result
+    }
+
+    if let Ok(text) = serde_json::to_string_pretty(&Value::Object(cfg)) {
+        let _ = fs::write(&cfg_path, text);
+    }
+    Ok(info)
 }
 
 /// Download + install one catalog voice entry.
@@ -1731,6 +1574,75 @@ mod tests {
         // 本机有图时不再去网上撞 404。
         let resolved = resolve_cover_url(&root, url).expect("local first");
         assert!(resolved.ends_with("tp-yuuka.jpg"), "{resolved}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 广场装下来的角色，必须落在合成台扫的那个目录里。
+    ///
+    /// 这条以前是不成立的：`install_voice_pack_zip` 装到
+    /// `User_Data/models/<id>/`，而 `synth::list_characters` 扫的是
+    /// `User_Data/characters/<id>/`。进度跑完、卡片显示「已安装」、
+    /// 合成台角色下拉依然是空的 —— 而且 `is_voice_installed` 查的也是
+    /// models，所以卡片其实连「已安装」都显示不出来，用户会反复重装。
+    #[test]
+    fn a_pack_from_the_plaza_lands_where_the_synth_page_looks() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let _g = crate::i18n::testing::pin("zh-CN");
+        let root = crate::testutil::scratch("store-role");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        let zip_path = root.join("Yuzu_voice.zip");
+        {
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut w = zip::ZipWriter::new(f);
+            let o = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            w.start_file("config.json", o).unwrap();
+            w.write_all(r#"{"id":"Yuzu","name":"柚子","version":"v2ProPlus"}"#.as_bytes())
+                .unwrap();
+            w.start_file("models/sovits.pth", o).unwrap();
+            w.write_all(b"sovits").unwrap();
+            w.start_file("models/gpt.ckpt", o).unwrap();
+            w.write_all(b"gpt").unwrap();
+            w.finish().unwrap();
+        }
+
+        // 清单条目里才有的那几样：作者主页、来源仓库。包里没写。
+        let entry = json!({
+            "id": "Yuzu",
+            "author_url": "https://example.invalid/someone",
+            "source_url": "https://example.invalid/repo",
+        });
+        let info =
+            install_voice_pack_zip(&root, &zip_path, "Yuzu", "", "", true, Some(&entry)).unwrap();
+        assert_eq!(info["id"], json!("yuzu"));
+
+        let dir = crate::synth::characters_dir(&root).join("yuzu");
+        assert!(dir.join("models/sovits.pth").is_file(), "落点必须是 characters");
+        assert!(dir.join("models/gpt.ckpt").is_file());
+        assert!(
+            !paths::models_dir(&root).join("yuzu").exists(),
+            "不该再往 RVC 那个 models 目录里写"
+        );
+
+        // 清单里的补充信息合并进了角色自己的 config.json。
+        let cfg: Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("config.json")).unwrap()).unwrap();
+        assert_eq!(cfg["author_url"], json!("https://example.invalid/someone"));
+        assert_eq!(cfg["source_url"], json!("https://example.invalid/repo"));
+        assert_eq!(cfg["name"], json!("柚子"), "包里写了名字就不该被清单覆盖");
+        assert_eq!(cfg["fabric_official"], json!(true));
+
+        // 「已安装」的判据跟着落点走，否则卡片永远显示未安装。
+        assert!(is_voice_installed(&root, "Yuzu"));
+        assert!(!is_voice_installed(&root, "nobody"));
+
+        // 只有一份权重不算装好 —— 合成台点下去照样报错。
+        std::fs::remove_file(dir.join("models/gpt.ckpt")).unwrap();
+        assert!(!is_voice_installed(&root, "Yuzu"));
+
         let _ = std::fs::remove_dir_all(&root);
     }
 

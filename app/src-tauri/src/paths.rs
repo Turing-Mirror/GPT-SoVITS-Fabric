@@ -2,15 +2,32 @@
 
 use std::path::{Path, PathBuf};
 
-/// Walk from `start` upward looking for a product root marker.
+/// 这一层是不是产品根。
+///
+/// **判据必须是这个产品真的会铺下去的文件。** 这里原来查的是
+/// `tools/realtime_worker.py` —— RVC 实时变声的 worker，GPT-SoVITS 没有
+/// 实时链路，这个文件从来没有随包发过。于是 `looks_like_root` 恒为 false，
+/// `product_root()` 三条查找路径（环境变量 / 从 exe 往上爬 / cwd）全部走空，
+/// 最后落到 `current_dir()`。从开始菜单启动时 cwd 常常是
+/// `C:\Windows\system32` 或用户主目录 —— `User_Data`、日志、Runtime、
+/// 角色库会全部挂到那儿去。兜底那句注释写的「may fail later with clear
+/// errors」在这种情况下并不成立：它不会报错，它会安安静静地用错目录。
+/// 兜底 `gui_v1.py` 同理，那是 RVC 的 Gradio 入口。
+///
+/// 现在认 `tools/synth_worker.py`：合成是这个产品的核心链路，
+/// `synth::worker_script` 找的就是它，安装包里也必然有它
+/// （`tauri.conf.json` 的 resources 列了 `engine-payload/tools`，
+/// `prepare_engine_payload.py` 还会核对这条登记在不在）。
 fn looks_like_root(p: &Path) -> bool {
-    let has_worker = p.join("tools").join("realtime_worker.py").is_file();
+    let has_worker = p.join("tools").join("synth_worker.py").is_file();
     let has_runtime = p.join("Runtime").join("pythonw.exe").is_file()
         || p.join("Runtime").join("python.exe").is_file()
         || p.join("runtime").join("pythonw.exe").is_file();
     let has_user = p.join("User_Data").is_dir() || p.join("UserData").is_dir();
-    // Prefer trees that have the worker script; Runtime optional in pure-UI dev.
-    has_worker && (has_runtime || has_user || p.join("gui_v1.py").is_file())
+    // 有 worker 才谈得上是根；Runtime 在纯界面开发时可以没有。
+    // 第三项以前是 `gui_v1.py`（RVC 的 Gradio 入口），换成这个产品自己的
+    // 负载标记 —— 干净 clone 出来的仓库靠它就能被认出来。
+    has_worker && (has_runtime || has_user || p.join("setup_package.json").is_file())
 }
 
 /// Product root: install dir (exe parent) or repo root (dev).
@@ -128,8 +145,12 @@ pub fn runtime_ready(root: &Path) -> bool {
     site.map(|p| p.is_file()).unwrap_or(false)
 }
 
+/// 这个产品的主 worker。
+///
+/// 原来指的是 `realtime_worker.py`，于是 `provision_status.worker_script_ok`
+/// 恒为 false —— 首启补全那一页会永远说脚本缺失。
 pub fn worker_script(root: &Path) -> PathBuf {
-    root.join("tools").join("realtime_worker.py")
+    root.join("tools").join("synth_worker.py")
 }
 
 pub fn package_meta_path(root: &Path) -> PathBuf {
