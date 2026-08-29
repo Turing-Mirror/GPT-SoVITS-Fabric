@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "Vide = titre par défaut",
     "bannerTextReset": "Rétablir par défaut",
     "bannerOpacity": "Opacité de la bannière",
-    "bannerOpacityTip": "Règle l'opacité du fond de la bannière d'accueil. Le texte et le logo ne sont pas affectés. Minimum 20 %."
+    "bannerOpacityTip": "Règle l'opacité du fond de la bannière d'accueil. Le texte et le logo ne sont pas affectés. Minimum 20 %.",
+    "hotkeys": "Raccourcis globaux",
+    "hotkeysTip": "Les raccourcis globaux sont exclusifs : une combinaison revendiquée ici cesse de faire ce qu'elle faisait dans vos autres logiciels.",
+    "hotkeysOn": "Activés",
+    "hotkeysOff": "Désactivés",
+    "hotkeyToggleWindow": "Afficher / masquer la fenêtre principale",
+    "hotkeyToggleWindowTip": "Des formats comme CmdOrCtrl+F11 ou Alt+Shift+G. Cliquez ailleurs pour réenregistrer aussitôt.",
+    "hotkeyTaken": "Un autre programme les détient déjà, elles n'ont pas pu être enregistrées : {v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

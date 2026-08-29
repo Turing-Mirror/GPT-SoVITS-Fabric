@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "留空使用默认标题",
     "bannerTextReset": "恢复默认",
     "bannerOpacity": "横幅不透明度",
-    "bannerOpacityTip": "调节首页顶部横幅背景的不透明度，文字与 LOGO 不受影响，最低 20%。"
+    "bannerOpacityTip": "调节首页顶部横幅背景的不透明度，文字与 LOGO 不受影响，最低 20%。",
+    "hotkeys": "全局快捷键",
+    "hotkeysTip": "全局快捷键是独占的：被这里抢走的组合，你在别的软件里就按不出原本的功能了。",
+    "hotkeysOn": "已启用",
+    "hotkeysOff": "已关闭",
+    "hotkeyToggleWindow": "显示 / 隐藏主界面",
+    "hotkeyToggleWindowTip": "格式如 CmdOrCtrl+F11、Alt+Shift+G。改完点别处即刻重新注册。",
+    "hotkeyTaken": "这些组合已被别的程序占用，未能注册：{v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

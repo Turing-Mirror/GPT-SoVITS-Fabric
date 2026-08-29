@@ -121,16 +121,13 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("onboard_monitor".into(), json!(false));
     m.insert("onboard_dismiss".into(), json!(false));
     m.insert("hotkeys_enabled".into(), json!(false));
-    // 快捷键组合。默认沿用旧 Python 壳的那四个，用户有肌肉记忆；
-    // 键名要和 shell_extras::HOTKEYS 对上。
-    m.insert("hotkey_toggle_vc".into(), json!("CmdOrCtrl+F2"));
-    m.insert("hotkey_toggle_mode".into(), json!("CmdOrCtrl+F3"));
-    m.insert("hotkey_prev_voice".into(), json!("CmdOrCtrl+F5"));
-    m.insert("hotkey_next_voice".into(), json!("CmdOrCtrl+F6"));
-    m.insert("hotkey_pitch_up".into(), json!("CmdOrCtrl+F7"));
-    m.insert("hotkey_pitch_down".into(), json!("CmdOrCtrl+F8"));
-    m.insert("hotkey_toggle_monitor".into(), json!("CmdOrCtrl+F9"));
-    m.insert("hotkey_toggle_fx".into(), json!("CmdOrCtrl+F10"));
+    // 快捷键组合。键名要和 `shell_extras::HOTKEYS` 对上。
+    //
+    // 这里原来还有八个：开关变声、切换直通、上一个/下一个音色、升降调、
+    // 开关监听、开关音效 —— 全是 RVC 实时变声的动作，这个产品一个都没有。
+    // `HOTKEYS` 早就只剩 toggle_window 一条，这八个键就成了写进配置文件、
+    // 谁也不读的死值：默认值表把它们写进磁盘，设置页把它们当成用户设过的
+    // 东西读回来，而按下去什么都不会发生。
     m.insert("hotkey_toggle_window".into(), json!("CmdOrCtrl+F11"));
     // 每个快捷键单独决定要不要抢成全局。默认全开 —— 以前九个一律全局，
     // 改默认值等于悄悄拿走用户已经在用的功能。

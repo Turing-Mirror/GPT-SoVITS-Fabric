@@ -1541,7 +1541,7 @@ mod tests {
     /// 配置里是垃圾值时必须退回默认，而不是注册一个乱七八糟的组合。
     #[test]
     fn bad_config_falls_back_to_default() {
-        assert_eq!(combo_for(None, "hotkey_toggle_vc", "CmdOrCtrl+F2"), "CmdOrCtrl+F2");
+        assert_eq!(combo_for(None, "hotkey_toggle_window", "CmdOrCtrl+F11"), "CmdOrCtrl+F11");
     }
 
     #[test]

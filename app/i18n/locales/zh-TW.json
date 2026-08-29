@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "留空使用預設標題",
     "bannerTextReset": "恢復預設",
     "bannerOpacity": "橫幅不透明度",
-    "bannerOpacityTip": "調節首頁頂部橫幅背景的不透明度，文字與 LOGO 不受影響，最低 20%。"
+    "bannerOpacityTip": "調節首頁頂部橫幅背景的不透明度，文字與 LOGO 不受影響，最低 20%。",
+    "hotkeys": "全域快速鍵",
+    "hotkeysTip": "全域快速鍵是獨佔的：被這裡搶走的組合，你在別的軟體裡就按不出原本的功能了。",
+    "hotkeysOn": "已啟用",
+    "hotkeysOff": "已關閉",
+    "hotkeyToggleWindow": "顯示 / 隱藏主介面",
+    "hotkeyToggleWindowTip": "格式如 CmdOrCtrl+F11、Alt+Shift+G。改完點別處即刻重新註冊。",
+    "hotkeyTaken": "這些組合已被別的程式佔用，未能註冊：{v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

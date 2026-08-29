@@ -169,65 +169,8 @@ async fn vcredist_install(state: State<'_, Mutex<AppState>>) -> Result<Value, St
     .map_err(|e| e.to_string())?
 }
 
-/// 补全 VB-Cable 安装包。进度同样走 `provision-progress`（phase=vbcable）。
-#[tauri::command]
-async fn assets_ensure_vbcable(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    tauri::async_runtime::spawn_blocking(move || {
-        let cb: download::ProgressFn = Arc::new(move |done, total, phase| {
-            let pct = ((done as f64 / total.max(1) as f64) * 100.0).clamp(0.0, 100.0);
-            let m = match phase {
-                "verify" => crate::i18n::t("s.3b227dfa30"),
-                other if other.starts_with("connecting:") => {
-                    crate::i18n::te("s.c86b0f4fc1", &(fmt_size(total)))
-                }
-                _ if done == 0 => crate::i18n::t("s.3a05d4d51e"),
-                _ => crate::i18n::tn("s.350261fb86", &[&fmt_size(done), &fmt_size(total), &format!("{:.1}", pct)]),
-            };
-            let _ = app.emit(
-                "provision-progress",
-                json!({
-                    "phase": "vbcable",
-                    "done": done,
-                    "total": total.max(1),
-                    "percent": pct,
-                    "message": m,
-                }),
-            );
-        });
-        engine_assets::ensure_vbcable_pack(&root, cancel, Some(cb)).map(|_| json!({"ok": true}))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
 
-/// 静默安装虚拟声卡。装驱动能跑十几秒，同步命令会把界面卡死，所以丢到
-/// 阻塞线程池里等。
-#[tauri::command]
-async fn assets_install_vbcable(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        engine_assets::install_vbcable(&root).map(|_| json!({"ok": true}))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
 
-/// 静默卸载虚拟声卡。优先跑 Program Files 里那份官方卸载程序（和系统
-/// 「应用和功能」同一条），没有再退回软件下的安装包。
-#[tauri::command]
-async fn assets_uninstall_vbcable(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        engine_assets::uninstall_vbcable(&root).map(|_| json!({"ok": true}))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
 
 /// Full effective settings (defaults overlaid with saved values).
 #[tauri::command]
@@ -422,26 +365,6 @@ async fn storage_usage(state: State<'_, Mutex<AppState>>) -> Result<Value, Strin
         .map_err(|e| e.to_string())
 }
 
-/// 清空一个实验的中间产物（切片 / 音高 / 特征），返回释放的字节数。
-///
-/// 只删可再生的那几样，训练存档、索引和日志一律不碰。训练进行中拒绝执行。
-#[tauri::command]
-async fn train_reset_stages(
-    state: State<'_, Mutex<AppState>>,
-    exp: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        train::reset_stages(&root, &exp).map(|freed| {
-            json!({
-                "freed_bytes": freed,
-                "freed_mb": format!("{:.1}", freed as f64 / (1024.0 * 1024.0)),
-            })
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
 
 /// 选完数据集立刻数一遍：这个目录里到底有几个音频。
 #[tauri::command]
@@ -475,27 +398,6 @@ fn onboarding_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String>
     Ok(link_check::onboarding(&root_clone(&state)?))
 }
 
-/// 打开 Windows 声音设置页。方案串是写死的系统值，不收任何外部输入。
-///
-/// 产品只出 Windows，但仓库要能在 macOS / Linux 上编过 —— 测试和 CI 都在
-/// 那边跑。没有 cfg 门的话 `std::os::windows` 直接让整个 crate 编不过。
-#[tauri::command]
-fn open_sound_settings() -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("explorer.exe")
-            .arg("ms-settings:sound")
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
-            .spawn()
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-    #[cfg(not(windows))]
-    {
-        Err("only on Windows".into())
-    }
-}
 
 /// 出包之前，把包里会有哪些文件、各自多大摆出来。
 ///
@@ -890,14 +792,6 @@ fn tools_open_help(app: AppHandle, section: Option<String>) -> Result<(), String
 
 // --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
 
-#[tauri::command]
-fn synth_status(state: State<'_, Mutex<AppState>>) -> Value {
-    let root = root_clone(&state).unwrap_or_else(|_| PathBuf::from("."));
-    json!({
-        "busy": synth::is_busy(),
-        "out_dir": synth::out_dir(&root).to_string_lossy(),
-    })
-}
 
 #[tauri::command]
 fn synth_characters(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
@@ -1608,10 +1502,8 @@ pub fn run() {
             diagnostics_build,
             diagnostics_self_check,
             onboarding_status,
-            open_sound_settings,
             known_issues_check,
             train_scan_dataset,
-            train_reset_stages,
             train_inspect_dataset,
             train_cleanup_scan,
             train_cleanup_apply,
@@ -1626,12 +1518,9 @@ pub fn run() {
             close_finish,
             assets_status,
             assets_ensure_engine_core,
-            assets_ensure_vbcable,
             vcredist_installed,
             assets_ensure_vcredist,
             vcredist_install,
-            assets_install_vbcable,
-            assets_uninstall_vbcable,
             product_root,
             engine_status,
             engine_force_kill,
@@ -1670,7 +1559,6 @@ pub fn run() {
             separate_cancel,
             separate_reveal,
             tools_open_downloads,
-            synth_status,
             synth_characters,
             synth_start,
             synth_cancel,

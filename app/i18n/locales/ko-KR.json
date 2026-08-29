@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "비우면 기본 제목 사용",
     "bannerTextReset": "기본값으로 되돌리기",
     "bannerOpacity": "배너 불투명도",
-    "bannerOpacityTip": "홈 화면 상단 배너 배경의 불투명도를 조절합니다. 문구와 LOGO 는 영향을 받지 않으며 최소 20% 입니다."
+    "bannerOpacityTip": "홈 화면 상단 배너 배경의 불투명도를 조절합니다. 문구와 LOGO 는 영향을 받지 않으며 최소 20% 입니다.",
+    "hotkeys": "전역 단축키",
+    "hotkeysTip": "전역 단축키는 독점적입니다. 여기서 가져간 조합은 다른 소프트웨어에서 원래 기능을 잃습니다.",
+    "hotkeysOn": "켜짐",
+    "hotkeysOff": "꺼짐",
+    "hotkeyToggleWindow": "메인 창 표시 / 숨기기",
+    "hotkeyToggleWindowTip": "CmdOrCtrl+F11, Alt+Shift+G 같은 형식. 다른 곳을 클릭하면 즉시 다시 등록합니다.",
+    "hotkeyTaken": "다른 프로그램이 이미 사용 중이라 등록하지 못했습니다: {v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

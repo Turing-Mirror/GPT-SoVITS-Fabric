@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "Vacío = título predeterminado",
     "bannerTextReset": "Restablecer",
     "bannerOpacity": "Opacidad del banner",
-    "bannerOpacityTip": "Ajusta la opacidad del fondo del banner de inicio. El texto y el logotipo no se ven afectados. Mínimo 20 %."
+    "bannerOpacityTip": "Ajusta la opacidad del fondo del banner de inicio. El texto y el logotipo no se ven afectados. Mínimo 20 %.",
+    "hotkeys": "Atajos globales",
+    "hotkeysTip": "Los atajos globales son exclusivos: la combinación que se reclame aquí dejará de hacer lo que hacía en sus otros programas.",
+    "hotkeysOn": "Activados",
+    "hotkeysOff": "Desactivados",
+    "hotkeyToggleWindow": "Mostrar / ocultar la ventana principal",
+    "hotkeyToggleWindowTip": "Formatos como CmdOrCtrl+F11 o Alt+Shift+G. Haga clic fuera para volver a registrarlo al instante.",
+    "hotkeyTaken": "Otro programa ya las tiene, así que no pudieron registrarse: {v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

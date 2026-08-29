@@ -320,7 +320,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   const barWidth =
     done > 0 && pct < 0.5 ? Math.max(pct, 0.5) : Math.min(100, pct);
   const showBar = busy && progress && progress.phase !== "error";
-  // Only the download phase reports bytes. Extract / vbcable emit done=0 total=1.
+  // Only the download phase reports bytes. Extract emits done=0 total=1.
   const phase = String(progress?.phase || "");
   const isDownload = phase === "download";
   const retryN = (() => {

@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "Empty = default title",
     "bannerTextReset": "Reset to default",
     "bannerOpacity": "Banner opacity",
-    "bannerOpacityTip": "Adjusts the opacity of the home banner background. Text and the logo are not affected. Minimum 20%."
+    "bannerOpacityTip": "Adjusts the opacity of the home banner background. Text and the logo are not affected. Minimum 20%.",
+    "hotkeys": "Global hotkeys",
+    "hotkeysTip": "Global hotkeys are exclusive: a combination claimed here stops doing whatever it used to do in your other software.",
+    "hotkeysOn": "On",
+    "hotkeysOff": "Off",
+    "hotkeyToggleWindow": "Show / hide the main window",
+    "hotkeyToggleWindowTip": "Formats like CmdOrCtrl+F11 or Alt+Shift+G. Click away to re-register immediately.",
+    "hotkeyTaken": "Another program already holds these, so they could not be registered: {v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

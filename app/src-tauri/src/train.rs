@@ -586,7 +586,7 @@ pub fn cleanup_scan(root: &Path) -> Value {
 
 /// 删掉指定实验的指定几类，返回释放的字节数。
 ///
-/// 和 `reset_stages` 同一套闸：训练中拒绝、实验名不许逃逸、删前重扫、写日志。
+/// 闸：训练中拒绝、实验名不许逃逸、删前重扫、写日志。
 pub fn cleanup_apply(root: &Path, exp: &str, kinds: &[String]) -> Result<u64, String> {
     let exp_dir = guard_exp_dir(root, exp)?;
     let _ = &exp_dir;
@@ -639,41 +639,6 @@ fn guard_exp_dir(root: &Path, exp: &str) -> Result<PathBuf, String> {
     Ok(exp_dir)
 }
 
-/// 删掉一个实验的中间产物，返回释放的字节数。
-///
-/// 五条硬要求，一条都不能少：
-/// 1. 扫和删用同一张表（`STAGE_ARTIFACTS`）。
-/// 2. 删之前重新算一次体积 —— 对话框开着的时候训练可能刚跑完，盘上的东西变了。
-/// 3. 训练进行中一律拒绝。
-/// 4. 路径必须落在产品根之下，否则拒绝。
-/// 5. 每次操作往日志写一行：删了哪个实验、释放多少。
-pub fn reset_stages(root: &Path, exp: &str) -> Result<u64, String> {
-    let exp_dir = guard_exp_dir(root, exp)?;
-    let exp = exp.trim();
-
-    // 删之前重新算一次。
-    let freed = stage_artifact_bytes(&exp_dir);
-    for name in STAGE_ARTIFACTS {
-        let p = exp_dir.join(name);
-        let Ok(meta) = std::fs::metadata(&p) else {
-            continue;
-        };
-        let r = if meta.is_dir() {
-            std::fs::remove_dir_all(&p)
-        } else {
-            std::fs::remove_file(&p)
-        };
-        if let Err(e) = r {
-            crate::logging::shell_log!("清空中间产物：{} 删除失败 {}", p.display(), e);
-        }
-    }
-    crate::logging::shell_log!(
-        "清空中间产物：实验 {} 释放约 {:.1} MB",
-        exp,
-        freed as f64 / (1024.0 * 1024.0)
-    );
-    Ok(freed)
-}
 
 /// preprocess.py 每个文件写一行：成功是 `路径\t-> Success`，失败是
 /// `路径\t-> Traceback (most recent call last): …`。数这两种前缀就够。
@@ -1602,21 +1567,24 @@ mod tests {
         std::fs::create_dir_all(exp.join("5-wav32k")).unwrap();
         std::fs::create_dir_all(exp.join("3-bert")).unwrap();
         std::fs::create_dir_all(exp.join("4-cnhubert")).unwrap();
-        std::fs::create_dir_all(exp.join("logs_s2")).unwrap();
+        std::fs::create_dir_all(exp.join("logs_s2_v2ProPlus")).unwrap();
         std::fs::write(exp.join("5-wav32k").join("a.wav"), vec![0u8; 100]).unwrap();
         std::fs::write(exp.join("3-bert").join("a.pt"), vec![0u8; 50]).unwrap();
         std::fs::write(exp.join("2-name2text.txt"), b"x").unwrap();
         // 这两样不可再生，绝不能碰。
-        std::fs::write(exp.join("logs_s2").join("G_2333.pth"), b"checkpoint").unwrap();
+        std::fs::write(exp.join("logs_s2_v2ProPlus").join("G_2333.pth"), b"checkpoint").unwrap();
         std::fs::write(exp.join("train.log"), b"log").unwrap();
 
         assert_eq!(stage_artifact_bytes(&exp), 151);
-        let freed = reset_stages(&root, "miku").unwrap();
+        let freed = cleanup_apply(&root, "miku", &["dataset".into()]).unwrap();
         assert_eq!(freed, 151);
         assert!(!exp.join("5-wav32k").exists());
         assert!(!exp.join("3-bert").exists());
         assert!(!exp.join("2-name2text.txt").exists());
-        assert!(exp.join("logs_s2").join("G_2333.pth").is_file(), "微调检查点不能删");
+        assert!(
+            exp.join("logs_s2_v2ProPlus").join("G_2333.pth").is_file(),
+            "微调检查点不能删"
+        );
         assert!(exp.join("train.log").is_file(), "日志不能删");
 
         let _ = std::fs::remove_dir_all(&root);
@@ -1629,10 +1597,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("logs")).unwrap();
         for bad in ["", "   ", "..", ".", "../mute", "a/b", "a\\b", "C:x"] {
-            assert!(reset_stages(&root, bad).is_err(), "{bad:?} 应该被拒绝");
+            assert!(
+                cleanup_apply(&root, bad, &["dataset".into()]).is_err(),
+                "{bad:?} 应该被拒绝"
+            );
         }
         // 不存在的实验也拒绝，而不是「删了 0 字节」假装成功。
-        assert!(reset_stages(&root, "nope").is_err());
+        assert!(cleanup_apply(&root, "nope", &["dataset".into()]).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 

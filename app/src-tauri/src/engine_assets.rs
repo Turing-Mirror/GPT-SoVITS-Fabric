@@ -334,56 +334,12 @@ pub fn ensure_engine_core(
     }
 }
 
-// ---------------------------------------------------------------------------
-// VB-Cable（RVC 遗产，仅保留最小壳）
-// ---------------------------------------------------------------------------
-
-/// GPT-SoVITS 没有虚拟声卡需求。签名保留给 assets_status 的旧字段语义；
-/// 恒为 false，等自检/前端侧消费者清理后一并删除。
-pub fn vbcable_pack_ready(_root: &Path) -> bool {
-    false
-}
-
-/// 不需要虚拟声卡：直接成功返回，不再触发任何下载。
-pub fn ensure_vbcable_pack(
-    _root: &Path,
-    _cancel: Arc<AtomicBool>,
-    _progress: Option<download::ProgressFn>,
-) -> Result<(), String> {
-    Ok(())
-}
-
-/// GSV 无驱动可装：按「无事可做」成功返回，保持命令面不破。
-#[cfg(target_os = "windows")]
-pub fn install_vbcable(_root: &Path) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-pub fn uninstall_vbcable(_root: &Path) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn install_vbcable(_root: &Path) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn uninstall_vbcable(_root: &Path) -> Result<(), String> {
-    Ok(())
-}
-
 /// Status for the first-run gate and the Help page.
 pub fn assets_status(root: &Path) -> Value {
     let missing = engine_core_missing(root);
     json!({
         "engine_core_ready": missing.is_empty(),
         "engine_core_missing": missing,
-        // GSV 无虚拟声卡需求：字段保留给尚未改造的自检/前端消费者，恒为不需要。
-        "vbcable_pack_ready": vbcable_pack_ready(root),
-        "vbcable_installed": false,
-        "vbcable_dir": "",
     })
 }
 

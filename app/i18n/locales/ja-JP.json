@@ -58,7 +58,14 @@
     "bannerTextPlaceholder": "空欄で既定のタイトル",
     "bannerTextReset": "既定に戻す",
     "bannerOpacity": "バナーの不透明度",
-    "bannerOpacityTip": "ホーム画面上部バナーの背景の不透明度を調整します。文言と LOGO は変わりません。最低 20% です。"
+    "bannerOpacityTip": "ホーム画面上部バナーの背景の不透明度を調整します。文言と LOGO は変わりません。最低 20% です。",
+    "hotkeys": "グローバルホットキー",
+    "hotkeysTip": "グローバルホットキーは排他的です。ここで押さえた組み合わせは、他のソフトでは本来の動作をしなくなります。",
+    "hotkeysOn": "有効",
+    "hotkeysOff": "無効",
+    "hotkeyToggleWindow": "メイン画面の表示 / 非表示",
+    "hotkeyToggleWindowTip": "CmdOrCtrl+F11、Alt+Shift+G のような書式。別の場所をクリックすると即座に登録し直します。",
+    "hotkeyTaken": "他のプログラムが使用中のため登録できませんでした：{v0}"
   },
   "locale": {
     "zh-CN": "简体中文",

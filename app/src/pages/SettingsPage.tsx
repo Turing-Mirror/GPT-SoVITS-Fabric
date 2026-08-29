@@ -76,6 +76,15 @@ function SettingsPageImpl({
   // 开机自启：状态以注册表为准（autostart_get），不进 app_config。
   const [autoStart, setAutoStart] = useState(false);
   const [autoStartBusy, setAutoStartBusy] = useState(false);
+  /** 上一次注册的结果。被别的软件占掉的组合要说出来，不然用户只会觉得没生效。 */
+  const [hotkeyFailed, setHotkeyFailed] = useState<string[]>([]);
+  const applyHotkeys = async (enabled: boolean) => {
+    const r = await safeInvoke<{ failed?: string[] }>("hotkeys_apply", { enabled });
+    setHotkeyFailed(r?.failed ?? []);
+  };
+  const hotkeyNote = hotkeyFailed.length
+    ? t("settings.hotkeyTaken", { v0: hotkeyFailed.join(", ") })
+    : undefined;
   useEffect(() => {
     let alive = true;
     void safeInvoke<{ enabled: boolean }>("autostart_get").then((s) => {
@@ -336,6 +345,55 @@ function SettingsPageImpl({
                     }
                     checked={c.cfg.ui_compat_render === true}
                     onChange={(v) => c.set("ui_compat_render", v, true)}
+                  />
+                }
+              />
+              {/* 全局快捷键。`hotkeys_apply` 一直注册着却没有任何入口 ——
+                  CmdOrCtrl+F11 抢在系统层面，用户既关不掉也改不了，而全局
+                  快捷键是独占的：被抢走的组合在别的软件里就按不出来了。
+                  这个产品只剩「显示/隐藏主界面」一条（其余八条是 RVC 实时
+                  变声的动作，早就从 HOTKEYS 里去掉了），所以不另开一页，
+                  就放在常规里。 */}
+              <Field
+                label={t("settings.hotkeys")}
+                tip={t("settings.hotkeysTip")}
+                desc={hotkeyNote}
+                control={
+                  <Toggle
+                    label={
+                      c.cfg.hotkeys_enabled === true
+                        ? t("settings.hotkeysOn")
+                        : t("settings.hotkeysOff")
+                    }
+                    checked={c.cfg.hotkeys_enabled === true}
+                    onChange={(v) => {
+                      // 先等写盘落地再注册。Rust 那边是从配置文件里读组合键的，
+                      // 不 await 的话注册用的还是上一个值 —— useConfig.set 的
+                      // 注释里点名说的就是这条路径。
+                      void c.set("hotkeys_enabled", v, true).then(() => applyHotkeys(v));
+                    }}
+                  />
+                }
+              />
+              <Field
+                label={t("settings.hotkeyToggleWindow")}
+                tip={t("settings.hotkeyToggleWindowTip")}
+                inline
+                control={
+                  <input
+                    value={c.str("hotkey_toggle_window", "CmdOrCtrl+F11")}
+                    // 打字时走 220ms 合并写，别每敲一个字符落一次盘。
+                    onChange={(e) => void c.set("hotkey_toggle_window", e.target.value)}
+                    // 改完立刻重注册。不重注册的话设置页显示新组合、系统里
+                    // 还挂着旧的，要等下次重启才对得上。同样要等写盘先落地。
+                    onBlur={() => {
+                      if (c.cfg.hotkeys_enabled !== true) return;
+                      void c.set("hotkey_toggle_window", c.str("hotkey_toggle_window", "CmdOrCtrl+F11"), true)
+                        .then(() => applyHotkeys(true));
+                    }}
+                    spellCheck={false}
+                    aria-label={t("settings.hotkeyToggleWindow")}
+                    className="w-[190px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
                   />
                 }
               />
