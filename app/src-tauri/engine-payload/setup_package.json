@@ -10,5 +10,24 @@
   "engine_core_path": "engine-core/engine-core-*.zip",
   "cnb_repo": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases",
   "installer": "tauri_nsis",
-  "note": "薄包：壳+源码。Runtime（nvidia/cpu）+ 底模组均从 CNB Release 按标签补全"
+  "note": "薄包：壳+源码。Runtime（nvidia/cpu）+ 底模组均从 CNB Release 按标签补全",
+  "upstream_repo": "https://github.com/RVC-Boss/GPT-SoVITS",
+  "upstream_pin": "48b1a01",
+  "upstream_commit": "48b1a01",
+  "payload_entries": [
+    ".env",
+    "GPT_SoVITS",
+    "LICENSE",
+    "README.md",
+    "api_v2.py",
+    "assets",
+    "config.py",
+    "configs",
+    "i18n",
+    "legal",
+    "logs",
+    "setup_package.json",
+    "tools",
+    "webui.py"
+  ]
 }
