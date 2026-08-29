@@ -188,6 +188,7 @@
       "bert_missing": "Falta el modelo base de características de texto BERT. Complete primero los recursos del motor.",
       "hubert_missing": "Falta el modelo base de características de audio cnhubert. Complete primero los recursos del motor.",
       "pretrained_missing": "Falta el modelo base de {version}. Complete primero los recursos del motor.",
+      "sv_missing": "Falta el modelo base de verificación de hablante que requiere {version}. Complete primero los recursos del motor.",
       "config_missing": "Falta la plantilla de configuración {name}; la instalación está incompleta.",
       "script_missing": "Falta {name}; la instalación está incompleta.",
       "skip_step": "{name} ya existe, se omite este paso",

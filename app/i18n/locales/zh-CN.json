@@ -188,6 +188,7 @@
       "bert_missing": "缺少 BERT 文本特征底模，请先补全引擎资源。",
       "hubert_missing": "缺少 cnhubert 音频特征底模，请先补全引擎资源。",
       "pretrained_missing": "缺少 {version} 的底模，请先补全引擎资源。",
+      "sv_missing": "缺少 {version} 需要的说话人验证底模，请先补全引擎资源。",
       "config_missing": "缺少配置模板 {name}，安装不完整。",
       "script_missing": "缺少 {name}，安装不完整。",
       "skip_step": "已有 {name}，跳过这一步",

@@ -188,6 +188,7 @@
       "bert_missing": "The BERT text-feature base model is missing. Complete the engine assets first.",
       "hubert_missing": "The cnhubert audio-feature base model is missing. Complete the engine assets first.",
       "pretrained_missing": "The {version} base model is missing. Complete the engine assets first.",
+      "sv_missing": "The speaker-verification base model required by {version} is missing. Complete the engine assets first.",
       "config_missing": "The config template {name} is missing; the installation is incomplete.",
       "script_missing": "{name} is missing; the installation is incomplete.",
       "skip_step": "{name} already exists, skipping this step",

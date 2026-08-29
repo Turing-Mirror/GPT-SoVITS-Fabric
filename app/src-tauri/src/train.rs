@@ -7,10 +7,11 @@
 //! 1. **数据集工具链** —— UVR5 人声分离 → 切片 → ASR 打标 → 人工校对，
 //!    产出 `<数据集>/<名字>.list`（`音频路径|说话人|语种|文本`）。校对在
 //!    「标注」工具窗里做，不在这条链上。
-//! 2. **训练集格式化** —— 上游 `prepare_datasets` 的三步：BERT 文本特征、
-//!    cnhubert SSL 特征 + 32k 重采样、语义 token。产物见 `STAGE_ARTIFACTS`。
-//! 3. **SoVITS 微调**（s2）—— 产出 `logs_s2/` 下的检查点。
-//! 4. **GPT 微调**（s1）—— 产出 `logs_s1/` 下的检查点。
+//! 2. **训练集格式化** —— 上游 `prepare_datasets`：BERT 文本特征、cnhubert
+//!    SSL 特征 + 32k 重采样、语义 token；v2Pro / v2ProPlus 还要多一步说话人
+//!    验证嵌入（`2-get-sv.py` → `7-sv_cn`）。产物见 `STAGE_ARTIFACTS`。
+//! 3. **SoVITS 微调**（s2）—— 产出 `logs_s2_<版本>/` 下的检查点。
+//! 4. **GPT 微调**（s1）—— 产出 `logs_s1_<版本>/` 下的检查点。
 //!
 //! 阶段 2 之前的东西可以重来（删了再跑一遍就有），阶段 3、4 的检查点不能 ——
 //! `CLEANUP_KINDS` 那张表按这条线划的。
@@ -180,18 +181,41 @@ fn experiments(root: &Path) -> Vec<Value> {
 ///
 /// 明确不在表里：`*.pth`（训练存档和权重）、`*.index`（检索索引）、
 /// `*.log`（日志）、`config.json`。前两样删了不可再生。
-pub const STAGE_ARTIFACTS: [&str; 5] = [
+pub const STAGE_ARTIFACTS: [&str; 6] = [
     "2-name2text.txt",
     "3-bert",
     "4-cnhubert",
     "5-wav32k",
+    // v2Pro / v2ProPlus 专有：说话人验证嵌入，由 `2-get-sv.py` 产出。
+    // 非 Pro 版本不会有这个目录，`dir_or_file_bytes` 见不到就算 0。
+    "7-sv_cn",
     "6-name2semantic.tsv",
 ];
 
-/// 两段微调的检查点目录。**不在 `STAGE_ARTIFACTS` 里** —— 那张表是「删了能再
-/// 生成」的中间产物，这两个删了就是几个小时白烧。清理那边按 `checkpoints`
-/// 单独一类处理，用户得自己勾。
-pub const CHECKPOINT_DIRS: [&str; 2] = ["logs_s2", "logs_s1"];
+/// 两段微调的检查点目录**前缀**。**不在 `STAGE_ARTIFACTS` 里** —— 那张表是
+/// 「删了能再生成」的中间产物，这两个删了就是几个小时白烧。清理那边按
+/// `checkpoints` 单独一类处理，用户得自己勾。
+///
+/// 是前缀不是全名：上游按版本分目录（`logs_s2_v2ProPlus`、`logs_s1_v2Pro`
+/// ……，见 `s2_train.py:522` 与 webui 的 `open1Bb`），同一个实验换版本重训
+/// 会并排留下好几个。写死 `logs_s2` / `logs_s1` 的话一个都匹配不上，清理页
+/// 会显示 0 字节，用户以为没东西可删。
+pub const CHECKPOINT_DIR_PREFIXES: [&str; 2] = ["logs_s2", "logs_s1"];
+
+/// 实验目录下所有匹配上述前缀的检查点目录。
+fn checkpoint_dirs(exp_dir: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(exp_dir) else {
+        return Vec::new();
+    };
+    rd.flatten()
+        .filter(|e| e.path().is_dir())
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            CHECKPOINT_DIR_PREFIXES.iter().any(|p| name.starts_with(p))
+        })
+        .map(|e| e.path())
+        .collect()
+}
 
 /// 中间产物一共占多少字节。
 pub fn stage_artifact_bytes(exp_dir: &Path) -> u64 {
@@ -503,9 +527,9 @@ fn cleanup_targets(root: &Path, exp: &str, kind: &str) -> Vec<PathBuf> {
         // 两段微调的检查点整目录算一类。不按文件名认（`G_*.pth` / `epoch=*.ckpt`
         // 两套命名，还会随上游版本变），按目录认 —— 目录是我们和 worker 之间
         // 约定死的，文件名不是。
-        "checkpoints" => CHECKPOINT_DIRS
+        "checkpoints" => checkpoint_dirs(&exp_dir)
             .iter()
-            .flat_map(|d| list_files(&exp_dir.join(d)))
+            .flat_map(|d| list_files(d))
             .collect(),
         "dataset" => STAGE_ARTIFACTS
             .iter()
@@ -1854,6 +1878,10 @@ mod tests {
         //   Fail("<code>", …)            第一个
         //   need(<path>, "<code>", …)    第二个
         //   message_code="train.<code>"  字面量
+        fn is_code(s: &str) -> bool {
+            !s.is_empty() && s.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_')
+        }
+
         fn args(src: &str, pat: &str) -> Vec<Vec<String>> {
             let mut out = Vec::new();
             let mut at = 0;
@@ -1879,12 +1907,19 @@ mod tests {
                 codes.push(c.clone());
             }
         }
-        for pat in ["Fail(", "need("] {
-            let idx = usize::from(pat == "need(");
-            for a in args(&src, pat) {
-                if let Some(c) = a.get(idx) {
-                    codes.push(c.clone());
-                }
+        for a in args(&src, "Fail(") {
+            if let Some(c) = a.first() {
+                codes.push(c.clone());
+            }
+        }
+        // need() 的第一个参数是路径，code 紧随其后 —— 但路径**可能是常量**
+        // （`need(BERT_DIR, "bert_missing", …)`），那时候 code 就落到第 0 位。
+        // 按下标取会整类漏掉：`retain` 那道形状过滤把误取到的整句英文剔掉，
+        // 于是测试照样绿，而真正的 code 一次都没被检查过。改成「第一个长得像
+        // code 的参数」—— 路径字面量带大写、`/` 和 `.`，不会被误认。
+        for a in args(&src, "need(") {
+            if let Some(c) = a.iter().find(|x| is_code(x)) {
+                codes.push(c.clone());
             }
         }
         let lit = "message_code=\"train.";
@@ -1894,7 +1929,7 @@ mod tests {
                 codes.push(rest[..end].to_string());
             }
         }
-        codes.retain(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_'));
+        codes.retain(|c| is_code(c));
         codes.sort();
         codes.dedup();
         assert!(codes.len() > 20, "只认出 {} 个 code，正则多半失效了", codes.len());
@@ -2015,7 +2050,10 @@ mod tests {
         // 两张表混了就是灾难：清理「中间产物」时把微调检查点一起删掉，
         // 那是几个小时白烧，而且不可再生。
         for a in STAGE_ARTIFACTS {
-            assert!(!CHECKPOINT_DIRS.contains(&a), "{a} 同时在两张表里");
+            assert!(
+                !CHECKPOINT_DIR_PREFIXES.iter().any(|p| a.starts_with(p)),
+                "{a} 同时在两张表里"
+            );
         }
     }
 }

@@ -89,23 +89,52 @@ const MIN_HUBERT_BYTES: u64 = 100_000_000;
 const MIN_BERT_BYTES: u64 = 500_000_000;
 const MIN_S1V3_BYTES: u64 = 200_000_000;
 const MIN_S2_BYTES: u64 = 200_000_000;
+/// config.json / tokenizer.json 这类随行文件的下限。它们只有几 KB，
+/// 但少一个 `from_pretrained` 就起不来，所以必须一并把关；给个很小的
+/// 非零下限，只为挡住 0 字节的半截下载。
+const MIN_SIDECAR_BYTES: u64 = 64;
 
 /// (相对安装根的路径, 最小合法体积) — a truncated download must not
 /// count as ready, which is why sizes are checked and not just existence.
 ///
 /// 安装路径即上游 TTS_Config / worker 期望的 pretrained_models 布局：
-/// chinese-hubert-base/pretrained_model2.pth、chinese-roberta-wwm-ext-large/、
-/// s1v3.ckpt 与 v2ProPlus/s2{G,D}v2ProPlus.pth。worker 侧会显式传路径覆盖，
-/// 但两边必须对齐同一套约定。
+/// chinese-hubert-base/、chinese-roberta-wwm-ext-large/、s1v3.ckpt 与
+/// v2ProPlus/s2{G,D}v2ProPlus.pth。worker 侧会显式传路径覆盖，但两边必须
+/// 对齐同一套约定。
+///
+/// 前两项是 HuggingFace 模型**目录**，底下走 `from_pretrained()`：光有权重
+/// 文件是起不来的，config.json 少一个就 `OSError`。所以这里按上游
+/// `lj1995/GPT-SoVITS` 实际发布的文件逐个点名。
+///
+/// 这里原先点的是 `chinese-hubert-base/pretrained_model2.pth` —— 上游那个
+/// 目录里**根本没有这个文件**（实际是 config.json / preprocessor_config.json
+/// / pytorch_model.bin 三件）。也就是说底模就算下载得完完整整，
+/// `engine_core_ready()` 也永远返回 false，合成台的前置闸永远打不开。
 fn engine_core_files() -> Vec<(&'static str, u64)> {
     vec![
         (
-            "pretrained_models/chinese-hubert-base/pretrained_model2.pth",
+            "pretrained_models/chinese-hubert-base/pytorch_model.bin",
             MIN_HUBERT_BYTES,
+        ),
+        (
+            "pretrained_models/chinese-hubert-base/config.json",
+            MIN_SIDECAR_BYTES,
+        ),
+        (
+            "pretrained_models/chinese-hubert-base/preprocessor_config.json",
+            MIN_SIDECAR_BYTES,
         ),
         (
             "pretrained_models/chinese-roberta-wwm-ext-large/pytorch_model.bin",
             MIN_BERT_BYTES,
+        ),
+        (
+            "pretrained_models/chinese-roberta-wwm-ext-large/config.json",
+            MIN_SIDECAR_BYTES,
+        ),
+        (
+            "pretrained_models/chinese-roberta-wwm-ext-large/tokenizer.json",
+            MIN_SIDECAR_BYTES,
         ),
         ("pretrained_models/s1v3.ckpt", MIN_S1V3_BYTES),
         (
@@ -413,7 +442,7 @@ mod tests {
     fn missing_when_root_is_empty() {
         let tmp = crate::testutil::scratch("engine-core-test");
         let _ = std::fs::create_dir_all(&tmp);
-        assert_eq!(engine_core_missing(&tmp).len(), 5);
+        assert_eq!(engine_core_missing(&tmp).len(), engine_core_files().len());
         assert!(!engine_core_ready(&tmp));
     }
 
@@ -422,10 +451,10 @@ mod tests {
         let tmp = crate::testutil::scratch("engine-core-trunc");
         let f = tmp.join("pretrained_models/chinese-hubert-base");
         let _ = std::fs::create_dir_all(&f);
-        let _ = std::fs::write(f.join("pretrained_model2.pth"), b"too small");
+        let _ = std::fs::write(f.join("pytorch_model.bin"), b"too small");
         assert!(engine_core_missing(&tmp)
             .iter()
-            .any(|m| m.contains("pretrained_model2.pth")));
+            .any(|m| m.contains("chinese-hubert-base/pytorch_model.bin")));
     }
 
     #[test]
@@ -437,7 +466,7 @@ mod tests {
         let nested = base.join("base-hubert-bert");
         std::fs::create_dir_all(nested.join("pretrained_models/chinese-hubert-base")).unwrap();
         std::fs::write(
-            nested.join("pretrained_models/chinese-hubert-base/pretrained_model2.pth"),
+            nested.join("pretrained_models/chinese-hubert-base/pytorch_model.bin"),
             b"x".repeat(1_000),
         )
         .unwrap();
@@ -448,7 +477,7 @@ mod tests {
         );
         hoist_nested(&base, "base-hubert-bert");
         assert!(
-            base.join("pretrained_models/chinese-hubert-base/pretrained_model2.pth")
+            base.join("pretrained_models/chinese-hubert-base/pytorch_model.bin")
                 .is_file(),
             "after hoist: file at the expected install path"
         );

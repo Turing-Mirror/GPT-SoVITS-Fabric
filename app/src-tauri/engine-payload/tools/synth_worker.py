@@ -11,7 +11,8 @@
 
 请求（stdin，一行一条）::
 
-    {"cmd":"load",   "role_id":"...", "sovits":"...", "gpt":"...", "version":"v2ProPlus"}
+    {"cmd":"load",   "role_id":"...", "sovits":"...", "gpt":"...", "version":"v2ProPlus",
+     "cnhubert":"<目录>", "bert":"<目录>", "main_gpu":-1}
     {"cmd":"synth",  "job":"<id>", "text":"...",
      "ref_wav":"...", "ref_text":"...", "ref_lang":"ZH",
      "params":{"speed":1.0,"top_k":15,"top_p":1.0,"temperature":1.0,
@@ -34,8 +35,23 @@ stdout 每行一条 JSON::
 静默期也能秒停，因为上游 `TTS.stop()` 会打断当前句的生成循环。
 
 显存管理：上游 TTS 类同一时刻只持一套权重，所以「常驻」的粒度是角色级热切换：
-load 同一角色直接复用；load 不同角色 = set_*_weights 热切换（旧权重随之释放）；
-显存不足（OOM）时先 `empty_cache()` 再重试一次，仍失败才报错。
+load 同一角色直接复用；load 不同角色 = `init_vits_weights` / `init_t2s_weights`
+热切换（旧权重随之释放）；显存不足（OOM）时先 `empty_cache()` 再重试一次，
+仍失败才报错。
+
+**上游接口的三个坑，改之前先看这里**（对照 GPT-SoVITS @ 48b1a01）：
+
+1. 换权重的方法叫 `init_vits_weights` / `init_t2s_weights`。
+   `set_sovits_weights` / `set_gpt_weights` 是 `api_v2.py` 的 **HTTP 路由名**，
+   `TTS` 类上没有这两个方法 —— 而 D2 定的就是不走 api_v2。
+2. `TTS_Config()` 的默认值是 `device="cpu"` / `is_half=False`，构造完不设就
+   永远是 CPU + float32。上游全靠 `self.configs.device` 与
+   `self.configs.is_half` 决定权重搬到哪、要不要半精度（TTS.py 465/480-490/
+   583-607/671 行）。
+3. 属性名是 `cnhuhbert_base_path`（上游自己多打了一个 h）和 `bert_base_path`。
+   写成 `cnhubert_base_path` / `bert_path` 只会给对象挂两个没人读的新属性，
+   真路径仍停在相对 cwd 的上游布局。两者都要**目录**，不是权重文件 ——
+   底下走的是 `HubertModel.from_pretrained()` / `AutoTokenizer.from_pretrained()`。
 """
 
 from __future__ import annotations
@@ -53,7 +69,10 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-DEFAULT_CNHUBERT = "pretrained_models/chinese-hubert-base/pretrained_model2.pth"
+# 两个都是 **目录**：上游 `CNHubert.__init__` 走 `HubertModel.from_pretrained`，
+# BERT 走 `AutoTokenizer/AutoModelForMaskedLM.from_pretrained`，指到具体权重
+# 文件上会当场报错。
+DEFAULT_CNHUBERT = "pretrained_models/chinese-hubert-base"
 DEFAULT_BERT = "pretrained_models/chinese-roberta-wwm-ext-large"
 
 
@@ -123,21 +142,68 @@ class SynthEngine:
 
     # ---- 生命周期 -------------------------------------------------------
 
-    def _ensure_tts(self, cnhubert: str, bert: str):
+    @staticmethod
+    def _pick_device(main_gpu: int):
+        """选算力后端。cuda → mps → cpu，半精度只在 cuda 上开。
+
+        `main_gpu` 来自设置里的「主显卡」（-1 = 自动）。它是 CUDA 序号，
+        越界就退回 0 —— 越界直接崩掉不如换一张能用的卡。
+        """
+        try:
+            import torch
+        except Exception:
+            return "cpu", False
+        if torch.cuda.is_available():
+            n = torch.cuda.device_count()
+            idx = main_gpu if isinstance(main_gpu, int) and 0 <= main_gpu < n else 0
+            return f"cuda:{idx}", True
+        mps = getattr(getattr(torch, "backends", None), "mps", None)
+        if mps is not None and mps.is_available():
+            # 上游在 mps 上没有半精度路径，硬开会出 NaN。
+            return "mps", False
+        return "cpu", False
+
+    def _abs(self, rel: str) -> str:
+        return str(ROOT / rel) if not Path(rel).is_absolute() else rel
+
+    def _ensure_tts(self, req: dict):
         if self._tts is not None:
             return self._tts
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 
+        cnhubert = str(req.get("cnhubert") or "") or DEFAULT_CNHUBERT
+        bert = str(req.get("bert") or "") or DEFAULT_BERT
+        try:
+            main_gpu = int(req.get("main_gpu", -1))
+        except (TypeError, ValueError):
+            main_gpu = -1
+        device, is_half = self._pick_device(main_gpu)
+
         cfg = TTS_Config()
-        # 底模路径显式覆盖：TTS_Config 的默认值指上游仓库布局，
-        # 我们按 engine_assets 的安装路径来。
-        if cnhubert:
-            cfg.cnhubert_base_path = str(ROOT / cnhubert) if not Path(cnhubert).is_absolute() else cnhubert
-        if bert:
-            cfg.bert_path = str(ROOT / bert) if not Path(bert).is_absolute() else bert
+        # 底模路径显式覆盖：TTS_Config 的默认值指上游仓库布局，我们按
+        # engine_assets 的安装路径来。属性名照上游写（cnhuhbert 的多余 h 是
+        # 上游的拼写，不是笔误）。
+        cfg.cnhuhbert_base_path = self._abs(cnhubert)
+        cfg.bert_base_path = self._abs(bert)
+        # 不设这两个就永远是 CPU + float32 —— 装了 6GB 的 N 卡运行时也一样。
+        cfg.device = device
+        cfg.is_half = is_half
+        cfg.update_configs()
+
         self._config = cfg
         self._tts = TTS(cfg)
         return self._tts
+
+    def _swap_weights(self, sovits: str, gpt: str) -> None:
+        """换成目标角色的两份权重。
+
+        方法名是 `init_vits_weights` / `init_t2s_weights`；`set_sovits_weights`
+        / `set_gpt_weights` 只存在于 api_v2 的 HTTP 层，`TTS` 类上没有。
+        版本不用我们告诉它：`init_vits_weights` 会从检查点里的
+        `enc_p.text_embedding.weight` 形状自己认（TTS.py 505-522）。
+        """
+        self._tts.init_vits_weights(sovits)
+        self._tts.init_t2s_weights(gpt)
 
     def _free_memory(self) -> None:
         try:
@@ -168,20 +234,18 @@ class SynthEngine:
             return
 
         try:
-            tts = self._ensure_tts(str(req.get("cnhubert") or ""), str(req.get("bert") or ""))
+            self._ensure_tts(req)
         except Exception as exc:  # noqa: BLE001
             emit(event="error", job=role_id, message=f"引擎初始化失败：{exc}", code="init_failed")
             return
 
         try:
-            tts.set_sovits_weights(sovits)
-            tts.set_gpt_weights(gpt)
+            self._swap_weights(sovits, gpt)
         except Exception as exc:  # noqa: BLE001
             if _is_oom(exc):
                 self._free_memory()
                 try:
-                    tts.set_sovits_weights(sovits)
-                    tts.set_gpt_weights(gpt)
+                    self._swap_weights(sovits, gpt)
                 except Exception as exc2:  # noqa: BLE001
                     emit(event="error", job=role_id, message=str(exc2), code="oom")
                     return
@@ -235,12 +299,16 @@ class SynthEngine:
             "repetition_penalty": float(params.get("repetition_penalty", 1.35)),
             "speed_factor": float(params.get("speed", 1.0)),
             "streaming_mode": bool(streaming),
-            "media_type": "raw",
             "seed": -1,
             "parallel_infer": True,
-            "split_sentence": len(text) > 100,
+            # 切句方式。上游默认 "cut1"（按标点凑四句），长文本会切得很粗；
+            # 超过一屏就换成 "cut5"（逐标点切），首片来得更快也更好取消。
+            # 取值见上游 text_segmentation_method.py，写别的名字会被它拒。
+            "text_split_method": "cut5" if len(text) > 100 else "cut1",
             "aux_ref_audio_paths": [],
         }
+        # 注：不要往这里塞 media_type / split_sentence —— `run()` 的入参表里
+        # 没有这两个键，塞了会被静默丢弃，看着像生效了其实没有。
 
         first_ms = None
         seq = 0
@@ -249,7 +317,10 @@ class SynthEngine:
         cancelled = False
         try:
             gen = self._tts.run(request)
-            for chunk, chunk_sr in gen:
+            # 上游每个 yield 都是 `(sr, audio)` —— 采样率在前，int16 的 numpy
+            # 数组在后（TTS.py 1173/1477/1497 行都是 `yield output_sr, np.zeros(...)`）。
+            # 反过来解包的话，bytes() 会拿到一个 int，int() 会拿到整段音频。
+            for chunk_sr, chunk in gen:
                 if first_ms is None:
                     first_ms = int((time.perf_counter() - t0) * 1000)
                 sr = int(chunk_sr)

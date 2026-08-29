@@ -384,8 +384,17 @@ fn synthesize_inner(
             "sovits": sovits.to_string_lossy(),
             "gpt": gpt.to_string_lossy(),
             "version": version,
-            "cnhubert": "pretrained_models/chinese-hubert-base/pretrained_model2.pth",
+            // 两个都得是**目录**：worker 那边最终走的是
+            // `HubertModel.from_pretrained()` / `AutoTokenizer.from_pretrained()`，
+            // 指到 pretrained_model2.pth 这种具体权重文件上会当场报错。
+            "cnhubert": "pretrained_models/chinese-hubert-base",
             "bert": "pretrained_models/chinese-roberta-wwm-ext-large",
+            // 主显卡（-1 = 自动）。不传的话 worker 只能自己猜第 0 张，
+            // 而上游 TTS_Config 的默认值是 CPU —— 装了 N 卡运行时也白装。
+            "main_gpu": crate::config::read(root)
+                .get("main_gpu")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(-1),
             "stop_file": stop.to_string_lossy(),
         }),
     )?;

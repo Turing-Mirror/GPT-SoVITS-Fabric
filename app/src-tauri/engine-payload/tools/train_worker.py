@@ -76,13 +76,25 @@ S2_PRETRAINED = {
            f"{PRETRAINED}/gsv-v2final-pretrained/s2D2333k.pth"),
 }
 
+def s2_config_name(version: str) -> str:
+    """这个版本该用哪份 s2 配置模板。
+
+    上游 `webui.py` 的 `open1Ba`：Pro 系列各有自己的一份，其余用 s2.json。
+    差的不是训练超参而是**网络结构** —— s2.json 与 s2v2ProPlus.json 之间
+    `gin_channels` 512↔1024、`upsample_initial_channel` 512↔768、
+    `upsample_kernel_sizes` 也不同。拿 s2.json 去训 v2ProPlus，建出来的网络
+    和 `s2Gv2ProPlus.pth` 对不上，加载底模那一步就崩。
+    """
+    return f"s2{version}.json" if version in ("v2Pro", "v2ProPlus") else "s2.json"
+
+
 #: GPT 底模。v3/v4/v2Pro/v2ProPlus 共用 s1v3（catalog-src/base-models 的说明）。
 S1_PRETRAINED = f"{PRETRAINED}/s1v3.ckpt"
 
 CNHUBERT_DIR = f"{PRETRAINED}/chinese-hubert-base"
 BERT_DIR = f"{PRETRAINED}/chinese-roberta-wwm-ext-large"
-#: v2Pro 系列的说话人验证嵌入。随 v2proplus 包一起发；不在就不传，
-#: 上游会走没有 sv 的分支。
+#: v2Pro 系列的说话人验证模型。随 v2proplus 包一起发。
+#: Pro 版本上它是硬依赖 —— 见 `format_steps` 的注释，缺了不会报错只会出废模型。
 SV_PATH = f"{PRETRAINED}/sv/pretrained_eres2netv2w24s4ep4.ckpt"
 
 STAGES = ("prepare", "format", "sovits", "gpt")
@@ -408,13 +420,29 @@ def parse_list(path: Path) -> list[dict]:
 # 阶段 2：训练集格式化
 # ---------------------------------------------------------------------------
 
-#: 上游 prepare_datasets 的三步与各自的产物。产物名与 `train.rs` 的
+#: 上游 prepare_datasets 的各步与产物。产物名与 `train.rs` 的
 #: `STAGE_ARTIFACTS` 必须对齐 —— 那张表是清理判据，对不上就是删错东西。
-FORMAT_STEPS = (
-    ("1-get-text.py", "2-name2text.txt"),
-    ("2-get-hubert-wav32k.py", "5-wav32k"),
-    ("3-get-semantic.py", "6-name2semantic.tsv"),
-)
+#:
+#: **`2-get-sv.py` 只在 Pro 版本上跑，但在那些版本上它不是可选项。**
+#: 上游 `webui.py:911` 的判据就是 `if "Pro" in version:`；它读 `5-wav32k`、
+#: 写 `7-sv_cn`，所以位置必须夹在 hubert 和 semantic 中间。
+#:
+#: 漏掉它的后果不是报错，是**静默出废模型**：`module/data_utils.py:113-131`
+#: 把读 `7-sv_cn/<name>.pt` 那一段整个包在裸 except 里，文件缺了就打一行
+#: `load audio or ssl error!!!!!!` 然后拿 `torch.zeros(1, 20480)` 顶上继续训。
+#: 训得完、loss 也在动，交出来的是说话人嵌入全为零的模型 —— 几小时显卡时间
+#: 换一个听不出是谁的音色，而且没有任何一处告诉用户出事了。
+_STEP_TEXT = ("1-get-text.py", "2-name2text.txt")
+_STEP_HUBERT = ("2-get-hubert-wav32k.py", "5-wav32k")
+_STEP_SV = ("2-get-sv.py", "7-sv_cn")
+_STEP_SEMANTIC = ("3-get-semantic.py", "6-name2semantic.tsv")
+
+
+def format_steps(version: str) -> tuple[tuple[str, str], ...]:
+    """这个版本要跑哪几步格式化。判据与上游一致：版本名里带 Pro 就要 sv。"""
+    if "Pro" in version:
+        return (_STEP_TEXT, _STEP_HUBERT, _STEP_SV, _STEP_SEMANTIC)
+    return (_STEP_TEXT, _STEP_HUBERT, _STEP_SEMANTIC)
 
 
 def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
@@ -440,16 +468,23 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
     env["pretrained_s2G"] = str(need(
         g_rel, "pretrained_missing",
         f"the {req['version']} base model is missing", version=req["version"]))
+    s2cfg = s2_config_name(req["version"])
     env["s2config_path"] = str(need(
-        "GPT_SoVITS/configs/s2.json", "config_missing",
-        "GPT_SoVITS/configs/s2.json is missing", name="s2.json"))
+        f"GPT_SoVITS/configs/{s2cfg}", "config_missing",
+        f"GPT_SoVITS/configs/{s2cfg} is missing", name=s2cfg))
     env["version"] = req["version"]
-    sv = ROOT / SV_PATH
-    if sv.is_file():
-        env["sv_path"] = str(sv)
 
-    total = len(FORMAT_STEPS)
-    for i, (script, artifact) in enumerate(FORMAT_STEPS):
+    steps = format_steps(req["version"])
+    if _STEP_SV in steps:
+        # Pro 版本上这是硬依赖，不是「有就用」。缺了要当场停，
+        # 否则就滑进上面注释里那个全零嵌入的坑。
+        env["sv_path"] = str(need(
+            SV_PATH, "sv_missing",
+            "the speaker-verification model for v2Pro is missing",
+            version=req["version"]))
+
+    total = len(steps)
+    for i, (script, artifact) in enumerate(steps):
         # 续跑：产物在就跳过。格式化一步动辄十几分钟，重跑一遍纯属白等。
         if req["resume"] and (opt_dir / artifact).exists():
             say("format", "skip_step", "reusing the existing artifact",
@@ -471,8 +506,9 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def stage_sovits(req: dict, opt_dir: Path, weights_dir: Path) -> None:
-    tmpl = need("GPT_SoVITS/configs/s2.json", "config_missing",
-                "GPT_SoVITS/configs/s2.json is missing", name="s2.json")
+    s2cfg = s2_config_name(req["version"])
+    tmpl = need(f"GPT_SoVITS/configs/{s2cfg}", "config_missing",
+                f"GPT_SoVITS/configs/{s2cfg} is missing", name=s2cfg)
     cfg = json.loads(tmpl.read_text(encoding="utf-8"))
     g_rel, d_rel = S2_PRETRAINED[req["version"]]
 
@@ -511,7 +547,9 @@ def stage_sovits(req: dict, opt_dir: Path, weights_dir: Path) -> None:
     run_step([sys.executable, str(script), "--config", str(tmp)],
              base_env(req), stage="sovits", label="s2_train",
              total_epoch=req["total_epoch"])
-    _report_ckpts("sovits", opt_dir / "logs_s2")
+    # 上游落在 `logs_s2_<version>`（s2_train.py:522），不是 `logs_s2`。
+    # 扫错目录的话训练成功也报 0 个检查点，续训判断跟着一起落空。
+    _report_ckpts("sovits", opt_dir / f"logs_s2_{req['version']}")
     say("sovits", "sovits_done", "SoVITS fine-tuning finished",
         done=req["total_epoch"], total=req["total_epoch"])
 
@@ -533,10 +571,16 @@ def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
         "if_save_every_weights": True,
         "exp_name": req["exp"],
         "precision": "16-mixed" if req["is_half"] else "32",
+        # `s1_train.py:99` 直接 `config["train"]["half_weights_save_dir"]`，
+        # 而 s1longer-v2.yaml 模板里没有这个键 —— 不写进去就是 KeyError，
+        # GPT 微调开跑即崩。它读的是配置，不是环境变量。
+        "half_weights_save_dir": str(weights_dir),
     })
     cfg["train_semantic_path"] = str(opt_dir / "6-name2semantic.tsv")
     cfg["train_phoneme_path"] = str(opt_dir / "2-name2text.txt")
-    cfg["output_dir"] = str(opt_dir / "logs_s1")
+    # 跟上游同名（webui.py 的 open1Bb 用 `logs_s1_<version>`），免得同一个
+    # 实验换版本重训时两次的 TensorBoard 日志和 ckpt 混在一个目录里。
+    cfg["output_dir"] = str(opt_dir / f"logs_s1_{req['version']}")
     cfg["pretrained_s1"] = str(need(S1_PRETRAINED, "pretrained_missing",
                                     "the GPT base model s1v3.ckpt is missing",
                                     version="s1v3"))
@@ -548,10 +592,10 @@ def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
                    encoding="utf-8")
 
     env = base_env(req)
-    # 上游 s1 侧读这两个：权重落点与语义 token 的帧率。
+    # `hz` 是上游 s1 侧唯一真读的环境变量（webui.py 在起 s1_train 前设的）。
+    # 权重落点走的是配置里的 half_weights_save_dir，不是 *_weight_root ——
+    # 那两个环境变量 s1_train.py 一处都没读，设了等于没设。
     env["hz"] = "25hz"
-    env["SoVITS_weight_root"] = str(weights_dir)
-    env["GPT_weight_root"] = str(weights_dir)
 
     script = need("GPT_SoVITS/s1_train.py", "script_missing",
                   "GPT_SoVITS/s1_train.py is missing", name="s1_train.py")
@@ -559,7 +603,9 @@ def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
     run_step([sys.executable, str(script), "--config_file", str(tmp)],
              env, stage="gpt", label="s1_train",
              total_epoch=req["total_epoch"])
-    _report_ckpts("gpt", opt_dir / "logs_s1")
+    # s1_train 把 ckpt 落在 `<output_dir>/ckpt/`，半精度权重另落
+    # half_weights_save_dir；_report_ckpts 是递归扫的，前者能覆盖到。
+    _report_ckpts("gpt", opt_dir / f"logs_s1_{req['version']}")
     say("gpt", "gpt_done", "GPT fine-tuning finished",
         done=req["total_epoch"], total=req["total_epoch"])
 

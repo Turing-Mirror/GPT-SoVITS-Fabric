@@ -188,6 +188,7 @@
       "bert_missing": "BERT 텍스트 특징 베이스 모델이 없습니다. 먼저 엔진 리소스를 갖춰 주세요.",
       "hubert_missing": "cnhubert 오디오 특징 베이스 모델이 없습니다. 먼저 엔진 리소스를 갖춰 주세요.",
       "pretrained_missing": "{version} 베이스 모델이 없습니다. 먼저 엔진 리소스를 갖춰 주세요.",
+      "sv_missing": "{version}에 필요한 화자 검증 베이스 모델이 없습니다. 먼저 엔진 리소스를 갖춰 주세요.",
       "config_missing": "설정 템플릿 {name}이(가) 없습니다. 설치가 완전하지 않습니다.",
       "script_missing": "{name}이(가) 없습니다. 설치가 완전하지 않습니다.",
       "skip_step": "{name}이(가) 이미 있어 이 단계를 건너뜁니다",

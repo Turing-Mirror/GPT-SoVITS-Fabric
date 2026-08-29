@@ -188,6 +188,7 @@
       "bert_missing": "Le modèle de base BERT (caractéristiques de texte) est absent. Complétez d'abord les ressources du moteur.",
       "hubert_missing": "Le modèle de base cnhubert (caractéristiques audio) est absent. Complétez d'abord les ressources du moteur.",
       "pretrained_missing": "Le modèle de base {version} est absent. Complétez d'abord les ressources du moteur.",
+      "sv_missing": "Le modèle de base de vérification du locuteur requis par {version} est absent. Complétez d'abord les ressources du moteur.",
       "config_missing": "Le modèle de configuration {name} est absent ; l'installation est incomplète.",
       "script_missing": "{name} est absent ; l'installation est incomplète.",
       "skip_step": "{name} existe déjà, cette étape est ignorée",
