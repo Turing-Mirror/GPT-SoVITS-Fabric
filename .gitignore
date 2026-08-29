@@ -30,3 +30,6 @@ out/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 本机开发用的预览配置，不入库（其余五个仓也没有）
+.claude/
