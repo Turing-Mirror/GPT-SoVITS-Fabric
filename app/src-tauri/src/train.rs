@@ -958,7 +958,18 @@ fn kill_tree(pid: u32) {
     let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
 }
 
-fn emit(app: &AppHandle, payload: Value) {
+/// 把 worker 的一行原样转给界面，外加一个已经翻好的 `text`。
+///
+/// worker 只发 `message_code` + `message_params`（它不知道用户选了哪种语言），
+/// 翻译在这一侧。不在这里翻的话，界面要么显示 `train.sovits_started` 这种
+/// 裸 key，要么就得把八份文案再拼一遍 —— 而语言包的四道校验只认这边的引用。
+fn emit(app: &AppHandle, mut payload: Value) {
+    let text = crate::i18n::t_worker_msg(&payload);
+    if let Some(obj) = payload.as_object_mut() {
+        if !text.is_empty() {
+            obj.insert("text".into(), Value::String(text));
+        }
+    }
     let _ = app.emit("train-progress", payload);
 }
 
