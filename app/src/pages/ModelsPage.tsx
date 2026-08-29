@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { PagePad, PageHead, Block, Btn, ListItem } from "../components/ui";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
+import { AdBanner } from "../components/AdBanner";
+import type { PlazaItem } from "../lib/plaza";
 import { t } from "../i18n/t";
 
 /**
@@ -34,7 +36,14 @@ type Role = {
   lists?: { file: string; lang?: string; rows?: unknown[] }[];
 };
 
-export function ModelsPage({ onOpenPlaza }: { onOpenPlaza?: () => void }) {
+export function ModelsPage({
+  onOpenPlaza,
+  banner,
+}: {
+  onOpenPlaza?: () => void;
+  /** 广场投放到本页的那一条（`plaza::pick_models_banner`，至多一条且必须可关）。 */
+  banner?: PlazaItem | null;
+}) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [roles, setRoles] = useState<Role[]>([]);
@@ -77,6 +86,10 @@ export function ModelsPage({ onOpenPlaza }: { onOpenPlaza?: () => void }) {
           <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
         }
       />
+
+      {/* 广场投放。Rust 侧一直在 `plaza_feed` 里返回 banner，
+          而 `usePlaza` 把它丢掉、这一页也没挂过组件 —— 投放位形同虚设。 */}
+      <AdBanner banner={banner ?? null} />
 
       <Block title={t("library.installTitle")} note={t("library.installNote")}>
         <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 max-w-[720px]">

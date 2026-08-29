@@ -75,8 +75,6 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("synth_rep_penalty".into(), json!(1.35));
     // model binding (cold) — written by voice selection, not by the settings
     // page, but the worker expects the keys to exist.
-    m.insert("pth_path".into(), json!(""));
-    m.insert("index_path".into(), json!(""));
     // devices / performance (cold)
     m.insert("sg_hostapi".into(), json!(""));
     m.insert("sg_wasapi_exclusive".into(), json!(false));
@@ -307,26 +305,6 @@ pub fn update(root: &Path, patch: Map<String, Value>) -> Result<Value, String> {
     }))
 }
 
-/// 用户明确点「取消当前角色」：把配置里的模型路径清干净。
-pub fn force_clear_model_paths(root: &Path) -> Result<(), String> {
-    let _g = lock_files();
-    let mut saved = read_json(&paths::app_config_path(root));
-    for k in [
-        "pth_path",
-        "index_path",
-        "last_model",
-        "last_model_name",
-        "last_model_path",
-    ] {
-        saved.insert(k.into(), json!(""));
-    }
-    let text = serde_json::to_string_pretty(&Value::Object(saved)).map_err(|e| e.to_string())?;
-    write_atomic(&paths::app_config_path(root), &text)
-        .map_err(|e| crate::i18n::te("s.47a27ebb17", &(e)))?;
-
-    Ok(())
-}
-
 /// Newest plaza date (`YYMMDD`) the user has actually looked at. Drives the
 /// dot on the 广场 tab, which was previously hardcoded on and therefore never
 /// meant anything.
@@ -522,22 +500,6 @@ mod tests {
 
     /// 用户点「取消当前角色」之后，配置里不能再留着上一个模型的任何路径 ——
     /// 留一条，下一次合成就会悄悄用回那个角色。
-    #[test]
-    fn clearing_the_model_leaves_no_path_behind() {
-        let root = crate::testutil::scratch("cfg-clear");
-        std::fs::create_dir_all(crate::paths::user_data(&root)).unwrap();
-        let mut p = Map::new();
-        p.insert("pth_path".into(), json!("D:/x/a.pth"));
-        p.insert("last_model".into(), json!("角色甲"));
-        update(&root, p).unwrap();
-        force_clear_model_paths(&root).unwrap();
-        let cfg = read(&root);
-        for k in ["pth_path", "last_model", "last_model_name", "last_model_path"] {
-            assert_eq!(cfg[k], json!(""), "{k} 没清干净");
-        }
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
     /// 设置页照着 describe() 的分组渲染。分组里出现一个 defaults() 没有的键，
     /// 那一格就是空的 —— 所以两边必须对得上。
     #[test]

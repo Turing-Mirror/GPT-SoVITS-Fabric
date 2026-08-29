@@ -29,8 +29,10 @@ export function repoLinks(): LinkEntry[] {
     {
       title: t("s.8d93847089"),
       short: "GitHub",
-      desc: "Turing-Mirror/RVC-Fabric",
-      url: "https://github.com/Turing-Mirror/RVC-Fabric",
+      // 这两行以前指着 RVC-Fabric —— 「其他」页那个 GitHub 入口会把用户
+      // 送到另一个产品的仓库去提这个产品的 issue。
+      desc: "Turing-Mirror/GPT-SoVITS-Fabric",
+      url: "https://github.com/Turing-Mirror/GPT-SoVITS-Fabric",
     },
     {
       title: t("s.71031cc3ad"),

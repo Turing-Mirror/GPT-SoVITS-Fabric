@@ -24,8 +24,15 @@ use crate::{download, extract, paths};
 
 pub(crate) const CNB_REPO: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases";
 
-/// 底模组制品的 Release 标签（发布仓 README 标签约定：底模组各包挂 base-models）。
-const BASE_MODELS_TAG: &str = "base-models";
+/// 底模组制品的 Release 标签。
+///
+/// 必须和 `scripts/build_catalog.py` 的 `TAG_CORE` 一致 —— 在线清单里的
+/// URL 由那边生成，这里是清单拉不到时的内置兜底。两边写不同的标签，
+/// 兜底那条路就是一串 404，而且只有在 CNB 不通的时候才暴露出来。
+///
+/// 原来是 `base-models`（早期草案的标签名），而清单侧已经统一成
+/// `GSV-` 前缀的五条。
+const BASE_MODELS_TAG: &str = "GSV-engine-core";
 
 /// GSV 必装底模包清单：(Release 附件名 / 缓存名, sha256)。
 ///
@@ -391,6 +398,30 @@ mod tests {
             let ok = sha.is_empty()
                 || (sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()));
             assert!(ok, "{name}: sha256 must be empty or a full digest, got {sha:?}");
+        }
+    }
+
+    /// Rust 的内置兜底标签必须和 `build_catalog.py` 生成清单时用的一致。
+    ///
+    /// 两边写不同的标签，兜底那条路就是一串 404 —— 而且只有在 CNB 拉不到
+    /// 清单的时候才暴露出来，也就是用户最需要兜底的那一刻。
+    #[test]
+    fn the_release_tags_match_the_catalog_builder() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../scripts/build_catalog.py"),
+        )
+        .expect("scripts/build_catalog.py 必须在");
+        for (rs, py) in [
+            (BASE_MODELS_TAG, "TAG_CORE"),
+            (crate::catalog::DEFAULT_RELEASE_TAG, "TAG_RUNTIME"),
+        ] {
+            let line = src
+                .lines()
+                .find(|l| l.starts_with(py))
+                .unwrap_or_else(|| panic!("build_catalog.py 里没有 {py}"));
+            let want = line.split('"').nth(1).unwrap_or("");
+            assert_eq!(rs, want, "{py} 两边对不上");
         }
     }
 

@@ -13,7 +13,6 @@ use tauri::{AppHandle, Emitter};
 
 use crate::download::{self, DownloadKind, DownloadRequest};
 use crate::paths;
-use crate::voices::safe_model_dir_name;
 
 const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main";
 
@@ -290,6 +289,34 @@ fn catalog_from_data(data: &Value, source: &str) -> Value {
 ///
 /// 「装上了」的定义跟着 `characters::install_zip` 的硬校验走：两份权重齐全。
 /// 只有目录、或者只有其中一份，在合成台点下去照样报错，不该算装好。
+/// 暂存目录 / 缓存目录用的目录名。
+///
+/// 和 `characters::safe_id` 同一套清洗，只是包一层 Result —— 这里的输入
+/// 来自线上清单，会被拼进路径，洗不出东西就该报错而不是退到某个默认名。
+///
+/// 原来这个函数在 `voices.rs`（RVC 的音色子系统）里，用的是另一套规则
+/// （保留中文、`\w` 之外折成下划线）。两套清洗并存意味着同一个 id 在
+/// 暂存目录和角色目录下会得到两个不同的名字。
+fn safe_model_dir_name(name: &str) -> Result<String, String> {
+    let mut out = String::new();
+    for c in name.chars() {
+        let c = c.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            out.push(c);
+        } else {
+            out.push('-');
+        }
+    }
+    let cleaned = out.trim_matches('-').to_string();
+    // 洗完啥也不剩就报错，不退到 `characters::safe_id` 的 "role" 兜底 ——
+    // 那个兜底是给「用户手里的一个包」用的（总得装到某处），而这里的输入
+    // 是线上清单里的 id，洗成空说明这条条目本身有问题，该拒绝。
+    if cleaned.is_empty() {
+        return Err(format!("invalid model name: {name:?}"));
+    }
+    Ok(cleaned.chars().take(80).collect())
+}
+
 fn is_voice_installed(root: &Path, voice_id: &str) -> bool {
     let id = crate::characters::safe_id(voice_id);
     if id.is_empty() {

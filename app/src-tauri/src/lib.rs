@@ -38,7 +38,6 @@ mod tool_window;
 mod train;
 mod ui_assets;
 pub mod update;
-mod voices;
 mod window_watch;
 mod worker;
 
@@ -213,9 +212,9 @@ fn config_set(
     if let Some(Value::String(p)) = patch.get("wallpaper_path") {
         asset_scope::grant_file(&app, p);
     }
-    if let Err(e) = voices::persist_profile_patch(&root, &patch) {
-        logging::shell_log!("persist profile: {e}");
-    }
+    // 这里以前还会把补丁同步进「音色参数档案」（voices::persist_profile_patch）。
+    // 那是 RVC 的按音色存一套变声参数的机制，这个产品没有档案这回事 ——
+    // 角色的推荐参数在角色包自己的 config.json 里。
     let _ = app.emit("config-changed", &out);
     Ok(out)
 }
@@ -419,13 +418,12 @@ async fn diagnostics_preview(state: State<'_, Mutex<AppState>>) -> Result<Value,
 #[tauri::command]
 async fn diagnostics_build(
     state: State<'_, Mutex<AppState>>,
-    with_perf: bool,
     report: Option<shell_extras::UserReport>,
 ) -> Result<Value, String> {
     let root = root_clone(&state)?;
     let report = report.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        shell_extras::build_diagnostics(&root, with_perf, &report).map(|(p, perf_note)| {
+        shell_extras::build_diagnostics(&root, &report).map(|(p, perf_note)| {
             let _ = shell_extras::reveal(&p);
             json!({
                 "ok": true,
@@ -1017,11 +1015,9 @@ async fn engine_force_kill(state: State<'_, Mutex<AppState>>) -> Result<Value, S
         synth::cancel();
         synth::shutdown();
         worker::kill_runtime_pythons(&root, true);
-        // 杀完把「当前角色」重新写回配置：强杀是在已经不正常的时候按的，
-        // 中途可能正写着配置。不重写的话下一次合成读到的可能是半截路径。
-        if let Err(e) = voices::resync_selected_model(&root) {
-            worker::append_log(&root, &crate::i18n::te("s.298dd55e6d", &(e)));
-        }
+        // 这里以前会 resync「当前音色」的路径（RVC 在配置里存的是一个
+        // .pth 的绝对路径，强杀时可能写到一半）。这个产品存的是角色 id
+        // （`synth_role`），一个短字符串，不存在写到一半的半截路径。
         Ok(json!({"ok": true, "state": "idle"}))
     })
     .await
@@ -1077,227 +1073,24 @@ fn provision_cancel() -> Result<(), String> {
 
 // ----- Stage 4: voices + store ------------------------------------------------
 
-#[tauri::command]
-async fn voices_list(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    // Walks the whole voice library; a large one is a visible stall on the IPC
-    // thread.
-    tauri::async_runtime::spawn_blocking(move || Ok(voices::list_voices(&root)))
-        .await
-        .map_err(|e| e.to_string())?
-}
 
-#[tauri::command]
-fn voices_select(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    path: Option<String>,
-    dir: Option<String>,
-    name: Option<String>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let out = voices::select_voice(
-        &root,
-        path.as_deref().unwrap_or(""),
-        dir.as_deref().unwrap_or(""),
-        name.as_deref().unwrap_or(""),
-    )?;
-    // 工具窗是独立 webview，不广播的话语音转换的目标音色会停在打开时的那个。
-    let _ = app.emit("voices-changed", &out);
-    // 音色档案里的音高/共鸣已经写进 app_config，设置页和底栏要一起跟上。
-    let cfg = config::read(&root);
-    let _ = app.emit("config-changed", json!({ "config": cfg }));
-    Ok(out)
-}
 
-#[tauri::command]
-fn voices_clear(app: AppHandle, state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let out = voices::clear_voice(&root)?;
-    let _ = app.emit("voices-changed", &out);
-    let cfg = config::read(&root);
-    let _ = app.emit("config-changed", json!({ "config": cfg }));
-    Ok(out)
-}
 
-#[tauri::command]
-async fn voices_current(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(voices::current_selection_summary(&root))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
 
-#[tauri::command]
-fn voices_index_list(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::list_index_bindings(&root, &model_dir)
-}
 
-#[tauri::command]
-fn voices_index_use(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    index_path: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::set_active_index(&root, &model_dir, &index_path)
-}
 
-#[tauri::command]
-fn voices_index_bind(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    index_src: Option<String>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    let src = match index_src.filter(|s| !s.is_empty()) {
-        Some(s) => s,
-        None => voices::pick_index_file(Some(&window)).ok_or_else(|| crate::i18n::t("s.a5ffdc95ee"))?,
-    };
-    voices::bind_index_file(&root, &model_dir, &src)
-}
 
-#[tauri::command]
-fn voices_index_unbind(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    index_path: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::unbind_index(&root, &model_dir, &index_path)
-}
 
-#[tauri::command]
-fn voices_profiles_list(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::list_profiles(&root, &model_dir)
-}
 
-#[tauri::command]
-fn voices_profile_use(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    profile_id: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::set_active_profile(&root, &model_dir, &profile_id)
-}
 
-#[tauri::command]
-fn voices_profile_save(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    name: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::save_current_as_profile(&root, &model_dir, &name)
-}
 
-#[tauri::command]
-fn voices_profile_delete(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    profile_id: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::delete_profile(&root, &model_dir, &profile_id)
-}
 
-#[tauri::command]
-fn voices_profile_import(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::import_profile(Some(&window), &root, &model_dir)
-}
 
-#[tauri::command]
-fn voices_profile_export(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::export_active_profile(Some(&window), &root, &model_dir)
-}
 
-#[tauri::command]
-async fn voices_import(
-    window: tauri::WebviewWindow,
-    state: State<'_, Mutex<AppState>>,
-    paths: Option<Vec<String>>,
-    current_model_dir: Option<String>,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    // The picker stays here (native dialogs want the main thread); only the
-    // copying, which can be gigabytes, moves off.
-    let files = match paths.filter(|p| !p.is_empty()) {
-        Some(p) => p,
-        None => {
-            let picked = voices::pick_import_files(Some(&window));
-            if picked.is_empty() {
-                return Err(crate::i18n::t("s.a5ffdc95ee").into());
-            }
-            picked
-        }
-    };
-    tauri::async_runtime::spawn_blocking(move || {
-        voices::import_files(&root, &files, current_model_dir.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
 
-#[tauri::command]
-async fn voices_delete(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || voices::delete_voice(&root, &model_dir))
-        .await
-        .map_err(|e| e.to_string())?
-}
 
-#[tauri::command]
-fn voices_rename(
-    state: State<'_, Mutex<AppState>>,
-    model_dir: String,
-    new_name: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    voices::rename_voice(&root, &model_dir, &new_name)
-}
 
-#[tauri::command]
-async fn voices_promote(
-    state: State<'_, Mutex<AppState>>,
-    pth_path: String,
-) -> Result<Value, String> {
-    let root = root_clone(&state)?;
-    // Copies a multi-hundred-MB .pth.
-    tauri::async_runtime::spawn_blocking(move || voices::promote_legacy(&root, &pth_path))
-        .await
-        .map_err(|e| e.to_string())?
-}
 
-#[tauri::command]
-fn voices_open_dir(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
-    let root = root_clone(&state)?;
-    voices::open_models_dir(&root)
-}
 
 #[tauri::command]
 async fn store_catalog(
@@ -1527,25 +1320,6 @@ pub fn run() {
             provision_status,
             provision_start,
             provision_cancel,
-            voices_list,
-            voices_select,
-            voices_clear,
-            voices_current,
-            voices_index_list,
-            voices_index_use,
-            voices_index_bind,
-            voices_index_unbind,
-            voices_profiles_list,
-            voices_profile_use,
-            voices_profile_save,
-            voices_profile_delete,
-            voices_profile_import,
-            voices_profile_export,
-            voices_import,
-            voices_delete,
-            voices_rename,
-            voices_promote,
-            voices_open_dir,
             store_catalog,
             store_install,
             store_cancel,

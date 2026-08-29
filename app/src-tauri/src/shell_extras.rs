@@ -245,155 +245,6 @@ pub fn apply_hotkeys(app: &AppHandle, enabled: bool) -> Value {
 // Diagnostics bundle
 // ---------------------------------------------------------------------------
 
-/// Run `tools/benchmark_realtime.py` in the Runtime, writing a JSON report into
-/// `User_Data/perf_reports/`. Takes roughly a minute; callers must say so.
-///
-/// 以前写成 `--out <目录>` 且没传必填的 `--pth`，脚本一启动就 argparse 失败，
-/// 诊断包里永远没有新性能报告——等于「直接生成诊断包」。
-pub fn run_perf_bench(root: &Path) -> Result<PathBuf, String> {
-    let py = paths::runtime_python(root)
-        .or_else(|| paths::runtime_pythonw(root))
-        .ok_or_else(|| crate::i18n::t("s.c8c05e7db7"))?;
-    let script = root.join("tools").join("benchmark_realtime.py");
-    if !script.is_file() {
-        return Err(crate::i18n::t("s.c41c6ca117").into());
-    }
-
-    let cfg = config::read(root);
-    let pth = cfg
-        .get("pth_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let pth = if !pth.is_empty() && Path::new(&pth).is_file() {
-        pth
-    } else {
-        // 兜底 last_model_path（有时 pth_path 是相对路径或空）
-        let alt = cfg
-            .get("last_model_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if alt.is_empty() || !Path::new(&alt).is_file() {
-            return Err(crate::i18n::t("s.40019094c0").into());
-        }
-        alt
-    };
-    let index = cfg
-        .get("index_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let pitch = cfg
-        .get("pitch")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let formant = cfg
-        .get("formant")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    let f0method = cfg
-        .get("f0method")
-        .and_then(|v| v.as_str())
-        .unwrap_or("rmvpe");
-    // harvest 在 bench 里不支持
-    let f0method = if f0method == "harvest" {
-        "rmvpe"
-    } else {
-        f0method
-    };
-    let block_time = cfg
-        .get("block_time")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.25);
-    let crossfade = cfg
-        .get("crossfade_length")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.05);
-    let extra = cfg
-        .get("extra_time")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(2.5);
-    let index_rate = cfg
-        .get("index_rate")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-
-    let out_dir = paths::user_data(root).join("perf_reports");
-    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
-    let stamp = now_stamp();
-    let json_out = out_dir.join(format!("bench_{stamp}.json"));
-    let log_path = crate::logging::daily_path(root, crate::logging::CH_BENCH);
-    let _ = std::fs::create_dir_all(paths::logs_dir(root));
-    let errfile = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .ok();
-
-    let mut cmd = std::process::Command::new(py);
-    cmd.arg(&script)
-        .arg("--pth")
-        .arg(&pth)
-        .arg("--json-out")
-        .arg(&json_out)
-        .arg("--f0method")
-        .arg(f0method)
-        .arg("--pitch")
-        .arg(pitch.to_string())
-        .arg("--formant")
-        .arg(formant.to_string())
-        .arg("--block-time")
-        .arg(block_time.to_string())
-        .arg("--crossfade-time")
-        .arg(crossfade.to_string())
-        .arg("--extra-time")
-        .arg(extra.to_string())
-        // 诊断场景略减块数，控制在约一分钟内
-        .arg("--n-blocks")
-        .arg("120")
-        .arg("--warmup")
-        .arg("8")
-        .current_dir(root)
-        .envs(worker::env_for_runtime(root))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(match errfile {
-            Some(f) => Stdio::from(f),
-            None => Stdio::null(),
-        });
-    if !index.is_empty() && Path::new(&index).is_file() {
-        cmd.arg("--index").arg(&index);
-        if index_rate > 0.0 {
-            cmd.arg("--index-rate").arg(index_rate.to_string());
-        }
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    crate::logging::shell_log!(
-        "perf bench: pth={} json={}",
-        pth,
-        json_out.display()
-    );
-    let status = cmd.status().map_err(|e| crate::i18n::te("s.84256012c6", &(e)))?;
-    if !status.success() {
-        return Err(crate::i18n::te(
-            "s.470a002848",
-            &status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into()),
-        ));
-    }
-    if !json_out.is_file() {
-        return Err(crate::i18n::t("s.f9e62f8c38").into());
-    }
-    Ok(json_out)
-}
-
 fn is_log_file(p: &Path) -> bool {
     let name = p
         .file_name()
@@ -856,9 +707,6 @@ pub fn storage_usage(root: &Path) -> Value {
         ("update_cache", paths::update_cache(root)),
         ("diagnostics", ud.join("diagnostics")),
         ("perf_reports", ud.join("perf_reports")),
-        // 回收站要单列。删完音色磁盘占用短期不会下降，界面上不写出来的话，
-        // 用户会觉得「我清理完反而更满了」。
-        ("trash", crate::voices::trash_dir(root)),
         ("app_logs", paths::logs_dir(root)),
     ];
     let list: Vec<Value> = items
@@ -1002,20 +850,13 @@ pub fn diagnostics_preview(root: &Path) -> Value {
 /// 返回 (zip 路径, 性能测试说明)。
 pub fn build_diagnostics(
     root: &Path,
-    with_perf: bool,
     report: &UserReport,
 ) -> Result<(PathBuf, String), String> {
-    let perf_note = if with_perf {
-        match run_perf_bench(root) {
-            Ok(p) => crate::i18n::te("s.37f36c5824", &p.file_name().unwrap_or_default().to_string_lossy()),
-            Err(e) => {
-                crate::logging::shell_log!("perf bench failed: {e}");
-                crate::i18n::te("s.eea9655c7b", &(e))
-            }
-        }
-    } else {
-        crate::i18n::t("s.733f7e7b3f")
-    };
+    // 「顺便跑一次性能测试」那个勾去掉了：它跑的是 `tools/benchmark_realtime.py`
+    // —— RVC 实时变声的延迟基准，脚本从来没随包发过，勾上必然失败，
+    // 诊断包里那一行永远写着「性能测试失败」。收集数据的 `perf_report.py`
+    // 同理，它统计的是变声会话里每个音频块的推理耗时，这个产品没有会话。
+    let perf_note = String::new();
 
     let out_dir = paths::user_data(root).join("diagnostics");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;

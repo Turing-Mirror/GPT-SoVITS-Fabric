@@ -290,12 +290,6 @@ pub fn pick_str_locale(obj: &Value, field: &str, locale: &str) -> String {
     pick_str_obj_locale(root, field, locale)
 }
 
-/// 同 [`pick_str`]，但直接吃 `Map` —— 调用方手上是 `Map` 时不用先包一层
-/// `Value::Object`（那会把整张表克隆一遍，而遍历音色目录时这是每个模型一次）。
-pub fn pick_str_obj(obj: &Map<String, Value>, field: &str) -> String {
-    pick_str_obj_locale(obj, field, &current())
-}
-
 pub fn pick_str_obj_locale(root: &Map<String, Value>, field: &str, locale: &str) -> String {
     let map_key = format!("{field}_i18n");
     if let Some(map) = root.get(&map_key).and_then(|v| v.as_object()) {

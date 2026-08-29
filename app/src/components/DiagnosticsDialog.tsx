@@ -20,7 +20,6 @@ export type DiagReport = {
   nickname: string;
   qq: string;
   description: string;
-  withPerf: boolean;
   /** 用户粘进来或选中的截图，出包时写进 shots/。 */
   shots: { ext: string; data: string }[];
 };
@@ -46,7 +45,6 @@ export function DiagnosticsDialog({
   const [nickname, setNickname] = useState("");
   const [qq, setQq] = useState("");
   const [description, setDescription] = useState("");
-  const [withPerf, setWithPerf] = useState(false);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [preview, setPreview] = useState<DiagPreview | null>(null);
   const [shots, setShots] = useState<Shot[]>([]);
@@ -60,7 +58,6 @@ export function DiagnosticsDialog({
     setNickname("");
     setQq("");
     setDescription("");
-    setWithPerf(false);
     setShots([]);
     setShotMsg("");
     setDragging(false);
@@ -292,18 +289,6 @@ export function DiagnosticsDialog({
           ) : null}
         </div>
 
-        <label className="flex items-start gap-2.5 mb-4 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={withPerf}
-            onChange={(e) => setWithPerf(e.target.checked)}
-            className="mt-0.5 accent-[var(--accent)]"
-          />
-          <span className="text-[12.5px] text-[var(--ink-muted)] leading-relaxed">
-            {t("s.diagPerf")}
-          </span>
-        </label>
-
         {/* 包里已经能看出来的问题。用户当场就能改掉一部分（选错模型、盘满），
             剩下的支援也省一轮问答。没有结论时只留一行，不占地方。 */}
         <div className="mb-4">
@@ -374,7 +359,6 @@ export function DiagnosticsDialog({
                 nickname,
                 qq,
                 description,
-                withPerf,
                 shots: shots.map((sh) => ({ ext: sh.ext, data: sh.data })),
               })
             }

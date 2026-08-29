@@ -735,7 +735,7 @@ export default function App() {
               );
             case "models":
               return (
-                <ModelsPage onOpenPlaza={openPlaza} />
+                <ModelsPage onOpenPlaza={openPlaza} banner={plaza.feed.banner} />
               );
             case "synth":
               return <SynthPage />;

@@ -7,6 +7,7 @@ import { openExternal } from "../lib/plaza";
 import { allLinks } from "../lib/links";
 import { tip } from "../lib/glossary";
 import type { EngineStatus, ProvisionStatus } from "../lib/engine";
+import { StorageSection } from "../components/StorageSection";
 import { t } from "../i18n/t";
 import { askConfirm } from "../lib/webDialog";
 import { DiagnosticsDialog, type DiagReport } from "../components/DiagnosticsDialog";
@@ -176,12 +177,11 @@ export function MorePage({
 
   const runDiagnostics = async (r: DiagReport) => {
     setDiagOpen(false);
-    setBusyMsg(r.withPerf ? t("s.d7ae8f757e") : t("s.56ce781723"));
+    setBusyMsg(t("s.56ce781723"));
     try {
       const out = await invoke<{ path?: string; perf_note?: string }>(
         "diagnostics_build",
         {
-          withPerf: r.withPerf,
           report: {
             nickname: r.nickname,
             qq: r.qq,
@@ -190,8 +190,7 @@ export function MorePage({
           },
         },
       );
-      const note = out?.perf_note ? ` · ${out.perf_note}` : "";
-      setBusyMsg(t("s.ae82b8cc23", { v0: out?.path ?? "", v1: note }));
+      setBusyMsg(t("s.ae82b8cc23", { v0: out?.path ?? "", v1: "" }));
     } catch (e) {
       setBusyMsg(t("s.7fae0289b6", { v0: String(e) }));
     }
@@ -496,6 +495,15 @@ export function MorePage({
           />
         </Group>
       </Block>
+
+      {/* 存储占用与清理。
+          这个组件写好了却从来没有被挂载过 —— 于是 `train_cleanup_scan` /
+          `train_cleanup_apply` 两个命令也跟着一起沉着，我那次「未接线命令」
+          的审计还漏了它们（命令名的字面量在组件里出现过，闸就放行了）。
+          训练产物现在落在 User_Data/train 下，一个实验就是几个 GB，
+          这一块是用户唯一能看见「谁占了我的盘」的地方。 */}
+      <StorageSection />
+
       <Block id="more-community" title={t("s.2bd28fc9c2")}>
         <Group>
           {allLinks().map((l) => (
