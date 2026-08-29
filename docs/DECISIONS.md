@@ -44,10 +44,23 @@
 - 支持语种子集命名约定 `<id>_JP.list` / `<id>_ZH.list`（沿用现有素材库习惯）。
 - params 只收音质调校知识（采样类 + 可选 speed）；设备相关项（batch_size、流式阈值等）禁止入包。
 
-## D5 版本矩阵 [草案]
+## D5 版本矩阵 [已定]
 
-- UI 默认 v2ProPlus；推理支持加载 v1/v2/v2Pro/v2ProPlus/v4。
-- 训练台初期开放版本范围 [待定]（需对照 s2_train_v3_lora.py 确认 v3/v4 LoRA 路径）。
+- UI 默认 v2ProPlus。
+- **推理**支持加载 v1/v2/v2Pro/v2ProPlus/v3/v4 —— 版本不用我们告诉它：
+  上游 `TTS.init_vits_weights` 从检查点里 `enc_p.text_embedding.weight` 的形状
+  自己认（TTS.py 505-522）。
+- **训练**只开 `v2ProPlus / v2Pro / v2` 三个（`train.rs` 的 `TRAIN_VERSIONS`，
+  前端的下拉直接取它，不再各写一份）。v3/v4 走的是 `s2_train_v3_lora.py`
+  那条 LoRA 路径，与 `s2_train.py` 不是同一套参数与产物，要开得单独做；
+  v1 的底模上游已不再随包发。
+- v2Pro / v2ProPlus 的训练比其余版本**多一步**：`2-get-sv.py` 产出 `7-sv_cn`
+  说话人验证嵌入。判据与上游一致（`if "Pro" in version`）。这一步不是可选的 ——
+  缺了不报错，`module/data_utils.py` 会拿全零张量顶上把训练跑完，交出一个
+  说话人嵌入全为零的废模型。
+- v2Pro / v2ProPlus 的 s2 配置模板是 `s2v2Pro(Plus).json`，不是 `s2.json`：
+  两者差的是网络结构（`gin_channels` 512↔1024、`upsample_initial_channel`
+  512↔768），拿错模板建出来的网络和底模对不上。
 
 ## D6 里程碑 [草案]
 
@@ -56,6 +69,15 @@
 - M2 训练闭环：数据集工具链(UVR5→切片→ASR打标→校对) + 双微调 + 进度恢复
 - M3 广场：catalog 编译管线 + 角色包打包脚本 + 第三方源协议
 - M4 打磨发布：NSIS 薄包 + i18n + CNB 发布链路
+
+进度（26.8.29）：软件侧 M1/M2 的界面与接线已经全通 —— 合成台、角色库、
+训练台、人声分离都接到了各自的命令上，前端从没调用过的已注册命令从 23 个
+降到 3 个（那三个是基础设施）。**尚未做的是发布侧**：`scripts/` 目录还是空的
+（没有 build_setup / build_catalog / publish_asset / prepare_engine_payload），
+发布仓 `GPT-SoVITS-Fabric-Releases` 只有 156K 的 `.gitkeep` 骨架，没有
+`index.json`，`catalog-src/*.yaml` 的 sha256 全空。也就是说这个产品目前
+构建不出安装包，Runtime 与底模也无源可下。M0 的「provision/底模下载打通」
+在代码侧成立，在制品侧还没有。
 
 ## D7 UI/UX 继承 [已定]
 
