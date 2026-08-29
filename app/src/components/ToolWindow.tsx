@@ -3,19 +3,20 @@ import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { AnnotPage } from "../pages/AnnotPage";
+import { SeparatePanel } from "./SeparatePanel";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { WebDialogHost } from "./WebDialog";
 import { NativeDialogHint } from "./NativeDialogHint";
 
 /** 地址里带的 `#/tool/<kind>` —— 主窗口和工具窗口用的是同一份前端。 */
-export type ToolKind = "annot";
+export type ToolKind = "annot" | "separate";
 
-function toolTitle(_kind: ToolKind): string {
-  return t("s.annot.title");
+function toolTitle(kind: ToolKind): string {
+  return kind === "separate" ? t("sep.title") : t("s.annot.title");
 }
 
-const TOOL_KINDS = new Set<string>(["annot"]);
+const TOOL_KINDS = new Set<string>(["annot", "separate"]);
 
 /**
  * 这个 webview 是不是一扇工具窗口，是的话是哪一个。
@@ -65,6 +66,7 @@ export function ToolWindow({ kind }: { kind: ToolKind }) {
       <ToolFooterSlot.Provider value={footer}>
         <div className="flex-1 overflow-y-auto">
           {kind === "annot" ? <AnnotPage /> : null}
+          {kind === "separate" ? <SeparatePanel /> : null}
         </div>
       </ToolFooterSlot.Provider>
       <div ref={setFooter} className="flex-none" />

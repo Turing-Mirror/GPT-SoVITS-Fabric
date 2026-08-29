@@ -77,6 +77,16 @@ fn spec_for(kind: &str) -> Option<Spec> {
             min_w: 680.0,
             min_h: 480.0,
         },
+        // 人声分离是训练前的第一道工序，跑一次几十秒到几分钟。给它自己的窗，
+        // 用户能一边等一边在主窗口上准备实验名和参数。表单比标注窄得多，
+        // 但要放得下一整条输入/输出路径，再窄路径就只剩头尾几个字。
+        "separate" => Spec {
+            title: crate::i18n::t("sep.title"),
+            w: 720.0,
+            h: 560.0,
+            min_w: 560.0,
+            min_h: 420.0,
+        },
         _ => return None,
     })
 }
@@ -216,6 +226,7 @@ mod tests {
     #[test]
     fn only_a_registered_tool_gets_a_window() {
         assert!(spec_for("annot").is_some());
+        assert!(spec_for("separate").is_some());
         // 前端传什么过来都可能，没登记的一律拒绝 —— 否则一个拼错的名字会开出
         // 一扇加载 `#/tool/whatever` 的空白窗，用户以为软件坏了。
         assert!(spec_for("").is_none());
@@ -228,7 +239,7 @@ mod tests {
         assert_eq!(label_for("annot"), "tool-annot");
         assert!(url_for("annot").ends_with("#/tool/annot"));
         // 每个工具的 label 必须互不相同，否则第二个工具会「复用」第一个的窗口。
-        let labels: Vec<String> = ["annot"].iter().map(|k| label_for(k)).collect();
+        let labels: Vec<String> = ["annot", "separate"].iter().map(|k| label_for(k)).collect();
         let mut uniq = labels.clone();
         uniq.sort();
         uniq.dedup();
@@ -260,7 +271,7 @@ mod tests {
 
     #[test]
     fn a_tool_window_is_never_smaller_than_its_content_needs() {
-        for k in ["annot"] {
+        for k in ["annot", "separate"] {
             let s = spec_for(k).unwrap();
             assert!(s.min_w <= s.w && s.min_h <= s.h);
         }

@@ -1068,7 +1068,10 @@
     "resume": "Reanudar",
     "resumeTip": "Reutiliza los productos intermedios existentes en vez de recalcularlos. Desactívelo si cambió el conjunto de datos.",
     "cancel": "Detener entrenamiento",
-    "diskFree": "{v0} libres en esta unidad"
+    "diskFree": "{v0} libres en esta unidad",
+    "sepEntry": "Quite primero el acompañamiento",
+    "sepEntryDesc": "La música de fondo o las armonías que queden en el material acaban aprendidas por la voz entrenada.",
+    "sepOpen": "Abrir separación de voz"
   },
   "help": {
     "title": "Ayuda",
@@ -1156,5 +1159,33 @@
     "fmtTitle": "Estructura del paquete",
     "fmtTip": "Rutas relativas a la raíz del paquete; cada línea .list tiene cuatro columnas separadas por barras.",
     "importDone": "Se ha importado {v0}. Ya está disponible en la página de síntesis."
+  },
+  "sep": {
+    "title": "Separación de voz",
+    "help": "Ver la ayuda",
+    "desc": "Separa el acompañamiento de la voz. Si el material conserva música de fondo, la voz entrenada la aprenderá también.",
+    "blockRuntime": "El entorno de ejecución aún no está completo. Complete el Runtime en Más.",
+    "blockWorker": "Falta el script de separación. Reinstale o repare la instalación.",
+    "blockCore": "Falta el núcleo de separación. Complete primero sus recursos.",
+    "blockModels": "Todavía no hay ningún modelo de separación. Descargue uno primero.",
+    "getModels": "Descargar un modelo",
+    "manageModels": "Gestionar modelos",
+    "input": "Entrada",
+    "output": "Guardar en",
+    "model": "Modelo",
+    "noModel": "(sin modelos disponibles)",
+    "unset": "Sin elegir",
+    "pickFile": "Elegir archivo",
+    "pickFolder": "Elegir carpeta",
+    "pickBusy": "Esperando su elección en el diálogo del sistema…",
+    "format": "Formato de exportación",
+    "formatTip": "wav no tiene pérdidas pero ocupa mucho; para material de entrenamiento, wav o flac son la opción segura.",
+    "agg": "Intensidad de separación",
+    "aggTip": "Cuanto más alta, más limpio queda el acompañamiento, y más fácil es que se lleve por delante respiraciones y finales. Por defecto 10.",
+    "start": "Separar",
+    "running": "Separando",
+    "cancel": "Detener",
+    "reveal": "Abrir carpeta de salida",
+    "doneCount": "Listo: se generaron {v0} archivos."
   }
 }

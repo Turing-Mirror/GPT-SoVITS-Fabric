@@ -3,6 +3,7 @@ import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field, Select, Slider, Toggle } from "../components/controls";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openTool } from "../components/ToolWindow";
 import { t } from "../i18n/t";
 
 /**
@@ -300,6 +301,19 @@ export function TrainPage() {
               </div>
             </div>
             <Btn onClick={() => void pickDataset()}>{t("train.importList")}</Btn>
+          </div>
+
+          {/* 流水线第一步的入口。素材里带伴奏就直接拿去训，出来的音色会把
+              背景音一起学进去 —— 分离这一整套（separate.rs + worker + pymss）
+              早就在仓库里，之前只是没有任何地方能打开它。 */}
+          <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-[13.5px] font-medium">{t("train.sepEntry")}</div>
+              <div className="text-[12px] text-[var(--help)] mt-1 leading-relaxed">
+                {t("train.sepEntryDesc")}
+              </div>
+            </div>
+            <Btn onClick={() => openTool("separate")}>{t("train.sepOpen")}</Btn>
           </div>
 
           <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">

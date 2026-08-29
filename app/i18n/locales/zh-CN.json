@@ -1068,7 +1068,10 @@
     "resume": "续跑",
     "resumeTip": "已有的中间产物直接复用，不重算。换了数据集就关掉。",
     "cancel": "停止训练",
-    "diskFree": "所在磁盘剩余 {v0}"
+    "diskFree": "所在磁盘剩余 {v0}",
+    "sepEntry": "先把伴奏抠掉",
+    "sepEntryDesc": "素材里如果有背景音乐或和声，训出来的音色会把它们一起学进去。",
+    "sepOpen": "打开人声分离"
   },
   "help": {
     "title": "说明",
@@ -1156,5 +1159,33 @@
     "fmtTitle": "角色包结构",
     "fmtTip": "角色包内路径一律相对包根；.list 每行四列以竖线分隔。",
     "importDone": "已导入：{v0}。到「合成」页就能选到它了。"
+  },
+  "sep": {
+    "title": "人声分离",
+    "help": "查看说明",
+    "desc": "把伴奏和人声拆开。素材里带背景音就直接拿去训练，出来的音色会把背景音一起学进去。",
+    "blockRuntime": "运行环境尚未补齐，先到「更多」里补全 Runtime。",
+    "blockWorker": "分离脚本缺失，重装或修复安装可恢复。",
+    "blockCore": "分离内核缺失，先补齐分离资源。",
+    "blockModels": "还没有任何分离模型，先下载一个。",
+    "getModels": "下载分离模型",
+    "manageModels": "管理分离模型",
+    "input": "输入",
+    "output": "输出到",
+    "model": "模型",
+    "noModel": "（无可用模型）",
+    "unset": "未选择",
+    "pickFile": "选文件",
+    "pickFolder": "选目录",
+    "pickBusy": "正在等你在系统对话框里选择…",
+    "format": "导出格式",
+    "formatTip": "wav 无损但体积大；训练素材建议 wav 或 flac。",
+    "agg": "分离强度",
+    "aggTip": "越高抠得越干净，也越容易把气声和尾音一起削掉。默认 10。",
+    "start": "开始分离",
+    "running": "分离中",
+    "cancel": "停止",
+    "reveal": "打开输出目录",
+    "doneCount": "分离完成，产出 {v0} 个文件。"
   }
 }

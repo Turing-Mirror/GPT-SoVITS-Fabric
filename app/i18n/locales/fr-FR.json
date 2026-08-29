@@ -1068,7 +1068,10 @@
     "resume": "Reprendre",
     "resumeTip": "Réutilise les produits intermédiaires existants au lieu de les recalculer. Désactivez-le après avoir changé de jeu de données.",
     "cancel": "Arrêter l'entraînement",
-    "diskFree": "{v0} libres sur ce disque"
+    "diskFree": "{v0} libres sur ce disque",
+    "sepEntry": "Retirez d'abord l'accompagnement",
+    "sepEntryDesc": "La musique de fond ou les harmonies laissées dans le matériau finissent apprises par la voix entraînée.",
+    "sepOpen": "Ouvrir la séparation de la voix"
   },
   "help": {
     "title": "Aide",
@@ -1156,5 +1159,33 @@
     "fmtTitle": "Structure d’un pack",
     "fmtTip": "Chemins relatifs à la racine du pack ; chaque ligne .list comporte quatre colonnes séparées par des barres.",
     "importDone": "{v0} a été importé. Il est désormais disponible sur la page de synthèse."
+  },
+  "sep": {
+    "title": "Séparation de la voix",
+    "help": "Voir l'aide",
+    "desc": "Sépare l'accompagnement de la voix. Un matériau qui garde sa musique de fond la fera apprendre à la voix entraînée.",
+    "blockRuntime": "L'environnement d'exécution n'est pas encore complet. Complétez le Runtime dans Plus.",
+    "blockWorker": "Le script de séparation est absent. Réinstallez ou réparez l'installation.",
+    "blockCore": "Le noyau de séparation est absent. Complétez d'abord ses ressources.",
+    "blockModels": "Aucun modèle de séparation pour l'instant. Téléchargez-en un.",
+    "getModels": "Télécharger un modèle",
+    "manageModels": "Gérer les modèles",
+    "input": "Entrée",
+    "output": "Enregistrer dans",
+    "model": "Modèle",
+    "noModel": "(aucun modèle disponible)",
+    "unset": "Non choisi",
+    "pickFile": "Choisir un fichier",
+    "pickFolder": "Choisir un dossier",
+    "pickBusy": "En attente de votre choix dans la boîte de dialogue système…",
+    "format": "Format d'export",
+    "formatTip": "wav est sans perte mais volumineux ; pour du matériau d'entraînement, wav ou flac reste le choix sûr.",
+    "agg": "Force de séparation",
+    "aggTip": "Plus elle est élevée, plus l'accompagnement disparaît, et plus les souffles et les fins de mots risquent d'y passer. Par défaut 10.",
+    "start": "Séparer",
+    "running": "Séparation",
+    "cancel": "Arrêter",
+    "reveal": "Ouvrir le dossier de sortie",
+    "doneCount": "Terminé : {v0} fichiers produits."
   }
 }

@@ -1068,7 +1068,10 @@
     "resume": "Resume",
     "resumeTip": "Reuse existing intermediate artifacts instead of recomputing them. Turn it off after changing the dataset.",
     "cancel": "Stop training",
-    "diskFree": "{v0} free on this drive"
+    "diskFree": "{v0} free on this drive",
+    "sepEntry": "Strip the accompaniment first",
+    "sepEntryDesc": "Background music or harmonies left in the material get learned into the trained voice.",
+    "sepOpen": "Open vocal separation"
   },
   "help": {
     "title": "Help",
@@ -1156,5 +1159,33 @@
     "fmtTitle": "Pack layout",
     "fmtTip": "Paths inside a pack are relative to its root; each .list line has four pipe-separated columns.",
     "importDone": "Imported {v0}. It is now available on the Synthesis page."
+  },
+  "sep": {
+    "title": "Vocal separation",
+    "help": "Open help",
+    "desc": "Split accompaniment from vocals. Material that still has background music will teach that music into the trained voice.",
+    "blockRuntime": "The runtime is not complete yet. Finish it under More first.",
+    "blockWorker": "The separation script is missing. Reinstall or repair the installation.",
+    "blockCore": "The separation core is missing. Get the separation assets first.",
+    "blockModels": "No separation model yet. Download one first.",
+    "getModels": "Download a model",
+    "manageModels": "Manage models",
+    "input": "Input",
+    "output": "Output to",
+    "model": "Model",
+    "noModel": "(no model available)",
+    "unset": "Not chosen",
+    "pickFile": "Choose file",
+    "pickFolder": "Choose folder",
+    "pickBusy": "Waiting for your choice in the system dialog…",
+    "format": "Export format",
+    "formatTip": "wav is lossless but large; wav or flac is the safe choice for training material.",
+    "agg": "Separation strength",
+    "aggTip": "Higher strips the accompaniment more thoroughly, and is also more likely to shave off breaths and tails. Default 10.",
+    "start": "Separate",
+    "running": "Separating",
+    "cancel": "Stop",
+    "reveal": "Open output folder",
+    "doneCount": "Done — {v0} files produced."
   }
 }
