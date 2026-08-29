@@ -72,12 +72,40 @@
 
 进度（26.8.29）：软件侧 M1/M2 的界面与接线已经全通 —— 合成台、角色库、
 训练台、人声分离都接到了各自的命令上，前端从没调用过的已注册命令从 23 个
-降到 3 个（那三个是基础设施）。**尚未做的是发布侧**：`scripts/` 目录还是空的
-（没有 build_setup / build_catalog / publish_asset / prepare_engine_payload），
-发布仓 `GPT-SoVITS-Fabric-Releases` 只有 156K 的 `.gitkeep` 骨架，没有
-`index.json`，`catalog-src/*.yaml` 的 sha256 全空。也就是说这个产品目前
-构建不出安装包，Runtime 与底模也无源可下。M0 的「provision/底模下载打通」
-在代码侧成立，在制品侧还没有。
+降到 3 个（那三个是基础设施）。发布链路（M4 的一半）也搭完了：`scripts/`
+八个脚本、发布仓目录与流程文档就位，除了「真的把制品传上去」之外全部可跑。
+
+**还差的是制品本身**：Runtime（nvidia / cpu）与底模组都没有构建过，
+所以 `catalog/sources.json` 里的 sha 全空，`build_catalog.py` 会照章拒绝
+出清单 —— 那是设计如此，制品还没有就不该有一份看起来能用的 index.json。
+M0 的「provision/底模下载打通」在代码侧成立，在制品侧还没有。
+
+## D8 打包与发布 [已定]
+
+- **上游源码随包发，钉在 `UPSTREAM_PIN`**（当前 48b1a01），不做成可下载
+  extras。三个 worker 的契约是对着那个版本逐行核过的（方法名、属性名、
+  返回值形状、配置键、产物目录），让它跟壳分开升级就是在等下一轮
+  「合成台一次都没跑起来过」。`prepare_engine_payload.py` 会拦着不让漂。
+  负载因此从 2.6 MB 涨到 38 MB。
+- **`tools/` 是合并布局**：我们的 worker 与上游的 `my_utils` /
+  `slice_audio` / `asr` 同住，两边文件名无交集。合并后
+  `import tools.my_utils` 与 `python tools/synth_worker.py` 同时成立 ——
+  这正是 worker 写的时候假设的布局。
+- **`bundle.resources` 用带显式落点的对象形态**。数组形态保留相对路径，
+  `engine-payload/tools` 会落在 `<安装根>/engine-payload/tools`，
+  比 `paths::looks_like_root` 期望的深一层。
+- **产品根标记是 `tools/synth_worker.py`**。原来是 `realtime_worker.py`
+  （RVC 的实时 worker，从没随包发过），于是根目录识别恒定失败，
+  一路落到 `current_dir()`。
+- **清单源是单一 JSON**（`catalog/sources.json`），不经 YAML 中转。
+  RVC 的 2554 行编译器几乎全在伺候第三方音色收编，这个产品没有那套生态。
+- **五条 Release 标签**：`GSV-setup` / `GSV-runtime` / `GSV-engine-core` /
+  `GSV-roles` / `GSV-covers`。分开是因为更新节奏完全不同，混在一个标签里
+  没法单独重传。封面走 Release 附件不走 git raw（raw 对图片不给正确的
+  Content-Type）。
+- **在线角色包装进 `User_Data/characters/`**，走 `characters::install_zip`
+  那条已经有测试的路径。以前装进 `User_Data/models/`（RVC 音色的位置），
+  合成台从来不看那里。
 
 ## D7 UI/UX 继承 [已定]
 
