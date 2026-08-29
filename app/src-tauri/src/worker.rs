@@ -148,17 +148,16 @@ pub(crate) fn env_for_runtime(root: &Path) -> HashMap<String, String> {
     env.insert("PYTHONUTF8".into(), "1".into());
     env.insert("no_proxy".into(), "localhost,127.0.0.1,::1".into());
     env.insert("NO_PROXY".into(), "localhost,127.0.0.1,::1".into());
-    // 官方 RVC 靠产品根 .env；安装包历史上未带该文件。路径相对 cwd=产品根。
-    // 已有值（用户/壳层显式设置）不覆盖。
-    for (k, v) in [
-        ("weight_root", "assets/weights"),
-        ("weight_uvr5_root", "assets/uvr5_weights"),
-        ("index_root", "logs"),
-        ("outside_index_root", "assets/indices"),
-        ("rmvpe_root", "assets/rmvpe"),
-    ] {
-        env.entry(k.into()).or_insert_with(|| v.into());
-    }
+    // 这里以前铺了五个环境变量：weight_root / weight_uvr5_root / index_root /
+    // outside_index_root / rmvpe_root。那是官方 RVC 从产品根 .env 读的一套，
+    // **上游 GPT-SoVITS 一个都不读** —— 它的 SoVITS_weight_root 与
+    // weight_uvr5_root 是模块级 Python 变量（config.py:44 / tools/uvr5/webui.py:21），
+    // 不走环境；index_root / outside_index_root / rmvpe_root 是检索库和
+    // rmvpe 音高模型的位置，这个产品两样都没有。
+    //
+    // 其中 index_root 还指着 `logs` —— 训练产物挪进 User_Data/train 之后，
+    // 它连指向都错了。设一堆没人读的变量不只是没用：排障时看见
+    // `index_root=logs` 会以为检索库该在那儿，白查一轮。
     // 与官方 WebUI 一致：把 TEMP/TMP/TMPDIR 指到安装目录下的 TEMP，
     // 中间文件统一落这里，启动/退出/任务结束时清理。
     let temp = paths::temp_dir(root);
@@ -167,14 +166,11 @@ pub(crate) fn env_for_runtime(root: &Path) -> HashMap<String, String> {
     env.insert("TEMP".into(), temp_s.clone());
     env.insert("TMP".into(), temp_s.clone());
     env.insert("TMPDIR".into(), temp_s);
-    for k in ["TM_ACCEL", "TM_ACCEL_RESOLVED", "TM_USE_DML"] {
-        if let Ok(v) = std::env::var(k) {
-            env.insert(k.into(), v);
-        }
-    }
-    if !env.contains_key("TM_ACCEL") {
-        env.insert("TM_ACCEL".into(), "auto".into());
-    }
+    // TM_ACCEL / TM_ACCEL_RESOLVED / TM_USE_DML 也一并去掉：三个都是 RVC 的
+    // A 卡 DirectML 路径用的，这个产品的 worker 一处都没读过（grep 为零），
+    // 上游更没有 DirectML 分支。设备选择在 worker 内部按
+    // `torch.cuda.is_available()` 决定，主显卡通过下面的 CUDA_VISIBLE_DEVICES
+    // 生效 —— 那才是真正管用的那一条。
     apply_main_gpu(root, &mut env);
     env
 }

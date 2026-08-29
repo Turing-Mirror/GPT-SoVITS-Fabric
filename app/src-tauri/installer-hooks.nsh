@@ -7,8 +7,9 @@
 ;   - 按打包清单删除随包文件（RMDir 不带 /r，事后下载的东西它不认识）
 ;
 ; 这里只补模板做不到的一件事：**清事后下载/生成的残留**。Runtime 是几个 GB
-; 的 Python 环境、pretrained_models 是几百 MB 底模、logs 是训练中间产物，
-; 三者都不在打包清单里，模板卸载完会原样留在盘上。
+; 的 Python 环境、pretrained_models 是几百 MB 底模，两者都不在打包清单里，
+; 模板卸载完会原样留在盘上。训练产物在 User_Data\train 下，跟着「是否保留
+; 用户数据」一起走。
 ;
 ; ── 这份文件以前整份是 RVC Fabric 的 ─────────────────────────────────────
 ; 90 行里 8 处写着 RVC：注册表键 `HKCU\Software\Turing-Mirror\RVC Fabric`、
@@ -55,7 +56,7 @@ Var KeepUserData
   ; 确认页勾了「同时删除用户数据」就不再问；没勾则弹窗让用户选。
   StrCmp $DeleteAppDataCheckboxState 1 uninst_force_delete_data
   IfSilent skip_uninst_prompt
-    MessageBox MB_YESNO|MB_ICONQUESTION "是否保留用户数据（角色、合成结果、设置、日志）？$\r$\n$\r$\n选「是」将保留 User_Data 与训练产物 logs，下次安装后可继续使用。$\r$\n选「否」将连同这些一起删除。$\r$\n$\r$\n无论选哪个，下载的 Runtime 运行环境与底模都会一并清除（几个 GB）。" IDYES skip_uninst_prompt
+    MessageBox MB_YESNO|MB_ICONQUESTION "是否保留用户数据（角色、训练产物、合成结果、设置）？$\r$\n$\r$\n选「是」将保留整个 User_Data（含训练了几小时的实验），下次安装后可继续使用。$\r$\n选「否」将连同这些一起删除。$\r$\n$\r$\n无论选哪个，下载的 Runtime 运行环境与底模都会一并清除（几个 GB）。" IDYES skip_uninst_prompt
     StrCpy $KeepUserData 0
     Goto skip_uninst_prompt
   uninst_force_delete_data:
@@ -90,9 +91,6 @@ Var KeepUserData
   StrCmp $KeepUserData 1 skip_uninst_userdata
     RMDir /r "$INSTDIR\User_Data"
     RMDir /r "$INSTDIR\UserData"
-    ; 训练的中间产物与检查点落在 $INSTDIR\logs\<实验名>\，
-    ; 一个实验就是几个 GB。它属于用户数据，跟着上面那个选择走。
-    RMDir /r "$INSTDIR\logs"
   skip_uninst_userdata:
 
   Delete "$INSTDIR\ffmpeg.exe"

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StatusBar } from "./components/StatusBar";
+import { onConfigPatch } from "./lib/config";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { OnboardingBar } from "./components/OnboardingBar";
 import { Nudge } from "./components/Nudge";
@@ -293,6 +294,43 @@ export default function App() {
       });
     return () => {
       alive = false;
+    };
+  }, []);
+
+  // 底栏左上角那格：当前角色。
+  //
+  // 这里以前什么都没传，于是常年显示「未选择角色」—— 注释还写着「当前角色是
+  // SynthPage 的局部状态，底栏看不到，要修得先把它提到 App，那是另一件事」。
+  // 那句是错的：合成台早就把选择持久化进了配置的 `synth_role`（SynthPage:264），
+  // 底栏只要读同一个键、再用 `synth_characters` 把 id 换成名字就行，
+  // 不需要动任何状态结构。
+  const [roleName, setRoleName] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const sync = async () => {
+      const cfg = await invoke<Record<string, unknown>>("config_get").catch(() => null);
+      const id = String(cfg?.synth_role ?? "").trim();
+      if (!alive) return;
+      if (!id) {
+        setRoleName("");
+        return;
+      }
+      const r = await invoke<{ roles?: { id: string; name?: string }[] }>(
+        "synth_characters",
+      ).catch(() => null);
+      if (!alive) return;
+      // 角色被删掉之后不要继续显示它的名字：id 还留在配置里，但人已经不在了。
+      setRoleName((r?.roles ?? []).find((x) => x.id === id)?.name ?? "");
+    };
+    void sync();
+    // 合成台换角色时 `c.set` 会广播补丁，底栏跟着变 —— 不订阅的话要等下次
+    // 重开软件才对得上。
+    const off = onConfigPatch((patch) => {
+      if ("synth_role" in patch) void sync();
+    });
+    return () => {
+      alive = false;
+      off();
     };
   }, []);
 
@@ -915,6 +953,7 @@ export default function App() {
       <NativeDialogHint />
 
 <StatusBar
+        roleName={roleName}
         // 这两行以前写死成「合成引擎接入中 · M1 开发阶段：界面先行，推理内核
         // 随后接通」，永远不变。M1 早就接通了（synth_worker.py 随包发，
         // SynthPage 走 synth_start），也就是说底栏在对每一个用户常年谎报

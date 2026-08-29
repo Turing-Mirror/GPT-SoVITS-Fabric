@@ -9,9 +9,9 @@ import { t } from "../i18n/t";
  *
  * `statusTitle` / `statusSub` 现在由运行时是否就绪驱动（见 App.tsx）。
  *
- * **`roleName` 还没人传**，所以左上角常年显示「未选择角色」—— 当前角色是
- * SynthPage 里的局部状态，底栏在它外面，看不到。要修得先把选中的角色提到
- * App 或存进配置，那是另一件事，不在这里顺手做。 */
+ * `roleName` 由 App 读配置里的 `synth_role` 再换成名字传进来；合成台换角色
+ * 时会广播配置补丁，这里跟着变。角色被删掉之后传空串 —— id 还留在配置里，
+ * 但人已经不在了，继续显示它的名字是在骗人。 */
 
 type Props = {
   roleName?: string;

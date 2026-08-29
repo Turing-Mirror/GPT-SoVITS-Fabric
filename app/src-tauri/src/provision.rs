@@ -48,13 +48,9 @@ pub fn recommend_variant(gpu_names: &[String]) -> (String, String) {
             crate::i18n::t("s.3967a4b124").replacen("{}", &gpu_names[0], 1),
         );
     }
-    // TODO(i18n): 等语言包任务补 key 后替换这条技术文案。
     (
         "cpu".into(),
-        format!(
-            "检测到非 NVIDIA 显卡：{}，推荐 CPU 运行时",
-            gpu_names[0]
-        ),
+        crate::i18n::t("s.provisionCpuReason").replacen("{}", &gpu_names[0], 1),
     )
 }
 

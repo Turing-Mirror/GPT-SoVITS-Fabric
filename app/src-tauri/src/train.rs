@@ -103,11 +103,22 @@ fn worker_script(root: &Path) -> PathBuf {
     root.join("tools").join("train_worker.py")
 }
 
+/// 训练实验的落点：`User_Data/train/<实验名>/`。
+///
+/// **原来在安装目录根下的 `logs/`。** 那是 RVC 沿用上游的位置，代价有两个：
+/// 一个实验的中间产物和检查点动辄几个 GB，却和随包发的文件混在同一层；
+/// 卸载时更麻烦 —— 用户「保留我的数据」指的显然包括他训了一整晚的模型，
+/// 而那份东西压根不在 `User_Data` 里。挪进来之后，「保留用户数据」这一个
+/// 开关就真的覆盖了用户的全部产出，安装目录也回到「只有随包文件」。
+///
+/// 名字用 `train` 不用 `logs`：那底下是数据集特征与检查点，不是日志；
+/// 真正的日志在 `User_Data/logs/`（`paths::logs_dir`），两个 `logs` 并存
+/// 只会让人删错。
 pub fn exp_root(root: &Path) -> PathBuf {
-    root.join("logs")
+    crate::paths::user_data(root).join("train")
 }
 
-/// 已有的实验（`logs/<名字>`）。`mute` 是随包发的静音样本，不是用户的实验。
+/// 已有的实验（`User_Data/train/<名字>`）。`mute` 是随包发的静音样本，不是用户的实验。
 fn experiments(root: &Path) -> Vec<Value> {
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir(exp_root(root)) else {
@@ -720,8 +731,7 @@ fn preprocess_failure_list(log: &Path) -> Vec<Value> {
 
 /// 数据集里算数的音频后缀。
 ///
-/// 必须和 `tools/train_worker.AUDIO_EXT` / `infer/modules/train/preprocess.py`
-/// 那两份完全一致 —— 界面上报「找到 120 个音频」而预处理只认出 80 个，比不报
+/// 必须和 `tools/train_worker.py` 的 `AUDIO_EXT` 完全一致 —— 界面上报「找到 120 个音频」而预处理只认出 80 个，比不报
 /// 还糟：用户会拿这个数字去判断自己的数据集够不够，而它是假的。有一条测试直接
 /// 读 train_worker.py 的那一行来比对，改一边忘了另一边就红。
 pub const DATASET_AUDIO_EXT: [&str; 8] =
@@ -1374,6 +1384,13 @@ fn run_inner(
         "is_half": device == "cuda",
         "resume": req.resume,
         "output_dir": req.output_dir,
+        // 落点由壳算好交过去，不让 worker 自己拼 —— 两边各拼一遍就会出现
+        // 「壳去 A 找产物、worker 写在 B」这种查半天的错。
+        "exp_dir": exp_root(root).join(req.exp.trim()).to_string_lossy(),
+        // 训完的角色直接装进合成台扫的那个目录。
+        "role_dir": crate::synth::characters_dir(root)
+            .join(crate::characters::safe_id(req.exp.trim()))
+            .to_string_lossy(),
     });
     std::fs::write(
         &reqfile,
@@ -1520,7 +1537,7 @@ mod tests {
     fn the_cleanup_scan_and_apply_agree_and_spare_everything_irreplaceable() {
         let root = crate::testutil::scratch("cleanup");
         let _ = std::fs::remove_dir_all(&root);
-        let exp = root.join("logs").join("miku");
+        let exp = crate::train::exp_root(&root).join("miku");
         let models = root.join("User_Data").join("models");
         std::fs::create_dir_all(exp.join("5-wav32k")).unwrap();
         // 上游在检查点目录下还会再分子目录，list_files 要递归才扫得到。
@@ -1563,7 +1580,7 @@ mod tests {
     fn resetting_stages_removes_only_the_regenerable_artifacts() {
         let root = crate::testutil::scratch("reset-stages");
         let _ = std::fs::remove_dir_all(&root);
-        let exp = root.join("logs").join("miku");
+        let exp = crate::train::exp_root(&root).join("miku");
         std::fs::create_dir_all(exp.join("5-wav32k")).unwrap();
         std::fs::create_dir_all(exp.join("3-bert")).unwrap();
         std::fs::create_dir_all(exp.join("4-cnhubert")).unwrap();
@@ -1595,7 +1612,7 @@ mod tests {
     fn resetting_refuses_anything_that_could_escape_the_experiment_folder() {
         let root = crate::testutil::scratch("reset-escape");
         let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("logs")).unwrap();
+        std::fs::create_dir_all(crate::train::exp_root(&root)).unwrap();
         for bad in ["", "   ", "..", ".", "../mute", "a/b", "a\\b", "C:x"] {
             assert!(
                 cleanup_apply(&root, bad, &["dataset".into()]).is_err(),
@@ -1629,10 +1646,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    // 「音频扩展名两边一致」的契约测试（the_audio_extensions_match_the_python_side）
-    // 暂时缺席：它钉的是 RVC train_worker.py 的 AUDIO_EXT，而 GSV 的训练管线
-    // （UVR5 → 切片 → ASR → 格式化 → 两段微调）在阶段 D 重写时才会带自己的
-    // worker 与契约测试，这里不给旧契约留空壳。
+    /// 两边认的音频后缀必须是同一套。
+    ///
+    /// 界面上报「找到 120 个音频」而 worker 只认出 80 个，比不报还糟：用户
+    /// 会拿这个数字判断自己的数据集够不够，而它是假的。这条测试直接去读
+    /// `train_worker.py` 里的那一行，改一边忘了另一边就红。
+    ///
+    /// 这个测试曾经以一段注释的形式「暂时缺席」—— 理由是 GSV 的 worker
+    /// 还没写。worker 早写完了，注释留着就成了一条不会响的闸。
+    #[test]
+    fn the_audio_extensions_match_the_python_side() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("engine-payload/tools/train_worker.py"),
+        )
+        .expect("train_worker.py 必须随 payload 发出去");
+
+        let line = src
+            .lines()
+            .find(|l| l.trim_start().starts_with("AUDIO_EXT"))
+            .expect("train_worker.py 里没有 AUDIO_EXT");
+        let mut py: Vec<String> = line
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(|s| s.trim_start_matches('.').to_ascii_lowercase())
+            .collect();
+        assert!(py.len() > 3, "只解析出 {} 个后缀，正则多半失效了", py.len());
+
+        let mut rs: Vec<String> = DATASET_AUDIO_EXT.iter().map(|s| s.to_string()).collect();
+        py.sort();
+        rs.sort();
+        assert_eq!(
+            rs, py,
+            "Rust 的 DATASET_AUDIO_EXT 和 train_worker.py 的 AUDIO_EXT 对不上"
+        );
+    }
 
     #[test]
     fn a_dataset_scan_counts_audio_recursively_and_ignores_the_rest() {
@@ -1710,10 +1759,10 @@ mod tests {
         // logs/mute 是随包发的静音样本。列出来用户会以为那是自己的音色。
         let base = crate::testutil::scratch("train-exps");
         let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(base.join("logs").join("mute")).unwrap();
-        std::fs::create_dir_all(base.join("logs").join(&crate::i18n::t("s.6ca6738e54")).join("1_16k_wavs")).unwrap();
+        std::fs::create_dir_all(crate::train::exp_root(&base).join("mute")).unwrap();
+        std::fs::create_dir_all(crate::train::exp_root(&base).join(&crate::i18n::t("s.6ca6738e54")).join("1_16k_wavs")).unwrap();
         std::fs::write(
-            base.join("logs").join(&crate::i18n::t("s.6ca6738e54")).join("1_16k_wavs").join("a.wav"),
+            crate::train::exp_root(&base).join(&crate::i18n::t("s.6ca6738e54")).join("1_16k_wavs").join("a.wav"),
             b"x",
         )
         .unwrap();
@@ -1768,7 +1817,7 @@ mod tests {
     fn outcome_report_can_tell_slices_from_a_finished_model() {
         let td = crate::testutil::scratch("train-outcome");
         let _ = std::fs::remove_dir_all(&td);
-        let exp = td.join("logs").join("voice");
+        let exp = crate::train::exp_root(&td).join("voice");
         std::fs::create_dir_all(exp.join("1_16k_wavs")).unwrap();
         std::fs::write(exp.join("1_16k_wavs").join("a.wav"), b"x").unwrap();
         std::fs::write(exp.join("preprocess.log"), "sliced 1 file\n").unwrap();
@@ -1835,6 +1884,40 @@ mod tests {
             assert!(preflight(&base, &bad).is_err(), "{bad:?} 应当被拒");
         }
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 训练产物与角色落点：壳算的和 worker 兜底算的必须是同一个目录。
+    ///
+    /// worker 现在从请求里拿 `exp_dir` / `role_dir`，但它自己也留了一份兜底
+    /// （手工调起来排障时用）。两边算不出同一个目录名，就会出现「训完了，
+    /// 合成台看不见」—— 而那正是这次要修的毛病，不该由同一份代码再制造一遍。
+    #[test]
+    fn the_shell_and_the_worker_agree_on_where_things_land() {
+        let root = crate::testutil::scratch("train-dirs");
+        // 实验目录必须在 User_Data 底下，不能再落回安装根的 logs/。
+        let exp = exp_root(&root);
+        assert!(
+            exp.starts_with(crate::paths::user_data(&root)),
+            "训练产物必须在 User_Data 内，卸载时的「保留用户数据」才盖得住：{}",
+            exp.display()
+        );
+        assert!(exp.ends_with("train"), "{}", exp.display());
+
+        // 角色落点用的清洗要和 characters::safe_id 一致。
+        for name in ["Tomori", "高松灯", "a b/c", "  --  "] {
+            let id = crate::characters::safe_id(name);
+            let dir = crate::synth::characters_dir(&root).join(&id);
+            assert!(
+                dir.starts_with(crate::synth::characters_dir(&root)),
+                "{name:?} 清洗后逃出了角色目录：{}",
+                dir.display()
+            );
+            assert!(!id.is_empty(), "{name:?} 清洗成了空串");
+        }
+        // worker 侧那份兜底是照着这两条写的，改了这里要同步改
+        // train_worker.py 的 `safe_id` 与 `normalize`。
+        assert_eq!(crate::characters::safe_id("高松灯"), "role");
+        assert_eq!(crate::characters::safe_id("Tomori"), "tomori");
     }
 
     /// worker 报的每一个 `message_code`，语言包里必须真的有。

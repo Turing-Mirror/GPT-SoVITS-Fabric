@@ -186,7 +186,24 @@ def normalize(raw: dict) -> dict:
         "is_half": bool(raw.get("is_half")),
         "resume": bool(raw.get("resume")),
         "output_dir": str(raw.get("output_dir") or ""),
+        # 两个落点由壳算好传过来；手工调起来排障时用这两个兜底，
+        # 兜底值要和 `train.rs::exp_root` / `synth::characters_dir` 对上。
+        "exp_dir": str(raw.get("exp_dir") or (ROOT / "User_Data" / "train" / exp)),
+        "role_dir": str(
+            raw.get("role_dir") or (ROOT / "User_Data" / "characters" / safe_id(exp))
+        ),
     }
+
+
+def safe_id(name: str) -> str:
+    """和 Rust 侧 `characters::safe_id` 同一套清洗：只留字母数字和 `-_`，
+    其余折成 `-`，全小写。两边算不出同一个目录名，训完的角色就会落在
+    合成台扫不到的地方。"""
+    out = []
+    for ch in name.strip().lower():
+        out.append(ch if (ch.isascii() and (ch.isalnum() or ch in "-_")) else "-")
+    cleaned = "".join(out).strip("-")
+    return cleaned or "role"
 
 
 def need(rel: str, code: str, fallback: str, **params) -> Path:
@@ -624,11 +641,20 @@ def _report_ckpts(stage: str, d: Path) -> None:
 # 收尾：把两个权重拼成一个角色
 # ---------------------------------------------------------------------------
 
-def collect(req: dict, weights_dir: Path) -> dict:
-    """挑出这次训练的 SoVITS 与 GPT 权重。
+def collect(req: dict, weights_dir: Path, list_path: Path | None) -> dict:
+    """把这次训练的两份权重拼成一个**能直接用的角色**。
 
-    上游按 `<exp>_eN_sM.pth` / `.ckpt` 落一堆，最后一轮那个才是要的。按修改
-    时间挑而不是按文件名里的轮数 —— 续跑时轮数会从头再来一遍，时间不会。
+    以前这里只是返回两个文件路径，权重就那么散落在 `User_Data/models/` 下 ——
+    而合成台扫的是 `User_Data/characters/<id>/`，包格式还要求
+    `config.json` + `models/{sovits.pth,gpt.ckpt}`。也就是说：训了几个小时，
+    产出确实在盘上，合成台的角色下拉里一个都没有。用户唯一的出路是自己去
+    翻目录、手动照着包格式拼一个文件夹出来。
+
+    这和「广场装下来的角色装进了引擎不看的目录」是同一个毛病，只是这次
+    产出方是训练台。现在训完直接落成角色，回到合成台就能选。
+
+    权重从 `weights_dir` 里按**修改时间**挑最新的，不按文件名里的轮数 ——
+    续跑时轮数会从头再来一遍，时间不会。
     """
     def newest(exts: tuple[str, ...]) -> Path | None:
         cands = [p for p in weights_dir.rglob("*")
@@ -640,7 +666,57 @@ def collect(req: dict, weights_dir: Path) -> dict:
     if sovits is None or gpt is None:
         raise Fail("no_weight", "training finished but the weights are missing",
                    name="SoVITS/GPT")
-    return {"sovits": str(sovits), "gpt": str(gpt)}
+
+    role_dir = Path(req["role_dir"])
+    (role_dir / "models").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sovits, role_dir / "models" / "sovits.pth")
+    shutil.copy2(gpt, role_dir / "models" / "gpt.ckpt")
+
+    # 参考音频：合成必须要有参考，没有的话这个角色装上了也用不了。
+    # 直接引用训练用的那份标注 —— 音频是同一批，路径按包格式改成相对。
+    lists: list[dict] = []
+    kept: list[str] = []
+    if list_path is not None and list_path.is_file():
+        ds = role_dir / "dataset"
+        (ds / "audios").mkdir(parents=True, exist_ok=True)
+        rows = parse_list(list_path)
+        for r in rows:
+            src = Path(r["abs"])
+            if not src.is_file():
+                continue
+            dst = ds / "audios" / src.name
+            if not dst.exists():
+                try:
+                    shutil.copy2(src, dst)
+                except OSError:
+                    continue
+            kept.append(f"audios/{src.name}|{r['speaker']}|{r['lang']}|{r['text']}")
+        if kept:
+            name = f"{req['exp']}.list"
+            (ds / name).write_text("\n".join(kept) + "\n", encoding="utf-8")
+            # 语种码统一小写：`.list` 里社区习惯写 `JA` / `ZH`，而上游
+            # `TTS_Config.v2_languages` 全是小写，合成时按大写去查是查不到的。
+            lists = [{"file": f"dataset/{name}", "lang": rows[0]["lang"].strip().lower()}]
+
+    cfg = {
+        "id": role_dir.name,
+        "name": req["exp"],
+        "author": "",
+        "version": req["version"],
+        "source": "trained",
+        "lists": lists,
+    }
+    (role_dir / "config.json").write_text(
+        json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {
+        "sovits": str(role_dir / "models" / "sovits.pth"),
+        "gpt": str(role_dir / "models" / "gpt.ckpt"),
+        "role_dir": str(role_dir),
+        "role_id": role_dir.name,
+        # 参考音频条数。一条都没有的角色装得上但合不出声，壳要能报出来。
+        "refs": len(kept) if lists else 0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -667,10 +743,12 @@ def main() -> int:
         return 1
     _CURRENT.update(req)
 
-    exp_dir = ROOT / "logs" / req["exp"]
+    # 落点由壳算好传过来。以前是 worker 自己拼 `ROOT/logs/<exp>` —— 两边
+    # 各拼一遍，改一处忘一处就会变成「壳去 A 找产物、worker 写在 B」。
+    exp_dir = Path(req["exp_dir"])
     exp_dir.mkdir(parents=True, exist_ok=True)
-    weights_dir = Path(req["output_dir"]) if req["output_dir"] else (
-        ROOT / "User_Data" / "models")
+    # 中转目录：上游的两个训练脚本各自把权重落在这里，收尾时再拼成角色。
+    weights_dir = Path(req["output_dir"]) if req["output_dir"] else (exp_dir / "weights")
     weights_dir.mkdir(parents=True, exist_ok=True)
 
     emit(phase="start")
@@ -684,7 +762,7 @@ def main() -> int:
         stage_format(req, list_path, exp_dir)
         stage_sovits(req, exp_dir, weights_dir)
         stage_gpt(req, exp_dir, weights_dir)
-        weights = collect(req, weights_dir)
+        weights = collect(req, weights_dir, list_path)
     except Fail as f:
         emit(phase="error", message_code=f.code, message=f.fallback,
              message_params=f.params)

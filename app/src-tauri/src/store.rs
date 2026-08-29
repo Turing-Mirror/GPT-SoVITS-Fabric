@@ -16,7 +16,6 @@ use crate::paths;
 use crate::voices::safe_model_dir_name;
 
 const CNB_RAW_MAIN: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main";
-const MIN_PTH_BYTES: u64 = 50_000;
 
 fn progress_message(phase: &str) -> String {
     download::parse_retry_attempt(phase)
@@ -60,11 +59,6 @@ fn voice_download_urls(root: &Path, url: &str, sha: &str) -> Vec<String> {
         }
     }
     urls
-}
-
-/// .index 没有 sha（清单里常常缺），所以只做镜像展开。
-fn index_urls(root: &Path, url: &str) -> Vec<String> {
-    crate::hf::download_urls_with(url, &crate::mirrors::hf_endpoints(root))
 }
 
 /// Per-voice cancel flags. A single global flag meant that cancelling one
@@ -904,184 +898,18 @@ pub fn install_voice_entry(
         return Ok(info);
     }
 
-    if pth_url.is_empty() {
-        return Err(crate::i18n::t("s.5ca65185f2").into());
-    }
-    // multi-file install
-    let vid = safe_model_dir_name(if id.is_empty() { &name } else { &id })?;
-    let cache = if stage_only {
-        staged_dir(&root, if id.is_empty() { &name } else { &id })?
-    } else {
-        paths::update_cache(&root).join("voices").join(&vid)
-    };
-    fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
-    let pth_tmp = cache.join(format!("{vid}.pth"));
-    // 暂存模式下先不建音色目录 —— 用户可能看完就删，不该留一个空目录在
-    // 音色库里让人以为装过。
-    let dest_dir = paths::models_dir(&root).join(&vid);
-    if !stage_only {
-        fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-    }
-
-    let cancel = cancel_flag_for(&id);
-    let app2 = app.clone();
-    let id2 = id.clone();
-    let progress: download::ProgressFn = Arc::new(move |done, total, msg| {
-        let _ = app2.emit(
-            "store-progress",
-            store_progress_payload(&id2, "pth", done, total, &progress_message(msg)),
-        );
-    });
-    if let Err(e) = download::download_request(
-        DownloadRequest {
-            urls: voice_download_urls(&root, &pth_url, &sha),
-            root: Some(root.clone()),
-            dest: pth_tmp.clone(),
-            expected_sha256: sha,
-            // 0 而不是 size：voice_files 的 size_bytes 是 pth + index 的合计
-            // （商店要显示用户实际下载的总量），拿它当单个 pth 的进度分母，
-            // 进度会一直卡在一成左右然后突然跳完。Content-Length 有，够用。
-            size_hint: 0,
-            connections: None,
-            kind: DownloadKind::VoicePack,
-        },
-        cancel.clone(),
-        Some(progress),
-    ) {
-        drop_cancel_flag(&id);
-        return Err(e);
-    }
-    if pth_tmp.metadata().map(|m| m.len()).unwrap_or(0) < MIN_PTH_BYTES {
-        drop_cancel_flag(&id);
-        return Err(crate::i18n::t("s.281cb87781").into());
-    }
-
-    if stage_only {
-        // index 也一并拉到暂存区，用户要看就一次看全，装的时候也不用再联网。
-        if let Some(iu) = entry.get("index_url").and_then(|v| v.as_str()) {
-            if !iu.is_empty() {
-                let idx_sha = entry
-                    .get("index_sha256")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let _ = download::download_request(
-                    DownloadRequest {
-                        urls: index_urls(&root, iu),
-                        root: Some(root.clone()),
-                        dest: cache.join(format!("{vid}.index")),
-                        expected_sha256: idx_sha,
-                        size_hint: 0,
-                        connections: Some(1),
-                        kind: DownloadKind::Generic,
-                    },
-                    cancel.clone(),
-                    None,
-                );
-            }
-        }
-        emit("staged", 1, 1, &crate::i18n::t("s.1245a7db42"));
-        drop_cancel_flag(&id);
-        return Ok(json!({
-            "staged": true,
-            "voice_id": id,
-            "dir": cache.to_string_lossy(),
-            "file": pth_tmp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
-        }));
-    }
-
-    // clear old pths
-    if let Ok(rd) = fs::read_dir(&dest_dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .eq_ignore_ascii_case("pth")
-            {
-                let _ = fs::remove_file(p);
-            }
-        }
-    }
-    let dest_pth = dest_dir.join(format!("{vid}.pth"));
-    if let Err(e) = fs::copy(&pth_tmp, &dest_pth) {
-        drop_cancel_flag(&id);
-        return Err(e.to_string());
-    }
-
-    let mut index_path = String::new();
-    if let Some(iu) = entry.get("index_url").and_then(|v| v.as_str()) {
-        if !iu.is_empty() {
-            let idx_tmp = cache.join(format!("{vid}.index"));
-            // 清单带了 index 的哈希就校验。index 不是 pickle，风险比 pth 低，
-            // 所以缺哈希时不像 pth 那样硬拒；但既然发布前验证过、值也记下来了，
-            // 就没有理由不比对。
-            let idx_sha = entry
-                .get("index_sha256")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let _ = download::download_request(
-                DownloadRequest {
-                    urls: index_urls(&root, iu),
-                    root: Some(root.clone()),
-                    dest: idx_tmp.clone(),
-                    expected_sha256: idx_sha,
-                    size_hint: 0,
-                    connections: Some(1),
-                    kind: DownloadKind::Generic,
-                },
-                cancel.clone(),
-                None,
-            );
-            if idx_tmp.is_file() && idx_tmp.metadata().map(|m| m.len()).unwrap_or(0) > 1000 {
-                let dest_idx = dest_dir.join(format!("{vid}.index"));
-                let _ = fs::copy(&idx_tmp, &dest_idx);
-                index_path = dest_idx.to_string_lossy().into_owned();
-            }
-        }
-    }
-
-    let mut extra = Map::new();
-    for k in ["author", "author_url", "source_url", "date", "series", "group"] {
-        if let Some(v) = entry.get(k) {
-            extra.insert(k.to_string(), v.clone());
-        }
-    }
-    // 清单封面（voice_files 形态的第三方也没有包内 cover，全靠这一行）。
-    if let Some(v) = entry_cover(&entry) {
-        extra.insert("cover".into(), v);
-    }
-    let source = if official {
-        "online_files"
-    } else {
-        "thirdparty_files"
-    };
-    let info = write_voice_config(
-        &dest_dir,
-        &dest_pth,
-        &name,
-        &tag,
-        &vid,
-        &index_path,
-        source,
-        official,
-        &extra,
-    );
-    emit("done", 1, 1, &crate::i18n::t("s.f423573349"));
-    drop_cancel_flag(&id);
-    Ok(info)
+    // 到这儿说明这条清单条目没有 pack_url。
+    //
+    // 这后面原来是 RVC 的「多文件安装」：下一个单独的 `.pth`（可选再带一个
+    // `.index` 检索库），装进 `User_Data/models/<id>/`。**这个产品没有那种
+    // 包形态** —— 单位是角色包（config.json + 两份权重 + 数据集），
+    // `build_catalog.py` 也只会生成 `pack_url`，一条 `pth_url` 都不会出。
+    //
+    // 那 178 行删掉，不是因为用不上，是因为它**装到了引擎不看的目录** ——
+    // 和刚修好的那个毛病一模一样，只是换了一扇门进来。留着它，哪天有人手写
+    // 一条带 pth_url 的条目，用户又会得到一个「装好了但合成台看不见」的东西。
+    Err(crate::i18n::t("s.5ca65185f2").into())
 }
-
-// ---------------------------------------------------------------------------
-// 第三方音色：下载完不自动装
-// ---------------------------------------------------------------------------
-//
-// 第三方 .pth 是 pickle，加载即执行代码。哈希校验只能保证「你下到的就是清单
-// 里那个文件」，不能保证那个文件本身安全 —— 清单里的地址指向社区站点，不是
-// 我们的仓库。所以第三方一律先落到暂存区，用户自己看过再决定装不装。
-//
-// 官方源不走这条路：那些包是我们自己传的、自己签的哈希，没有中间环节。
 
 /// 暂存区：`User_Data/downloads/<voice_id>/`。
 ///

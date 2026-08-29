@@ -849,7 +849,8 @@ fn diag_entry_text(e: &DiagEntry, redaction: Option<&(String, String)>) -> Optio
 pub fn storage_usage(root: &Path) -> Value {
     let ud = paths::user_data(root);
     let items = [
-        ("logs", root.join("logs")),
+        // 训练实验（数据集特征 + 检查点），现在在 User_Data/train 下。
+        ("logs", crate::train::exp_root(root)),
         ("weights", root.join("assets").join("weights")),
         ("models", ud.join("models")),
         ("update_cache", paths::update_cache(root)),
