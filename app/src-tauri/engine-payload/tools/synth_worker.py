@@ -84,6 +84,11 @@ DEFAULT_BERT = "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large"
 
 
 def emit(**kw) -> None:
+    # 与 sep/train worker 同一套约定：code 是机器码（壳拿它认 cancelled），
+    # message_code 喂 i18n（msg.synth.<code>，壳侧 t_worker_msg 翻译，语言包
+    # 没登记的码回退到 message 原文）。
+    if "code" in kw and "message_code" not in kw:
+        kw["message_code"] = f"synth.{kw['code']}"
     line = json.dumps(kw, ensure_ascii=False) + "\n"
     try:
         sys.stdout.write(line)
@@ -190,6 +195,12 @@ class SynthEngine:
         device, is_half = self._pick_device(main_gpu)
 
         cfg = TTS_Config()
+        # 版本照角色包来：TTS_Config() 恒为 v2，而 update_version 同时会
+        # 切换 languages 白名单（v1 没有 yue/ko）。init_vits_weights 之后还会
+        # 按检查点形状再认一次版本，这里只是把起点摆正。
+        version = str(req.get("version") or "").strip()
+        if version in ("v1", "v2", "v3", "v4", "v2Pro", "v2ProPlus"):
+            cfg.update_version(version)
         # 底模路径显式覆盖：TTS_Config 的默认值指上游仓库布局，我们按
         # engine_assets 的安装路径来。属性名照上游写（cnhuhbert 的多余 h 是
         # 上游的拼写，不是笔误）。
@@ -271,11 +282,14 @@ class SynthEngine:
                     # 构造失败的 TTS() 不会留在 self._tts 上，重试仍是新建路径。
                     _load()
                 except Exception as exc2:  # noqa: BLE001
-                    emit(event="error", job=role_id, message=str(exc2), code="oom")
+                    emit(event="error", job=role_id, message="显存不足",
+                         code="oom", detail=str(exc2))
                     return
             else:
                 code = "init_failed" if self._tts is None else "load_failed"
-                emit(event="error", job=role_id, message=str(exc), code=code)
+                emit(event="error", job=role_id,
+                     message="引擎初始化失败" if code == "init_failed" else "模型加载失败",
+                     code=code, detail=str(exc))
                 return
 
         self._current = role_id
@@ -364,9 +378,9 @@ class SynthEngine:
         except Exception as exc:  # noqa: BLE001
             if _is_oom(exc):
                 self._free_memory()
-                emit(event="error", job=job, message=str(exc), code="oom")
+                emit(event="error", job=job, message="显存不足", code="oom", detail=str(exc))
             else:
-                emit(event="error", job=job, message=str(exc), code="synth_failed")
+                emit(event="error", job=job, message="合成失败", code="synth_failed", detail=str(exc))
             return
 
         if cancelled:

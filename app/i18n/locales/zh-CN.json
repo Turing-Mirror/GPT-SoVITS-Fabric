@@ -214,6 +214,16 @@
       "usage": "用法：train_worker.py <request.json>",
       "bad_request": "无法读取请求文件：{error}",
       "train_failed": "训练失败（退出码 {code}），详情见 {log}"
+    },
+    "synth": {
+      "bad_request": "合成请求参数不完整。",
+      "not_loaded": "尚未加载角色模型。",
+      "init_failed": "合成引擎初始化失败。",
+      "load_failed": "角色模型加载失败。",
+      "oom": "显存不足，合成中断。可以缩短文本、关掉其他占显存的程序后重试。",
+      "synth_failed": "合成失败。",
+      "cancelled": "已取消。",
+      "empty": "合成没有产出任何音频。"
     }
   },
   "s": {

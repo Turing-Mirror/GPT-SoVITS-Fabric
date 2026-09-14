@@ -136,39 +136,32 @@ fn experiments(root: &Path) -> Vec<Value> {
         if name == "mute" || name.starts_with('.') {
             continue;
         }
-        let slices = count_dir(&p.join("1_16k_wavs"));
-        let f0 = count_dir(&p.join("2a_f0"));
-        let feats = count_dir(&p.join("3_feature768"));
-        // 预处理读进来几个、失败几个。界面上要能说清「上次到底做完没有」，
-        // 光一个「可续跑」的布尔值说不出这件事。
-        let (ok_files, fail_files) = preprocess_tally(&p.join("preprocess.log"));
-        // 失败清单只在做失败过时才去解析 —— 日志要整个读一遍，没失败的实验
-        // 不用付这个钱。
-        let failed_files = if fail_files > 0 {
-            preprocess_failure_list(&p.join("preprocess.log"))
-        } else {
-            Vec::new()
-        };
-        let trained = root
-            .join("assets")
-            .join("weights")
-            .join(format!("{name}.pth"))
+        // GSV 的格式化产物：切片 → cnhubert 特征 → wav32k →（Pro）sv →
+        // name2semantic。两个数目对不上就说明上一次是中途停的。
+        let slices = count_dir(&p.join("sliced"));
+        let hubert = count_dir(&p.join("4-cnhubert"));
+        let wav32k = count_dir(&p.join("5-wav32k"));
+        let sv = count_dir(&p.join("7-sv_cn"));
+        let text_done = p.join("2-name2text.txt").is_file();
+        let semantic_done = p.join("6-name2semantic.tsv").is_file();
+        // 训完的成品是角色包（`User_Data/characters/<safe_id>/models/`），
+        // 不是散落的权重文件 —— collect() 的落点与这里必须是同一套约定。
+        let trained = crate::synth::characters_dir(root)
+            .join(crate::characters::safe_id(name))
+            .join("models")
+            .join("sovits.pth")
             .is_file();
         items.push((
             name.to_string(),
             json!({
                 "name": name,
                 "slices": slices,
-                "f0": f0,
-                "features": feats,
-                // 三个数目对不上就说明上一次是中途停的。判据已经修过（数目对得上
-                // 才算做完），但界面上也得说出来 —— 否则「补齐并继续」会比用户
-                // 预期的慢几分钟，他会以为是更新之后变慢了。
-                "complete": slices > 0 && f0 == slices && feats == slices,
-                "preprocess_ok": ok_files,
-                "preprocess_failed": fail_files,
-                "preprocess_failed_files": failed_files,
-                // 有切片就能续跑：预处理是最慢的一步，能跳过就是省下几十分钟。
+                "hubert": hubert,
+                "wav32k": wav32k,
+                "sv": sv,
+                // 格式化五步齐活才算能直接进微调；缺一说明上次断在中途。
+                "complete": slices > 0 && hubert > 0 && wav32k > 0 && text_done && semantic_done,
+                // 有切片就能续跑：切片+ASR 是最慢的一步，能跳过就省下几十分钟。
                 "resumable": slices > 0,
                 "trained": trained,
             }),
@@ -651,84 +644,6 @@ fn guard_exp_dir(root: &Path, exp: &str) -> Result<PathBuf, String> {
 }
 
 
-/// preprocess.py 每个文件写一行：成功是 `路径\t-> Success`，失败是
-/// `路径\t-> Traceback (most recent call last): …`。数这两种前缀就够。
-pub fn preprocess_tally(log: &Path) -> (u64, u64) {
-    let Ok(text) = std::fs::read_to_string(log) else {
-        return (0, 0);
-    };
-    let mut ok = 0u64;
-    let mut fail = 0u64;
-    for line in text.lines() {
-        if line.contains("-> Success") {
-            ok += 1;
-        } else if line.contains("-> Traceback") {
-            fail += 1;
-        }
-    }
-    (ok, fail)
-}
-
-/// preprocess.log 里失败的文件清单（最多 20 条，含原因）。
-///
-/// 失败行是 `<路径>\t-> Traceback (most recent call last):`，后面跟整段
-/// traceback。原因取其中最后一个非空行 —— 那才是真正的异常那一行（如
-/// `UnicodeDecodeError: …`）。只报条数的话，用户知道「有 12 个坏了」却不知道
-/// 是哪 12 个、为什么坏，清完坏文件还得再跑一遍才知道。
-fn preprocess_failure_list(log: &Path) -> Vec<Value> {
-    let Ok(text) = std::fs::read_to_string(log) else {
-        return Vec::new();
-    };
-    const MAX: usize = 20;
-    let mut out: Vec<Value> = Vec::new();
-    let mut cur: Option<String> = None;
-    let mut reason = String::new();
-    fn flush(out: &mut Vec<Value>, cur: &mut Option<String>, reason: &str) {
-        if let Some(name) = cur.take() {
-            let r: String = reason.chars().take(200).collect();
-            out.push(json!({ "name": name, "reason": r }));
-        }
-    }
-    for line in text.lines() {
-        if let Some((path, rest)) = line.split_once('\t') {
-            if let Some(tail) = rest.strip_prefix("-> ") {
-                if !tail.starts_with("Success") && out.len() < MAX {
-                    flush(&mut out, &mut cur, &reason);
-                    // 日志是 Windows 上的 python 写的，路径一律是反斜杠。
-                    // `Path::file_name` 在非 Windows 上不认反斜杠，整条路径会
-                    // 原样留下 —— 产品只出 Windows 不受影响，但测试在 macOS
-                    // 上就成了摆设。两种分隔符都自己切，判据与平台无关。
-                    let name = path
-                        .rsplit(['\\', '/'])
-                        .next()
-                        .filter(|s| !s.is_empty())
-                        .unwrap_or(path)
-                        .to_string();
-                    cur = Some(name);
-                    reason.clear();
-                } else {
-                    flush(&mut out, &mut cur, &reason);
-                }
-                continue;
-            }
-        }
-        if cur.is_some() {
-            let t = line.trim();
-            // 上游脚本的起止标记不是 traceback 的一部分，别让它们把原因顶掉。
-            if t.is_empty()
-                || t == "start preprocess"
-                || t == "end preprocess"
-                || t.starts_with("Fail.")
-            {
-                continue;
-            }
-            reason = t.to_string();
-        }
-    }
-    flush(&mut out, &mut cur, &reason);
-    out
-}
-
 /// 数据集里算数的音频后缀。
 ///
 /// 必须和 `tools/train_worker.py` 的 `AUDIO_EXT` 完全一致 —— 界面上报「找到 120 个音频」而预处理只认出 80 个，比不报
@@ -1069,9 +984,12 @@ fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
     if !crate::engine_assets::engine_core_ready(root) {
         return Err(crate::i18n::t("s.trainEngineCoreMissing").into());
     }
-    // resume 的时候数据集可以不在了 —— 格式化产物已经在实验目录里，原始素材
-    // 删掉也无妨。判据用格式化那一步的第一个产物。
-    let have_slices = exp_root(root).join(&req.exp).join(STAGE_ARTIFACTS[0]).exists();
+    // resume 的时候数据集可以不在了 —— 切片/格式化产物已经在实验目录里，
+    // 原始素材删掉也无妨。切片目录非空就算有产物（`sliced` 是 prepare 的
+    // 第一个落点，比 STAGE_ARTIFACTS[0] 更早出现）。
+    let exp_dir = exp_root(root).join(&req.exp);
+    let have_slices = count_dir(&exp_dir.join("sliced")) > 0
+        || STAGE_ARTIFACTS.iter().any(|a| exp_dir.join(a).exists());
     if !(req.resume && have_slices) && !Path::new(&req.dataset).is_dir() {
         return Err(crate::i18n::t("s.6c4b38602a").into());
     }
@@ -1094,36 +1012,41 @@ struct Progress {
 /// 几轮，全看不出来。stdout 进度以前只进界面，不进日志。
 fn write_outcome(root: &Path, exp: &str, log: &Path, progress: &Progress, outcome: &str) {
     let exp_dir = exp_root(root).join(exp);
+    // GSV 格式化阶段产物名 —— 与 STAGE_ARTIFACTS / train_worker 的落点同源。
     let counts = [
-        ("0_gt_wavs", count_dir(&exp_dir.join("0_gt_wavs"))),
-        ("1_16k_wavs", count_dir(&exp_dir.join("1_16k_wavs"))),
-        ("2a_f0", count_dir(&exp_dir.join("2a_f0"))),
-        ("2b-f0nsf", count_dir(&exp_dir.join("2b-f0nsf"))),
-        ("3_feature768", count_dir(&exp_dir.join("3_feature768"))),
+        ("sliced", count_dir(&exp_dir.join("sliced"))),
+        ("cnhubert", count_dir(&exp_dir.join("4-cnhubert"))),
+        ("wav32k", count_dir(&exp_dir.join("5-wav32k"))),
+        ("sv", count_dir(&exp_dir.join("7-sv_cn"))),
+        ("bert", count_dir(&exp_dir.join("3-bert"))),
     ];
-    let filelist = count_text_lines(&exp_dir.join("filelist.txt"));
+    let list_lines = count_text_lines(&exp_dir.join(format!("{exp}.list")));
     let epoch = latest_epoch(&exp_dir.join("train.log"));
-    let final_w = root
-        .join("assets")
-        .join("weights")
-        .join(format!("{exp}.pth"));
-    let published = root
-        .join("User_Data")
-        .join("models")
-        .join(exp)
-        .join(format!("{exp}.pth"));
-    let exp_pths = list_pth_names(&exp_dir);
-    let weight_pths = list_pth_names(&root.join("assets").join("weights"))
-        .into_iter()
-        .filter(|n| n == &format!("{exp}.pth") || n.starts_with(&format!("{exp}_e")))
-        .collect::<Vec<_>>();
-    let usable = if crate::logging::file_len(&final_w) > 0
-        || crate::logging::file_len(&published) > 0
+    // 训完的成品是角色包，不是散权重 —— 与 collect() / experiments() 的
+    // 「trained」判据同一处落点。
+    let role_dir = crate::synth::characters_dir(root).join(crate::characters::safe_id(exp));
+    let sovits_w = role_dir.join("models").join("sovits.pth");
+    let gpt_w = role_dir.join("models").join("gpt.ckpt");
+    // 中途产物 = 两段微调落在 logs_s{1,2}_<版本>/ 里的检查点。
+    let mut ckpts: Vec<String> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&exp_dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let is_ckpt_dir = e.path().is_dir()
+                && CHECKPOINT_DIR_PREFIXES
+                    .iter()
+                    .any(|pre| name.starts_with(pre));
+            if is_ckpt_dir {
+                ckpts.extend(list_pth_names(&e.path()));
+            }
+        }
+    }
+    let usable = if crate::logging::file_len(&sovits_w) > 0 && crate::logging::file_len(&gpt_w) > 0
     {
         "final"
-    } else if !weight_pths.is_empty() || !exp_pths.is_empty() {
+    } else if !ckpts.is_empty() {
         "intermediate"
-    } else if counts[1].1 > 0 {
+    } else if counts[0].1 > 0 {
         "slices_only"
     } else {
         "none"
@@ -1144,34 +1067,28 @@ fn write_outcome(root: &Path, exp: &str, log: &Path, progress: &Progress, outcom
              usable: {usable}\n\
              latest_epoch: {}\n\
              counts: {}\n\
-             filelist_lines: {filelist}\n\
-             final_weights: {} ({} bytes)\n\
-             published: {} ({} bytes)\n\
-             exp_pths: {}\n\
-             weight_pths: {}",
+             list_lines: {list_lines}\n\
+             role_sovits: {} ({} bytes)\n\
+             role_gpt: {} ({} bytes)\n\
+             ckpts: {}",
             epoch.map(|n| n.to_string()).unwrap_or_else(|| "-".into()),
             counts
                 .iter()
                 .map(|(k, n)| format!("{k}={n}"))
                 .collect::<Vec<_>>()
                 .join(" "),
-            final_w.display(),
-            crate::logging::file_len(&final_w),
-            published.display(),
-            crate::logging::file_len(&published),
-            if exp_pths.is_empty() {
+            sovits_w.display(),
+            crate::logging::file_len(&sovits_w),
+            gpt_w.display(),
+            crate::logging::file_len(&gpt_w),
+            if ckpts.is_empty() {
                 "-".into()
             } else {
-                exp_pths.join(",")
-            },
-            if weight_pths.is_empty() {
-                "-".into()
-            } else {
-                weight_pths.join(",")
+                ckpts.join(",")
             },
         ),
     );
-    for name in ["preprocess.log", "extract_f0_feature.log", "train.log"] {
+    for name in ["train.log"] {
         crate::logging::append_file(
             log,
             &crate::logging::tail_lines(&exp_dir.join(name), 50, 64 * 1024),
@@ -1484,37 +1401,6 @@ fn run_inner(
 mod tests {
     use super::*;
 
-    /// 失败清单要能从上游 preprocess.py 的日志格式里抠出「哪个文件、为什么」，
-    /// 且只挑失败的，成功行和起止标记都不算。
-    #[test]
-    fn preprocess_failure_list_names_the_file_and_the_last_exception_line() {
-        let dir = crate::testutil::scratch("preprocess-failures");
-        std::fs::create_dir_all(&dir).unwrap();
-        let log = dir.join("preprocess.log");
-        std::fs::write(
-            &log,
-            "start preprocess\n\
-             D:\\ds\\ok1.wav\t-> Success\n\
-             D:\\ds\\bad 1.flac\t-> Traceback (most recent call last):\n\
-             \x20 File \"preprocess.py\", line 100, in preprocess_dataset\n\
-             UnicodeDecodeError: 'utf-8' codec can't decode\n\
-             D:\\ds\\ok2.wav\t-> Success\n\
-             D:\\ds\\bad2.mp3\t-> Traceback (most recent call last):\n\
-             \x20 File \"preprocess.py\", line 90\n\
-             CouldntDecodeError: mangled header\n\
-             end preprocess\n",
-        )
-        .unwrap();
-        let v = preprocess_failure_list(&log);
-        assert_eq!(v.len(), 2);
-        assert_eq!(v[0]["name"], "bad 1.flac");
-        assert_eq!(v[0]["reason"], "UnicodeDecodeError: 'utf-8' codec can't decode");
-        assert_eq!(v[1]["name"], "bad2.mp3");
-        // 原因是最后一个非空行（真正的异常行），不是 traceback 中间的 File 行，
-        // 也不是收尾的 end preprocess。
-        assert_eq!(v[1]["reason"], "CouldntDecodeError: mangled header");
-    }
-
     /// ffmpeg 的报告解析：mean_volume 取到，静音时长累加，解析不出就 None/0。
     #[test]
     fn volume_report_parsing_takes_mean_and_sums_silence() {
@@ -1622,28 +1508,6 @@ mod tests {
         // 不存在的实验也拒绝，而不是「删了 0 字节」假装成功。
         assert!(cleanup_apply(&root, "nope", &["dataset".into()]).is_err());
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// 判据必须跟 preprocess.py 写日志的格式对上。
-    ///
-    /// 26.8.20 那位的实验里，2038 个文件的日志就长这样 —— 每个文件一行，
-    /// 成功写 Success，读不进来写整条 traceback。
-    #[test]
-    fn the_preprocess_tally_matches_what_preprocess_py_writes() {
-        let dir = crate::testutil::scratch("preprocess-tally");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let log = dir.join("preprocess.log");
-        std::fs::write(
-            &log,
-            "start preprocess\n             D:/ds/a.wav\t-> Success\n             D:/ds/b.m4a\t-> Traceback (most recent call last):\n             \x20 File \"x.py\", line 1\n             D:/ds/c.wav\t-> Success\n             end preprocess\n",
-        )
-        .unwrap();
-        // traceback 后面那几行缩进的栈帧不能被重复计数。
-        assert_eq!(preprocess_tally(&log), (2, 1));
-        // 日志不在（还没跑过预处理）不是错误，是 0/0。
-        assert_eq!(preprocess_tally(&dir.join("nope.log")), (0, 0));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 两边认的音频后缀必须是同一套。
@@ -1760,9 +1624,9 @@ mod tests {
         let base = crate::testutil::scratch("train-exps");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(crate::train::exp_root(&base).join("mute")).unwrap();
-        std::fs::create_dir_all(crate::train::exp_root(&base).join(&crate::i18n::t("s.6ca6738e54")).join("1_16k_wavs")).unwrap();
+        std::fs::create_dir_all(crate::train::exp_root(&base).join(&crate::i18n::t("s.6ca6738e54")).join("sliced")).unwrap();
         std::fs::write(
-            crate::train::exp_root(&base).join(&crate::i18n::t("s.6ca6738e54")).join("1_16k_wavs").join("a.wav"),
+            crate::train::exp_root(&base).join(&crate::i18n::t("s.6ca6738e54")).join("sliced").join("a.wav"),
             b"x",
         )
         .unwrap();
@@ -1818,13 +1682,13 @@ mod tests {
         let td = crate::testutil::scratch("train-outcome");
         let _ = std::fs::remove_dir_all(&td);
         let exp = crate::train::exp_root(&td).join("voice");
-        std::fs::create_dir_all(exp.join("1_16k_wavs")).unwrap();
-        std::fs::write(exp.join("1_16k_wavs").join("a.wav"), b"x").unwrap();
-        std::fs::write(exp.join("preprocess.log"), "sliced 1 file\n").unwrap();
+        std::fs::create_dir_all(exp.join("sliced")).unwrap();
+        std::fs::write(exp.join("sliced").join("a.wav"), b"x").unwrap();
+        std::fs::write(exp.join("train.log"), "sliced 1 file\n").unwrap();
         let log = td.join("run.log");
         std::fs::write(&log, b"").unwrap();
         let progress = Progress {
-            stage: "preprocess".into(),
+            stage: "prepare".into(),
             done: 1,
             total: 1,
             message: "切片与重采样…".into(),
@@ -1832,17 +1696,18 @@ mod tests {
         write_outcome(&td, "voice", &log, &progress, "cancelled");
         let body = std::fs::read_to_string(&log).unwrap();
         assert!(body.contains("usable: slices_only"), "{body}");
-        assert!(body.contains("1_16k_wavs=1"), "{body}");
-        assert!(body.contains("last: preprocess 1/1"), "{body}");
-        assert!(body.contains("preprocess.log"), "{body}");
+        assert!(body.contains("sliced=1"), "{body}");
+        assert!(body.contains("last: prepare 1/1"), "{body}");
+        assert!(body.contains("train.log"), "{body}");
         assert!(body.contains("sliced 1 file"), "{body}");
 
-        std::fs::create_dir_all(td.join("assets").join("weights")).unwrap();
-        std::fs::write(
-            td.join("assets").join("weights").join("voice.pth"),
-            b"pth",
-        )
-        .unwrap();
+        // 成品 = 角色包的两份权重，与 collect() 的落点一致。
+        let role = crate::synth::characters_dir(&td)
+            .join("voice")
+            .join("models");
+        std::fs::create_dir_all(&role).unwrap();
+        std::fs::write(role.join("sovits.pth"), b"pth").unwrap();
+        std::fs::write(role.join("gpt.ckpt"), b"ckpt").unwrap();
         write_outcome(&td, "voice", &log, &progress, "ok");
         let body = std::fs::read_to_string(&log).unwrap();
         assert!(body.contains("usable: final"), "{body}");

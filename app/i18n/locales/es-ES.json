@@ -214,6 +214,16 @@
       "usage": "Uso: train_worker.py <request.json>",
       "bad_request": "No se puede leer el archivo de solicitud: {error}",
       "train_failed": "El entrenamiento falló (código de salida {code}). Consulte {log}"
+    },
+    "synth": {
+      "bad_request": "La solicitud de síntesis está incompleta.",
+      "not_loaded": "Aún no se ha cargado ningún modelo de voz.",
+      "init_failed": "Error al inicializar el motor de síntesis.",
+      "load_failed": "Error al cargar el modelo de voz.",
+      "oom": "Memoria de GPU insuficiente, síntesis interrumpida. Prueba con un texto más corto o cierra otros programas que usen VRAM y reintenta.",
+      "synth_failed": "La síntesis falló.",
+      "cancelled": "Cancelado.",
+      "empty": "La síntesis no produjo audio."
     }
   },
   "s": {

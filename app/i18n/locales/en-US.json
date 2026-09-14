@@ -214,6 +214,16 @@
       "usage": "Usage: train_worker.py <request.json>",
       "bad_request": "Cannot read the request file: {error}",
       "train_failed": "Training failed (exit code {code}). See {log}"
+    },
+    "synth": {
+      "bad_request": "Incomplete synthesis request.",
+      "not_loaded": "No voice model is loaded yet.",
+      "init_failed": "The synthesis engine failed to initialize.",
+      "load_failed": "Failed to load the voice model.",
+      "oom": "Out of GPU memory, synthesis interrupted. Try shorter text or close other VRAM-heavy programs and retry.",
+      "synth_failed": "Synthesis failed.",
+      "cancelled": "Cancelled.",
+      "empty": "Synthesis produced no audio."
     }
   },
   "s": {

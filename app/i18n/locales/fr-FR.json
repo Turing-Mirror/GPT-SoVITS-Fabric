@@ -214,6 +214,16 @@
       "usage": "Utilisation : train_worker.py <request.json>",
       "bad_request": "Impossible de lire le fichier de requête : {error}",
       "train_failed": "L'entraînement a échoué (code de sortie {code}). Voir {log}"
+    },
+    "synth": {
+      "bad_request": "Requête de synthèse incomplète.",
+      "not_loaded": "Aucun modèle vocal n'est encore chargé.",
+      "init_failed": "Échec de l'initialisation du moteur de synthèse.",
+      "load_failed": "Échec du chargement du modèle vocal.",
+      "oom": "Mémoire GPU insuffisante, synthèse interrompue. Essayez un texte plus court ou fermez les programmes gourmands en VRAM puis réessayez.",
+      "synth_failed": "La synthèse a échoué.",
+      "cancelled": "Annulé.",
+      "empty": "La synthèse n'a produit aucun audio."
     }
   },
   "s": {

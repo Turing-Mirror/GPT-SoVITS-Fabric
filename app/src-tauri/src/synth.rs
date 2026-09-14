@@ -149,15 +149,28 @@ fn ensure_worker(root: &Path) -> Result<(), String> {
 
 /// 带截止时间的读一行。超时多半是 import 链卡死，杀掉重来比挂死好。
 fn read_line_with_deadline(r: &mut Resident, timeout: Duration) -> Result<String, String> {
-    // 同步读没有超时，用看门狗线程兜底：到点杀进程，read 返回 EOF。
-    // 正常路径看门狗什么都没做就退出了，开销可忽略。
+    // 同步读没有超时，用看门狗线程兜底：到点、或用户取消，就杀进程让
+    // read 拿到 EOF。看门狗按小步轮询 done 标志 —— 不能一觉睡满 timeout
+    // 再 join，否则每一行都要等满整个超时窗口。
     let pid = r.child.id();
+    let done = Arc::new(AtomicBool::new(false));
     let killer = {
+        let done = done.clone();
         let flag = cancel_flag();
         std::thread::spawn(move || {
-            std::thread::sleep(timeout);
-            if !flag.load(Ordering::SeqCst) {
-                // 到点还没读完：不区分卡死与慢，直接杀。调用方会拿到 EOF 报错。
+            let step = Duration::from_millis(50);
+            let mut waited = Duration::ZERO;
+            while waited < timeout {
+                if done.load(Ordering::SeqCst) {
+                    return;
+                }
+                if flag.load(Ordering::SeqCst) {
+                    break; // 取消：立刻杀，不等超时
+                }
+                std::thread::sleep(step.min(timeout - waited));
+                waited += step;
+            }
+            if !done.load(Ordering::SeqCst) {
                 kill_pid(pid);
             }
         })
@@ -168,6 +181,7 @@ fn read_line_with_deadline(r: &mut Resident, timeout: Duration) -> Result<String
         .read_line(&mut line)
         .map_err(|e| e.to_string())
         .unwrap_or(0);
+    done.store(true, Ordering::SeqCst);
     killer.join().ok();
     if n == 0 {
         return Err(crate::i18n::t("s.synthErrWorkerGone"));
@@ -422,7 +436,15 @@ fn synthesize_inner(
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "ready" => break,
             "error" => {
-                let msg = v.get("message").and_then(|x| x.as_str()).unwrap_or("");
+                // worker 报文带 message_code（msg.synth.* 语言包）+ detail
+                // （异常原文）；翻译不到时 t_worker_msg 回退 message。
+                let msg = crate::i18n::t_worker_msg(&v);
+                let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
+                let msg = if detail.is_empty() {
+                    msg
+                } else {
+                    format!("{msg}（{detail}）")
+                };
                 return Err(crate::i18n::te("s.synthErrLoadFailed", &msg));
             }
             _ => {}
@@ -486,13 +508,19 @@ fn synthesize_inner(
             }
             "error" => {
                 let code = v.get("code").and_then(|x| x.as_str()).unwrap_or("");
-                let msg = v.get("message").and_then(|x| x.as_str()).unwrap_or("");
                 if code == "cancelled" || cancelled {
                     let _ = app.emit("synth-error", json!({"job": job, "code": "cancelled"}));
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
+                let msg = crate::i18n::t_worker_msg(&v);
+                let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
+                let msg = if detail.is_empty() {
+                    msg
+                } else {
+                    format!("{msg}（{detail}）")
+                };
                 let _ = app.emit("synth-error", json!({"job": job, "code": code, "message": msg}));
-                return Err(msg.to_string());
+                return Err(msg);
             }
             _ => {}
         }
@@ -524,6 +552,37 @@ mod tests {
         assert_eq!(roles.len(), 1);
         assert_eq!(roles[0]["name"], "好角色");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// worker 报的 `synth.*` 码，语言包里必须真的有 —— 和 sep/train 同一条
+    /// 契约：对不上不会报错，只会在界面上冒出 worker 自带的兜底原文。
+    #[test]
+    fn every_synth_code_the_worker_emits_exists_in_the_language_pack() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("engine-payload/tools/synth_worker.py"),
+        )
+        .expect("synth_worker.py");
+
+        let mut codes: Vec<String> = Vec::new();
+        for (i, _) in src.match_indices("code=\"") {
+            let rest = &src[i + "code=\"".len()..];
+            if let Some(end) = rest.find('"') {
+                codes.push(rest[..end].to_string());
+            }
+        }
+        codes.sort();
+        codes.dedup();
+        assert!(
+            codes.len() >= 6,
+            "认出来的码太少，扫描方式可能没跟上 worker 写法：{codes:?}"
+        );
+
+        let _g = crate::i18n::testing::pin("zh-CN");
+        for c in &codes {
+            let key = format!("msg.synth.{c}");
+            assert_ne!(crate::i18n::t(&key), key, "语言包里没有 {key}");
+        }
     }
 
     /// 输出目录：设置页留空回默认，写了就用用户的。

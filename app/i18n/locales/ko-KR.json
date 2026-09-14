@@ -214,6 +214,16 @@
       "usage": "사용법: train_worker.py <request.json>",
       "bad_request": "요청 파일을 읽을 수 없습니다: {error}",
       "train_failed": "학습에 실패했습니다(종료 코드 {code}). 자세한 내용은 {log}"
+    },
+    "synth": {
+      "bad_request": "합성 요청 매개변수가 누락되었습니다.",
+      "not_loaded": "캐릭터 모델이 아직 로드되지 않았습니다.",
+      "init_failed": "합성 엔진 초기화에 실패했습니다.",
+      "load_failed": "캐릭터 모델 로드에 실패했습니다.",
+      "oom": "VRAM 부족으로 합성이 중단되었습니다. 텍스트를 줄이거나 VRAM을 사용하는 다른 프로그램을 닫은 후 다시 시도하세요.",
+      "synth_failed": "합성에 실패했습니다.",
+      "cancelled": "취소되었습니다.",
+      "empty": "합성 결과 오디오가 없습니다."
     }
   },
   "s": {

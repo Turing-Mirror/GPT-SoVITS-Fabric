@@ -75,7 +75,7 @@ fn fmt_size(n: u64) -> String {
     }
 }
 
-/// 补全引擎资源（hubert / rmvpe / ffmpeg）。
+/// 补全引擎资源（engine-core：hubert / roberta / s1v3 / v2ProPlus 底模 / sv / g2pw）。
 ///
 /// 下载进度转发到 `provision-progress` 事件（phase=engine-core）。以前这里
 /// 不传进度回调，首次安装的进度条在 Runtime 下完后停在原地不动 —— 而引擎

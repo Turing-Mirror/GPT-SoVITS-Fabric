@@ -186,13 +186,30 @@ fn engine_core_files() -> Vec<(&'static str, u64)> {
             "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
             MIN_SV_BYTES,
         ),
-        ("GPT_SoVITS/text/G2PWModel/g2pW.onnx", MIN_G2PW_BYTES),
         ("GPT_SoVITS/text/G2PWModel/config.py", MIN_SIDECAR_BYTES),
+        // G2PWPinyin 构造时无条件读这两份字表（onnx_api.py:113-114），
+        // 缺了 g2pw 静默失效或当场崩 —— 不能只看 onnx 在不在。
+        ("GPT_SoVITS/text/G2PWModel/POLYPHONIC_CHARS.txt", MIN_SIDECAR_BYTES),
+        (
+            "GPT_SoVITS/text/G2PWModel/MONOPHONIC_CHARS.txt",
+            MIN_SIDECAR_BYTES,
+        ),
     ]
 }
 
+/// onnx 权重两种命名上游都认（`_find_first_existing_file` 先试 g2pW.onnx
+/// 再试 g2pw.onnx），检查也照此办。
+fn g2pw_onnx_missing(root: &Path) -> bool {
+    let dir = root.join("GPT_SoVITS/text/G2PWModel");
+    !["g2pW.onnx", "g2pw.onnx"].iter().any(|n| {
+        std::fs::metadata(dir.join(n))
+            .map(|m| m.len() >= MIN_G2PW_BYTES)
+            .unwrap_or(false)
+    })
+}
+
 pub fn engine_core_missing(root: &Path) -> Vec<String> {
-    engine_core_files()
+    let mut missing: Vec<String> = engine_core_files()
         .into_iter()
         .filter(|(rel, min)| {
             let p = root.join(rel);
@@ -202,7 +219,11 @@ pub fn engine_core_missing(root: &Path) -> Vec<String> {
             }
         })
         .map(|(rel, _)| rel.to_string())
-        .collect()
+        .collect();
+    if g2pw_onnx_missing(root) {
+        missing.push("GPT_SoVITS/text/G2PWModel/g2pW.onnx".to_string());
+    }
+    missing
 }
 
 pub fn engine_core_ready(root: &Path) -> bool {
@@ -467,7 +488,11 @@ mod tests {
     fn missing_when_root_is_empty() {
         let tmp = crate::testutil::scratch("engine-core-test");
         let _ = std::fs::create_dir_all(&tmp);
-        assert_eq!(engine_core_missing(&tmp).len(), engine_core_files().len());
+        // +1：g2pw 的 onnx 走二选一探测，不在 engine_core_files 清单里。
+        assert_eq!(
+            engine_core_missing(&tmp).len(),
+            engine_core_files().len() + 1
+        );
         assert!(!engine_core_ready(&tmp));
     }
 

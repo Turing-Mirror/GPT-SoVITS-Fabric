@@ -108,6 +108,12 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
   `slice_audio` / `asr` 同住，两边文件名无交集。合并后
   `import tools.my_utils` 与 `python tools/synth_worker.py` 同时成立 ——
   这正是 worker 写的时候假设的布局。
+- **engine-core 按上游布局落盘**：`<安装根>/GPT_SoVITS/pretrained_models/`。
+  上游源码里写死的相对路径（`sv.py` 的说话人验证权重、vocoder、v3-LoRA
+  底模、g2pw 的 `model_source` 缺省值、`fast_langdetect` 的 `cache_dir`）
+  全都按 `<cwd>/GPT_SoVITS/...` 解析；把底模放在顶层 `pretrained_models/`
+  上游一个都找不到——v2ProPlus 推理会当场死在 `init_sv_model`。sv 权重
+  因此归 engine-core 必装，不是训练专属。
 - **`bundle.resources` 用带显式落点的对象形态**。数组形态保留相对路径，
   `engine-payload/tools` 会落在 `<安装根>/engine-payload/tools`，
   比 `paths::looks_like_root` 期望的深一层。
