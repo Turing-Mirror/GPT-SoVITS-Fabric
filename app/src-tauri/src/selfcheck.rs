@@ -10,22 +10,16 @@
 use std::path::Path;
 
 use serde::Serialize;
-use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Evidence {
     pub file: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub line: Option<u64>,
     pub text: String,
 }
 
 impl Evidence {
     fn new(file: impl Into<String>, text: impl Into<String>) -> Self {
-        Self { file: file.into(), line: None, text: text.into() }
-    }
-    fn at(file: impl Into<String>, line: u64, text: impl Into<String>) -> Self {
-        Self { file: file.into(), line: Some(line), text: text.into() }
+        Self { file: file.into(), text: text.into() }
     }
 }
 
@@ -51,11 +45,9 @@ fn rank(level: &str) -> u8 {
 
 /// 跑一遍全部规则，严重的排前面。
 pub fn run(root: &Path) -> Vec<Finding> {
-    let cfg = crate::config::read(root);
     let mut out: Vec<Finding> = Vec::new();
 
     out.extend(known_issue_hits(root));
-    out.extend(chosen_model(&cfg));
     out.extend(train_experiments(root));
     out.extend(pretrained(root));
     out.extend(disk(root));
@@ -85,47 +77,13 @@ fn known_issue_hits(root: &Path) -> Vec<Finding> {
         .collect()
 }
 
-// ---------------------------------------------------------------- 选错模型
-
-/// 训练存档的文件名长这样：`G_35200.pth` / `D_2333.pth`。
-///
-/// 26.8.20 那位选中了 `G_35200.pth`，四次转换四次 `KeyError: 'config'`。两者都
-/// 叫 .pth，一个 452 MB 一个 57 MB，用户分不出来很正常 —— 但文件名是分得出的。
-pub fn looks_like_training_snapshot(name: &str) -> bool {
-    let stem = name.rsplit(['/', '\\']).next().unwrap_or(name);
-    let Some(stem) = stem.strip_suffix(".pth") else {
-        return false;
-    };
-    let Some(rest) = stem.strip_prefix('G').or_else(|| stem.strip_prefix('D')) else {
-        return false;
-    };
-    let Some(digits) = rest.strip_prefix('_') else {
-        return false;
-    };
-    !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
-}
-
-fn chosen_model(cfg: &serde_json::Map<String, Value>) -> Vec<Finding> {
-    let path = cfg.get("pth_path").and_then(|v| v.as_str()).unwrap_or("");
-    if path.is_empty() || !looks_like_training_snapshot(path) {
-        return Vec::new();
-    }
-    let name = path.rsplit(['/', '\\']).next().unwrap_or(path).to_string();
-    vec![Finding {
-        code: "model.training_snapshot",
-        level: ERROR,
-        title: crate::i18n::te("s.chkSnapshotModel", &name),
-        evidence: vec![Evidence::new("configs/inuse/config.json", format!("pth_path = {path}"))],
-    }]
-}
-
 // ---------------------------------------------------------------- 训练产物
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StageCounts {
-    pub slices: u64,
-    pub f0: u64,
-    pub feature: u64,
+    pub sliced: u64,
+    pub cnhubert: u64,
+    pub bert: u64,
 }
 
 /// 三个阶段的产物数目对不上，就说明上一次是中途停的。
@@ -133,25 +91,10 @@ pub struct StageCounts {
 /// 26.8.20 那位：切片 3884、音高 616、特征 0，而续跑的判据是「目录非空就算做
 /// 完」，于是音高整步被跳过，filelist 取交集只剩 618 行 —— 用户以为在拿 3884
 /// 条数据训练，实际只用了 16%，界面上一个字都没提。判据已经改了，但已经存在的
-/// 半份产物还躺在盘上，出包的时候该说一声。
+/// 半份产物还躺在盘上，出包的时候该说一声。目录名是 GSV 格式化阶段的落点，
+/// 与 `train::write_outcome` 的计数同源。
 pub fn stage_mismatch(c: StageCounts) -> bool {
-    c.slices > 0 && (c.f0 != c.slices || c.feature != c.slices)
-}
-
-/// preprocess.log 里失败了几个。数 `Traceback` 就够 —— 每个读不进来的文件
-/// ffmpeg 都会甩一条。
-pub fn preprocess_failures(log: &str) -> (u64, Option<(u64, String)>) {
-    let mut n = 0u64;
-    let mut first: Option<(u64, String)> = None;
-    for (i, line) in log.lines().enumerate() {
-        if line.contains("Traceback") || line.contains("-> Traceback") {
-            n += 1;
-            if first.is_none() {
-                first = Some((i as u64 + 1, line.trim().chars().take(200).collect()));
-            }
-        }
-    }
-    (n, first)
+    c.sliced > 0 && (c.cnhubert != c.sliced || c.bert != c.sliced)
 }
 
 /// train.log 的尾巴是不是显存不足。
@@ -187,9 +130,9 @@ fn train_experiments(root: &Path) -> Vec<Finding> {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
         let counts = StageCounts {
-            slices: count_dir(&dir.join("1_16k_wavs")),
-            f0: count_dir(&dir.join("2a_f0")),
-            feature: count_dir(&dir.join("3_feature768")),
+            sliced: count_dir(&dir.join("sliced")),
+            cnhubert: count_dir(&dir.join("4-cnhubert")),
+            bert: count_dir(&dir.join("3-bert")),
         };
         if stage_mismatch(counts) {
             out.push(Finding {
@@ -199,34 +142,19 @@ fn train_experiments(root: &Path) -> Vec<Finding> {
                     "s.chkStageMismatch",
                     &[
                         &exp,
-                        &counts.slices.to_string(),
-                        &counts.f0.to_string(),
-                        &counts.feature.to_string(),
+                        &counts.sliced.to_string(),
+                        &counts.cnhubert.to_string(),
+                        &counts.bert.to_string(),
                     ],
                 ),
                 evidence: vec![Evidence::new(
-                    format!("logs/{exp}/"),
+                    format!("train/{exp}/"),
                     format!(
-                        "1_16k_wavs={} 2a_f0={} 3_feature768={}",
-                        counts.slices, counts.f0, counts.feature
+                        "sliced={} 4-cnhubert={} 3-bert={}",
+                        counts.sliced, counts.cnhubert, counts.bert
                     ),
                 )],
             });
-        }
-        if let Ok(text) = std::fs::read_to_string(dir.join("preprocess.log")) {
-            let (n, first) = preprocess_failures(&text);
-            if n > 0 {
-                let mut ev = Vec::new();
-                if let Some((line, txt)) = first {
-                    ev.push(Evidence::at(format!("logs/{exp}/preprocess.log"), line, txt));
-                }
-                out.push(Finding {
-                    code: "train.preprocess_failures",
-                    level: WARN,
-                    title: crate::i18n::t2("s.chkPreprocessFail", &exp, &n),
-                    evidence: ev,
-                });
-            }
         }
         let tail = crate::logging::tail_lines(&dir.join("train.log"), 80, 64 * 1024);
         if let Some(line) = train_log_oom(&tail) {
@@ -234,7 +162,7 @@ fn train_experiments(root: &Path) -> Vec<Finding> {
                 code: "train.out_of_memory",
                 level: ERROR,
                 title: crate::i18n::te("s.chkOom", &exp),
-                evidence: vec![Evidence::new(format!("logs/{exp}/train.log"), line)],
+                evidence: vec![Evidence::new(format!("train/{exp}/train.log"), line)],
             });
         }
     }
@@ -267,7 +195,7 @@ fn pretrained(root: &Path) -> Vec<Finding> {
         code: "assets.pretrained_partial",
         level: INFO,
         title: crate::i18n::te("s.chkPretrainedPartial", &missing.join("、")),
-        evidence: vec![Evidence::new("assets/pretrained_v2/", missing.join("、"))],
+        evidence: vec![Evidence::new("GPT_SoVITS/pretrained_models/", missing.join("、"))],
     }]
 }
 
@@ -298,38 +226,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn training_snapshots_are_told_apart_from_voice_models() {
-        // 26.8.20 那位选中的那个。
-        assert!(looks_like_training_snapshot(r"D:\a\User_Data\models\G_35200\G_35200.pth"));
-        assert!(looks_like_training_snapshot("D_2333.pth"));
-        assert!(looks_like_training_snapshot("G_0.pth"));
-        // 音色模型不能被误判 —— 误判一次就是「我的模型明明能用却被说成不对」。
-        assert!(!looks_like_training_snapshot("tp-miku.pth"));
-        assert!(!looks_like_training_snapshot("G.pth"));
-        assert!(!looks_like_training_snapshot("Gundam_x.pth"));
-        assert!(!looks_like_training_snapshot("G_35200.index"));
-        assert!(!looks_like_training_snapshot("my_G_35200.pth"));
-    }
-
-    #[test]
     fn stage_counts_must_all_match_the_slices() {
         // 26.8.20 那位的真实数字。
-        assert!(stage_mismatch(StageCounts { slices: 3884, f0: 616, feature: 0 }));
-        assert!(stage_mismatch(StageCounts { slices: 100, f0: 100, feature: 99 }));
-        assert!(!stage_mismatch(StageCounts { slices: 100, f0: 100, feature: 100 }));
+        assert!(stage_mismatch(StageCounts { sliced: 3884, cnhubert: 616, bert: 0 }));
+        assert!(stage_mismatch(StageCounts { sliced: 100, cnhubert: 100, bert: 99 }));
+        assert!(!stage_mismatch(StageCounts { sliced: 100, cnhubert: 100, bert: 100 }));
         // 还没预处理过的实验不该报 —— 那不是「半份产物」，是「还没开始」。
-        assert!(!stage_mismatch(StageCounts { slices: 0, f0: 0, feature: 0 }));
-    }
-
-    #[test]
-    fn preprocess_failures_are_counted_with_the_first_one_as_evidence() {
-        let log = "start\nfoo -> Traceback (most recent call last)\nbar ok\nbaz -> Traceback (x)\n";
-        let (n, first) = preprocess_failures(log);
-        assert_eq!(n, 2);
-        let (line, text) = first.unwrap();
-        assert_eq!(line, 2);
-        assert!(text.contains("Traceback"));
-        assert_eq!(preprocess_failures("all good\n").0, 0);
+        assert!(!stage_mismatch(StageCounts { sliced: 0, cnhubert: 0, bert: 0 }));
     }
 
     #[test]

@@ -1,16 +1,5 @@
-//! App settings — `User_Data/app_config.json`, mirrored into
-//! `configs/inuse/config.json` for the worker.
-//!
-//! Ports `launcher/config_store.py` + `launcher/inuse_config.py`. Two rules from
-//! the Python shell carry over and must not be dropped:
-//!
-//! * **`configs/inuse/config.json` must never contain dev-machine absolute
-//!   paths.** Shipped builds once leaked `L:\…` and the worker died on user
-//!   machines. Anything that looks like an absolute path on another drive is
-//!   stripped on write.
-//! * **HOT vs COLD.** Hot keys apply to a running stream; cold keys need a
-//!   stop + start. The UI has to say which it is instead of silently doing
-//!   nothing.
+//! App settings — `User_Data/app_config.json`. Synthesis params ride along
+//! with each worker request; there is no running stream to hot-update.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -28,41 +17,9 @@ fn lock_files() -> std::sync::MutexGuard<'static, ()> {
     FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Product defaults. Values match the Python shell so a user switching over
-/// does not silently get different audio.
+/// Product defaults.
 pub fn defaults() -> Map<String, Value> {
     let mut m = Map::new();
-    // voice params (hot)
-    m.insert("pitch".into(), json!(0));
-    m.insert("formant".into(), json!(0.0));
-    m.insert("index_rate".into(), json!(0.75));
-    m.insert("rms_mix_rate".into(), json!(0.25));
-    m.insert("threhold".into(), json!(-60));
-    m.insert("in_gain_db".into(), json!(0.0));
-    m.insert("out_gain_db".into(), json!(0.0));
-    m.insert("f0method".into(), json!("rmvpe"));
-    m.insert("I_noise_reduce".into(), json!(true));
-    m.insert("O_noise_reduce".into(), json!(false));
-    m.insert("use_pv".into(), json!(false));
-    m.insert("function".into(), json!("vc"));
-    // 音效链（热）。默认整条关掉 —— 开着就改变了所有人听到的声音，
-    // 那不该是升级一次软件就默默发生的事。数值与引擎侧默认值对齐。
-    m.insert("fx_enabled".into(), json!(false));
-    m.insert("fx_gate_enabled".into(), json!(true));
-    m.insert("fx_gate_threshold_db".into(), json!(-50.0));
-    m.insert("fx_gate_release_ms".into(), json!(50.0));
-    m.insert("fx_gate_hold_ms".into(), json!(20.0));
-    m.insert("fx_gate_range_db".into(), json!(20.0));
-    m.insert("fx_comp_enabled".into(), json!(true));
-    m.insert("fx_comp_threshold_db".into(), json!(-20.0));
-    m.insert("fx_comp_ratio".into(), json!(4.0));
-    m.insert("fx_comp_attack_ms".into(), json!(5.0));
-    m.insert("fx_comp_release_ms".into(), json!(100.0));
-    m.insert("fx_comp_makeup_db".into(), json!(0.0));
-    m.insert("fx_eq_enabled".into(), json!(true));
-    m.insert("fx_eq_gains".into(), json!([0.0, 0.0, 0.0, 0.0, 0.0]));
-    m.insert("fx_eq_preset".into(), json!("flat"));
-    m.insert("fx_out_gain_db".into(), json!(0.0));
     // 合成台（GPT-SoVITS 自己的键）。参数在角色推荐值与用户手调值之间
     // 由前端合并，这里存的是用户最后用过的那份。
     m.insert("synth_role".into(), json!(""));
@@ -73,23 +30,6 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("synth_top_p".into(), json!(1.0));
     m.insert("synth_temperature".into(), json!(1.0));
     m.insert("synth_rep_penalty".into(), json!(1.35));
-    // model binding (cold) — written by voice selection, not by the settings
-    // page, but the worker expects the keys to exist.
-    // devices / performance (cold)
-    m.insert("sg_hostapi".into(), json!(""));
-    m.insert("sg_wasapi_exclusive".into(), json!(false));
-    m.insert("sg_input_device".into(), json!(""));
-    m.insert("sg_output_device".into(), json!(""));
-    m.insert("sr_type".into(), json!("sr_device"));
-    m.insert("block_time".into(), json!(0.25));
-    m.insert("crossfade_length".into(), json!(0.08));
-    m.insert("extra_time".into(), json!(2.5));
-    m.insert("n_cpu".into(), json!(4));
-    // 默认关。这东西改的是推理核心，先让人自己开、量过再谈默认值。
-    m.insert("cuda_graph".into(), json!(false));
-    // shell-only
-    m.insert("monitor_self".into(), json!(false));
-    m.insert("monitor_device".into(), json!(""));
     // 主显卡序号。-1 = 自动（交给 torch 自己挑）。
     //
     // 不进 COLD_KEYS：worker 不读这个键，它是通过进程环境变量
@@ -112,11 +52,10 @@ pub fn defaults() -> Map<String, Value> {
     // 首页横幅自定义：文案留空 = 默认标题；不透明度最低由前端滑杆限在 20。
     m.insert("home_banner_text".into(), json!(""));
     m.insert("home_banner_opacity".into(), json!(100));
-    // 新手进度的两个历史事件（首次成功变声 / 开启过监听）与永久关闭标记。
-    // 前三步（运行时/音色/声卡）每次实时推导，不需要存。不进任何设置分组：
+    // 新手进度的历史事件（首次成功合成）与永久关闭标记。前两步
+    // （运行时/角色）每次实时推导，不需要存。不进任何设置分组：
     // 这不是用户该在设置页里看到的东西。
     m.insert("onboard_convert".into(), json!(false));
-    m.insert("onboard_monitor".into(), json!(false));
     m.insert("onboard_dismiss".into(), json!(false));
     m.insert("hotkeys_enabled".into(), json!(false));
     // 快捷键组合。键名要和 `shell_extras::HOTKEYS` 对上。
@@ -136,11 +75,11 @@ pub fn defaults() -> Map<String, Value> {
         m.insert(format!("{key}_global"), json!(true));
     }
     m.insert("telemetry_opt_in".into(), json!(Value::Null));
-    // 完成过多少次变声（开启→停止算一次）。攒够十次问一句要不要关注我们。
+    // 完成过多少次合成（跑完算一次）。攒够十次问一句要不要关注我们。
     // 问过之后 follow_prompt_done 置 true，这辈子不再问第二次。
     m.insert("vc_run_count".into(), json!(0));
     m.insert("follow_prompt_done".into(), json!(false));
-    // 第一次点「开启变声」时问一句要不要先看说明页。点「转到说明页」或
+    // 第一次开跑合成时问一句要不要先看说明页。点「转到说明页」或
     // 「不了」都置 true，只出这一次 —— 已经上手的人再被拦一道就是骚扰。
     m.insert("guide_prompt_done".into(), json!(false));
     // 第三方 Hugging Face 下载镜像根。空 = 走 `mirrors::hf_endpoints` 解出来
@@ -409,36 +348,6 @@ pub fn dismiss_ad(root: &Path, id: &str) -> Result<(), String> {
 /// keys belong to which tab.
 pub fn describe() -> Value {
     let mut groups: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    groups.insert(
-        "devices",
-        vec![
-            "sg_hostapi",
-            "sg_input_device",
-            "in_gain_db",
-            "threhold",
-            "sg_output_device",
-            "out_gain_db",
-            "monitor_self",
-            "monitor_device",
-            "sg_wasapi_exclusive",
-            "sr_type",
-        ],
-    );
-    groups.insert(
-        "voice",
-        vec![
-            "pitch",
-            "formant",
-            "index_rate",
-            "rms_mix_rate",
-            "f0method",
-        ],
-    );
-    groups.insert(
-        "perf",
-        vec!["block_time", "crossfade_length", "extra_time", "n_cpu"],
-    );
-    groups.insert("fx", vec!["I_noise_reduce", "O_noise_reduce", "use_pv"]);
     groups.insert(
         "appearance",
         vec![

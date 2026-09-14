@@ -280,15 +280,6 @@ fn catalog_from_data(data: &Value, source: &str) -> Value {
     })
 }
 
-/// 这个角色装没装。
-///
-/// 判据必须和安装落点、以及合成台的扫描目录三者一致 —— 这里以前查的是
-/// `User_Data/models/<id>/` 下有没有 `.pth`，那是 RVC 音色的位置。装进
-/// characters 之后 models 下什么都没有，于是广场上每一张卡片都永远显示
-/// 「未安装」，用户会把同一个包反复装下来。
-///
-/// 「装上了」的定义跟着 `characters::install_zip` 的硬校验走：两份权重齐全。
-/// 只有目录、或者只有其中一份，在合成台点下去照样报错，不该算装好。
 /// 暂存目录 / 缓存目录用的目录名。
 ///
 /// 和 `characters::safe_id` 同一套清洗，只是包一层 Result —— 这里的输入
@@ -317,6 +308,15 @@ fn safe_model_dir_name(name: &str) -> Result<String, String> {
     Ok(cleaned.chars().take(80).collect())
 }
 
+/// 这个角色装没装。
+///
+/// 判据必须和安装落点、以及合成台的扫描目录三者一致 —— 这里以前查的是
+/// `User_Data/models/<id>/` 下有没有 `.pth`，那是 RVC 音色的位置。装进
+/// characters 之后 models 下什么都没有，于是广场上每一张卡片都永远显示
+/// 「未安装」，用户会把同一个包反复装下来。
+///
+/// 「装上了」的定义跟着 `characters::install_zip` 的硬校验走：两份权重齐全。
+/// 只有目录、或者只有其中一份，在合成台点下去照样报错，不该算装好。
 fn is_voice_installed(root: &Path, voice_id: &str) -> bool {
     let id = crate::characters::safe_id(voice_id);
     if id.is_empty() {
@@ -642,53 +642,6 @@ fn copy_i18n_fields(entry: &Value, extra: &mut Map<String, Value>) {
     }
 }
 
-fn write_voice_config(
-    dest_dir: &Path,
-    dest_pth: &Path,
-    name: &str,
-    tag: &str,
-    online_id: &str,
-    index_path: &str,
-    source: &str,
-    official: bool,
-    extra: &Map<String, Value>,
-) -> Value {
-    let mut side = Map::new();
-    side.insert("name".into(), json!(name));
-    side.insert("tag".into(), json!(tag));
-    side.insert(
-        "file".into(),
-        json!(dest_pth.file_name().and_then(|s| s.to_str()).unwrap_or("")),
-    );
-    side.insert("source".into(), json!(source));
-    side.insert("online_id".into(), json!(online_id));
-    side.insert("fabric_official".into(), json!(official));
-    if !index_path.is_empty() {
-        side.insert("index".into(), json!(index_path));
-        side.insert("index_files".into(), json!([index_path]));
-    }
-    for (k, v) in extra {
-        if !side.contains_key(k) {
-            side.insert(k.clone(), v.clone());
-        }
-    }
-    let path = dest_dir.join("config.json");
-    if let Ok(text) = serde_json::to_string_pretty(&Value::Object(side.clone())) {
-        let _ = fs::write(path, text);
-    }
-    json!({
-        "name": name,
-        "path": dest_pth.to_string_lossy(),
-        "file": dest_pth.file_name().and_then(|s| s.to_str()).unwrap_or(""),
-        "dir": dest_dir.to_string_lossy(),
-        "index": index_path,
-        "tag": tag,
-        "source": "user_data",
-        "online_id": online_id,
-    })
-}
-
-/// Install a local voice_pack zip into User_Data/models/<id>/.
 /// `entry` 是清单里那条（广场下载时有，本地导入 zip 时没有）。它带着
 /// `name_i18n` 之类的多语言字段，装进本地 `config.json` 才能让模型页按当前
 /// 语言显示名字。
@@ -938,20 +891,16 @@ pub fn staged_dir(root: &Path, voice_id: &str) -> Result<PathBuf, String> {
     Ok(paths::user_data(root).join("downloads").join(vid))
 }
 
-/// 暂存区里有没有可安装的东西。zip 或 pth 有一个就算。
+/// 暂存区里的角色包 zip。别的不算可安装的东西。
 fn staged_payload(dir: &Path) -> Option<PathBuf> {
-    let rd = fs::read_dir(dir).ok()?;
-    let mut zip = None;
-    let mut pth = None;
-    for e in rd.flatten() {
+    fs::read_dir(dir).ok()?.flatten().find_map(|e| {
         let p = e.path();
-        match p.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase) {
-            Some(ref x) if x == "zip" => zip = Some(p),
-            Some(ref x) if x == "pth" => pth = Some(p),
-            _ => {}
-        }
-    }
-    zip.or(pth)
+        p.extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase)
+            .filter(|x| x == "zip")
+            .map(|_| p)
+    })
 }
 
 /// 每个音色的暂存状态，给商店界面决定按钮显示什么。
@@ -1015,7 +964,15 @@ pub fn install_staged(
     let official = entry.get("official").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let dir = staged_dir(&root, if id.is_empty() { &name } else { &id })?;
-    let payload = staged_payload(&dir).ok_or(crate::i18n::t("s.361cb27e7b"))?;
+    let payload = match staged_payload(&dir) {
+        Some(p) => p,
+        // 目录不是空的但找不到 zip：用户丢进来的是裸权重或别的文件，
+        // 不是这个角色包生态里的东西，直说而不是报「没文件」。
+        None if fs::read_dir(&dir).map(|mut r| r.next().is_some()).unwrap_or(false) => {
+            return Err(crate::i18n::t("s.stagedNotRolePack").into());
+        }
+        None => return Err(crate::i18n::t("s.361cb27e7b").into()),
+    };
 
     let emit = |phase: &str, message: &str| {
         let _ = app.emit(
@@ -1026,80 +983,11 @@ pub fn install_staged(
     };
     emit("extract", &crate::i18n::t("s.e0ce99ef5b"));
 
-    let is_zip = payload
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|s| s.eq_ignore_ascii_case("zip"))
-        .unwrap_or(false);
-
-    let info = if is_zip {
-        install_voice_pack_zip(&root, &payload, &id, &name, &tag, official, Some(&entry))?
-    } else {
-        install_staged_files(&root, &dir, &payload, &id, &name, &tag, official, &entry)?
-    };
+    let info = install_voice_pack_zip(&root, &payload, &id, &name, &tag, official, Some(&entry))?;
     // 装完就把暂存清掉，不然用户的 User_Data 会慢慢堆满几百 MB 的重复文件。
     let _ = fs::remove_dir_all(&dir);
     emit("done", &crate::i18n::t("s.f423573349"));
     Ok(info)
-}
-
-/// 多文件形态（pth + 可选 index）的暂存安装。
-#[allow(clippy::too_many_arguments)]
-fn install_staged_files(
-    root: &Path,
-    dir: &Path,
-    pth: &Path,
-    id: &str,
-    name: &str,
-    tag: &str,
-    official: bool,
-    entry: &Value,
-) -> Result<Value, String> {
-    let vid = safe_model_dir_name(if id.is_empty() { name } else { id })?;
-    let dest_dir = paths::models_dir(root).join(&vid);
-    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-
-    // 换音色前先清掉旧的 pth，否则目录里会同时躺着两个模型。
-    if let Ok(rd) = fs::read_dir(&dest_dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|s| s.to_str()).unwrap_or("").eq_ignore_ascii_case("pth") {
-                let _ = fs::remove_file(p);
-            }
-        }
-    }
-    let dest_pth = dest_dir.join(format!("{vid}.pth"));
-    fs::copy(pth, &dest_pth).map_err(|e| crate::i18n::te("s.afcf23635f", &(e)))?;
-
-    let mut index_path = String::new();
-    if let Ok(rd) = fs::read_dir(dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|s| s.to_str()).unwrap_or("").eq_ignore_ascii_case("index") {
-                let dest_idx = dest_dir.join(format!("{vid}.index"));
-                if fs::copy(&p, &dest_idx).is_ok() {
-                    index_path = dest_idx.to_string_lossy().into_owned();
-                }
-                break;
-            }
-        }
-    }
-
-    let mut extra = Map::new();
-    for k in ["author", "author_url", "source_url", "date", "series", "group"] {
-        if let Some(v) = entry.get(k) {
-            extra.insert(k.to_string(), v.clone());
-        }
-    }
-    copy_i18n_fields(entry, &mut extra);
-    // 暂存安装走的也是清单 entry —— 封面同样要补，否则装完没封面。
-    if let Some(v) = entry_cover(entry) {
-        extra.insert("cover".into(), v);
-    }
-    let source = if official { "online_files" } else { "thirdparty_files" };
-    Ok(write_voice_config(
-        &dest_dir, &dest_pth, name, tag, &vid, &index_path, source, official, &extra,
-    ))
 }
 
 /// Cancel one voice's download, or every in-flight one when `id` is empty.
@@ -1348,10 +1236,11 @@ mod tests {
         std::fs::write(base.join("m.index"), b"x").unwrap();
         assert!(staged_payload(&base).is_none());
 
+        // 裸 .pth 不算：它是 RVC 的音色形态，装进 User_Data/models/ 合成台
+        // 永远看不见。可安装的只有角色包 zip。
         std::fs::write(base.join("m.pth"), b"x").unwrap();
-        assert!(staged_payload(&base).unwrap().ends_with("m.pth"));
+        assert!(staged_payload(&base).is_none());
 
-        // zip 和 pth 同时在时用 zip：整包里还带封面和 config。
         std::fs::write(base.join("m.zip"), b"x").unwrap();
         assert!(staged_payload(&base).unwrap().ends_with("m.zip"));
         let _ = std::fs::remove_dir_all(&base);
@@ -1364,13 +1253,13 @@ mod tests {
         let dl = base.join("User_Data").join("downloads");
         std::fs::create_dir_all(dl.join("ready")).unwrap();
         std::fs::create_dir_all(dl.join("empty")).unwrap();
-        std::fs::write(dl.join("ready").join("a.pth"), b"1234").unwrap();
+        std::fs::write(dl.join("ready").join("a.zip"), b"1234").unwrap();
 
         let st = staged_status(&base);
         let o = st.as_object().unwrap();
         assert!(o.contains_key("ready"));
         assert!(!o.contains_key("empty"));
-        assert_eq!(st["ready"]["file"], json!("a.pth"));
+        assert_eq!(st["ready"]["file"], json!("a.zip"));
         assert_eq!(st["ready"]["size_bytes"], json!(4));
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -1469,7 +1358,7 @@ mod tests {
         assert!(dir.join("models/sovits.pth").is_file(), "落点必须是 characters");
         assert!(dir.join("models/gpt.ckpt").is_file());
         assert!(
-            !paths::models_dir(&root).join("yuzu").exists(),
+            !paths::user_data(&root).join("models").join("yuzu").exists(),
             "不该再往 RVC 那个 models 目录里写"
         );
 

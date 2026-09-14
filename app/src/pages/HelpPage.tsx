@@ -98,14 +98,12 @@ const FAQ: QA[] = [
   { q: t("help.faqQ4"), a: t("help.faqA4") },
 ];
 
-/** status 保留形参：与 App 的调用契约一致；当前分节不再需要设备明细。 */
 function HelpPageImpl({
   focus,
   focusNonce,
 }: {
   focus: string;
   focusNonce: number;
-  status?: unknown;
   onOpenCommunity?: () => void;
 }) {
   const hit = useHelpFocus(focus, focusNonce);

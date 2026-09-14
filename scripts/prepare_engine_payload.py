@@ -171,12 +171,6 @@ OURS_IN_TOOLS = {
     "synth_worker.py",
     "train_worker.py",
     "separate_worker.py",
-    "worker_protocol.py",
-    "audio_probe.py",
-    "collect_diagnostics.py",
-    "device_pick.py",
-    "download_models.py",
-    "perf_report.py",
     "pymss",
     "pymss_core",
 }

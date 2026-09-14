@@ -35,6 +35,9 @@ struct Resident {
 static RESIDENT: Mutex<Option<Resident>> = Mutex::new(None);
 static BUSY: Mutex<bool> = Mutex::new(false);
 static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+/// worker 最近一次 ready 时报的设备（"cuda:0" / "mps" / "cpu"）。
+/// 「其他」页的计算后端行读这个 —— 合成没跑过就没有后端可言，空着。
+static LAST_DEVICE: Mutex<String> = Mutex::new(String::new());
 
 fn cancel_flag() -> Arc<AtomicBool> {
     CANCEL
@@ -72,6 +75,14 @@ pub fn out_dir(root: &Path) -> PathBuf {
 
 fn stop_file(root: &Path) -> PathBuf {
     paths::update_cache(root).join("synth_stop")
+}
+
+/// 「其他」页显示用的后端串（"cuda:0" / "mps" / "cpu"）。没跑过就是空。
+pub fn last_device() -> String {
+    LAST_DEVICE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 /// worker 还活着吗。try_wait 拿 Some(_) 就是退了 —— 崩过、被杀过都算。
@@ -434,7 +445,12 @@ fn synthesize_inner(
             .map_err(|_| crate::i18n::t("s.synthErrLoadTimeout"))?;
         let Some(v) = parse_event(&line) else { continue };
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
-            "ready" => break,
+            "ready" => {
+                if let Some(d) = v.get("device").and_then(|x| x.as_str()) {
+                    *LAST_DEVICE.lock().unwrap_or_else(|e| e.into_inner()) = d.to_string();
+                }
+                break;
+            }
             "error" => {
                 // worker 报文带 message_code（msg.synth.* 语言包）+ detail
                 // （异常原文）；翻译不到时 t_worker_msg 回退 message。

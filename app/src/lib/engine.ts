@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import {  tStatic as t, tStatic  } from "../i18n";
+import { tStatic } from "../i18n";
 
 /**
  * 外壳与 Rust 侧引擎命令之间的这一层。
@@ -14,45 +14,17 @@ import {  tStatic as t, tStatic  } from "../i18n";
  */
 
 export type EngineStatus = {
+  /** "busy" | "idle"。 */
   state?: string;
-  error?: string;
-  message?: string;
-  message_code?: string;
-  /** 0–100. <100 means a load/swap is in flight; 100 or missing means idle. */
-  progress?: number | null;
-  /** Live delay in ms (device + capture block + wait-to-start + infer). */
-  delay_ms?: number;
-  /** Same live reading as delay_ms (kept so older shells still find it). */
-  real_delay_ms?: number;
-  infer_ms?: number;
-  /** 累计输出欠载次数。看增速，不看绝对值。 */
-  underrun?: number;
-  samplerate?: number;
-  pid?: number;
-  worker_alive?: boolean;
-  product_root?: string;
-  hostapis?: string[];
-  input_devices?: string[];
-  output_devices?: string[];
-  sg_hostapi?: string;
-  sg_input_device?: string;
-  sg_output_device?: string;
-  last_input_db?: number;
-  meter_level?: number;
-  threshold_meter?: number;
-  threhold?: number;
+  runtime_ready?: boolean;
   /**
-   * 引擎实际在算的后端：cuda | mps | xpu | cpu。
+   * 最近一次合成 ready 时 worker 报的后端：cuda | mps | cpu | ""。
    *
    * 后端是自动降级的，装了 N 卡包也可能落到 CPU。不摆出来的话，
    * 用户只会看到「显存不足」之类的现象，没法把它和显卡设置联系起来。
+   * 还没合成过就是空 —— 没有跑起来的后端可读。
    */
   compute_backend?: string;
-  /** 后端选中的那块设备的名字。 */
-  compute_device?: string;
-  /** 变声（vc）或直通（im / bypass），引擎协议里的取值。 */
-  function?: string;
-  worker_kind?: string;
   [key: string]: unknown;
 };
 
@@ -105,13 +77,7 @@ function isTauri(): boolean {
 
 export async function getEngineStatus(): Promise<EngineStatus> {
   if (!isTauri()) {
-    return {
-      state: "idle",
-      message: t("s.265e64c266"),
-      worker_alive: false,
-      meter_level: 0,
-      threshold_meter: 0.25,
-    };
+    return { state: "idle", runtime_ready: false };
   }
   return invoke<EngineStatus>("engine_status");
 }

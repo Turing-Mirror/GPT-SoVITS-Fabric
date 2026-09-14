@@ -56,7 +56,7 @@ fn root_clone(state: &State<'_, Mutex<AppState>>) -> Result<PathBuf, String> {
     Ok(g.root.clone())
 }
 
-/// engine-core / VB-Cable readiness for the first-run gate.
+/// engine-core readiness for the first-run gate.
 #[tauri::command]
 fn assets_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     Ok(engine_assets::assets_status(&root_clone(&state)?))
@@ -649,16 +649,16 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 「其他」page → 打开原版实时面板（gui_v1）。
+/// 「其他」page → 打开原版推理界面（inference_webui.py）。
 #[tauri::command]
 async fn legacy_open_panel(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || legacy::open_realtime_panel(&root))
+    tauri::async_runtime::spawn_blocking(move || legacy::open_infer_webui(&root))
         .await
         .map_err(|e| e.to_string())?
 }
 
-/// 「其他」page → 打开原版 WebUI（infer-web.py）。
+/// 「其他」page → 打开原版 WebUI（webui.py）。
 #[tauri::command]
 async fn legacy_open_webui(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
@@ -688,9 +688,13 @@ fn product_root(state: State<'_, Mutex<AppState>>) -> Result<String, String> {
 fn engine_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
     let busy = synth::is_busy() || train::busy() || separate::busy();
+    // worker 的 ready 报的是 "cuda:0" / "mps" / "cpu"；界面分节只要家族名。
+    let device = synth::last_device();
+    let backend = device.split(':').next().unwrap_or("");
     Ok(json!({
         "runtime_ready": paths::runtime_ready(&root),
         "state": if busy { "busy" } else { "idle" },
+        "compute_backend": backend,
     }))
 }
 
@@ -1239,9 +1243,9 @@ pub fn run() {
         // 必须是第一个：插件在第二个进程里做的事就是把命令行递给已经在跑的那个，
         // 然后自己 exit，越早越好，别让它先把窗口和 worker 建起来。
         //
-        // 多开的代价不是「多占一份内存」：两个进程会抢同一块显卡、同一个输入
-        // 设备，还会同时往 runtime_control/status.json 和 configs/inuse/config.json
-        // 里写 —— 后者是共享状态，谁最后写谁赢，另一边的设置就这么没了。
+        // 多开的代价不是「多占一份内存」：两个进程会抢同一块显卡，还会同时
+        // 往 User_Data/app_config.json 里写 —— 那是共享状态，谁最后写谁赢，
+        // 另一边的设置就这么没了。
         //
         // 第二个进程在插件里直接退出，它自己的日志只会留下一行启动横幅然后没有
         // 下文，看起来很像白屏。真正的说明在这里由第一个进程写出来。

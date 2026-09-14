@@ -49,8 +49,9 @@ Product behaviour and decisions: see internal `docs/项目白皮书.md` (gitigno
 
 ## Worker bridge
 
-The shell talks to `Runtime\\pythonw.exe tools\\realtime_worker.py` through the same
-JSON files as the Tk shell (`User_Data/runtime_control/`). On Windows use the F: MSVC
+The shell spawns `Runtime\\pythonw.exe tools\\synth_worker.py --resident` and talks
+JSON lines over stdin/stdout; training and separation are one-shot child workers.
+On Windows use the F: MSVC
 env when building the native host:
 
 ```bat

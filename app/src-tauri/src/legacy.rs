@@ -94,7 +94,7 @@ fn spawn_detached(
 /// 打开上游的原版推理界面（`GPT_SoVITS/inference_webui.py`，端口 9872）。
 ///
 /// 和 WebUI 一样是 Gradio，所以同样把 URL 交回给调用方去开。
-pub fn open_realtime_panel(root: &Path) -> Result<serde_json::Value, String> {
+pub fn open_infer_webui(root: &Path) -> Result<serde_json::Value, String> {
     let script = root
         .join("GPT_SoVITS")
         .join("inference_webui.py");
@@ -149,7 +149,7 @@ mod tests {
     fn missing_scripts_report_the_path() {
         let empty = crate::testutil::scratch("legacy-empty");
         let _ = std::fs::create_dir_all(&empty);
-        let e = open_realtime_panel(&empty).unwrap_err();
+        let e = open_infer_webui(&empty).unwrap_err();
         assert!(e.contains("inference_webui.py"), "got {e}");
         let e = open_webui(&empty).unwrap_err();
         assert!(e.contains("webui.py"), "got {e}");

@@ -286,6 +286,12 @@ def run_step(argv: list[str], env: dict, *, stage: str, label: str,
         # 上游自己的输出原样转到 stderr，壳把 stderr 直接落进日志文件 ——
         # 排障时那份日志就是全部现场。stdout 是协议，不能混。
         print(line, file=sys.stderr)
+        if _TRAIN_LOG is not None:
+            try:
+                _TRAIN_LOG.write(line + "\n")
+                _TRAIN_LOG.flush()
+            except OSError:
+                pass
         tail.append(line)
         if len(tail) > 40:
             del tail[0]
@@ -313,6 +319,11 @@ def _looks_like_oom(text: str) -> bool:
 
 #: 当前请求。只给报错时填参数用（比如 OOM 要报当前批大小）。
 _CURRENT: dict = {}
+
+#: 落进 exp_dir/train.log 的句柄。上游子进程的输出除了转 stderr（进壳的
+#: 运行日志）还要在这留一份 —— 壳的自检（OOM、训到第几轮、阶段产物对不对）
+#: 读的都是这份按实验分开的日志。
+_TRAIN_LOG = None
 
 
 def base_env(req: dict) -> dict:
@@ -792,6 +803,12 @@ def main() -> int:
     # 中转目录：上游的两个训练脚本各自把权重落在这里，收尾时再拼成角色。
     weights_dir = Path(req["output_dir"]) if req["output_dir"] else (exp_dir / "weights")
     weights_dir.mkdir(parents=True, exist_ok=True)
+    global _TRAIN_LOG
+    try:
+        _TRAIN_LOG = open(exp_dir / "train.log", "a", encoding="utf-8",
+                          errors="replace")
+    except OSError:
+        _TRAIN_LOG = None
 
     emit(phase="start")
     emit(phase="env", device=req["device"], version=req["version"],

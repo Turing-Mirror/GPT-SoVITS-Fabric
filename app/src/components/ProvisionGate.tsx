@@ -191,6 +191,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
     // locale 必须进依赖：这几条是 useMemo 算出来的，locale 就绪之前算过一次
     // 之后就再也不重算 —— 直接写在 JSX 里的会跟着刷新，这里不会，于是同一
     // 个界面上一半是当前语言、一半停在默认语言。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t() 读的是全局语言，locale 是重算信号
   }, [info.variants, locale]);
 
   const selectedSizeLabel = useMemo(() => {

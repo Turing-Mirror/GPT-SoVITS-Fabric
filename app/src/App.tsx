@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "./components/StatusBar";
 import { onConfigPatch } from "./lib/config";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
@@ -408,6 +408,11 @@ export default function App() {
     void (async () => {
       try {
         const cfg = await invoke<Record<string, unknown>>("config_get");
+        // 新手三步的第三步：合成成功过一次。落盘后刷新进度条。
+        if (cfg.onboard_convert !== true) {
+          await invoke("config_set", { patch: { onboard_convert: true } });
+          setOnboardTick((n) => n + 1);
+        }
         if (cfg.follow_prompt_done === true) return;
         const n = Number(cfg.vc_run_count ?? 0) + 1;
         await invoke("config_set", { patch: { vc_run_count: n } });
@@ -547,22 +552,7 @@ export default function App() {
   // The settings page reads only the device lists out of engine status, but the
   // whole status object changes every poll tick (mic level, latency), so
   // passing it straight through re-rendered that page 2.5x a second while
-  // converting. Narrow it to the parts that actually change rarely.
-  const st = engine.status as unknown as Record<string, unknown> | undefined;
-  const deviceKey = JSON.stringify([
-    st?.input_devices,
-    st?.output_devices,
-    st?.hostapis,
-  ]);
-  const deviceStatus = useMemo(
-    () => ({
-      input_devices: st?.input_devices,
-      output_devices: st?.output_devices,
-      hostapis: st?.hostapis,
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content, not identity
-    [deviceKey],
-  );
+
 
   // 「用不了？联系社区」的落点。仓库与社媒那张表只在「其他」页有一份，
   // 不在设置页和说明页各抄一遍 —— 抄了就得改三处，迟早对不上。
@@ -754,11 +744,8 @@ export default function App() {
                 />
               );
             case "help":
-              // 说明页要按用户真实的设备列表判断他装没装声卡，所以吃的是同一份
-              // 收窄过的 deviceStatus（原始 status 每秒变两次半，会把页面刷爆）。
               return (
                 <HelpPage
-                  status={deviceStatus}
                   focus={helpFocus}
                   focusNonce={helpFocusNonce}
                   onOpenCommunity={openCommunity}

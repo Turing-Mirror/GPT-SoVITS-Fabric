@@ -94,10 +94,6 @@ pub fn user_data(root: &Path) -> PathBuf {
     }
 }
 
-pub fn control_dir(root: &Path) -> PathBuf {
-    user_data(root).join("runtime_control")
-}
-
 pub fn logs_dir(root: &Path) -> PathBuf {
     user_data(root).join("logs")
 }
@@ -157,26 +153,12 @@ pub fn package_meta_path(root: &Path) -> PathBuf {
     root.join("package_meta.json")
 }
 
-pub fn models_dir(root: &Path) -> PathBuf {
-    user_data(root).join("models")
-}
-
-pub fn engine_weights(root: &Path) -> PathBuf {
-    root.join("assets").join("weights")
-}
-
 pub fn ch_banner_dir(root: &Path) -> PathBuf {
     user_data(root).join("ch-banner")
 }
 
 pub fn app_config_path(root: &Path) -> PathBuf {
     user_data(root).join("app_config.json")
-}
-
-/// Engine-facing config the worker reads. Must never contain absolute paths
-/// from a build machine — see config::sanitize_inuse.
-pub fn inuse_config_path(root: &Path) -> PathBuf {
-    root.join("configs").join("inuse").join("config.json")
 }
 
 pub fn update_cache(root: &Path) -> PathBuf {
@@ -191,10 +173,8 @@ pub fn temp_dir(root: &Path) -> PathBuf {
 
 pub fn ensure_user_dirs(root: &Path) -> std::io::Result<()> {
     fs_create_all(&user_data(root))?;
-    fs_create_all(&models_dir(root))?;
     fs_create_all(&ch_banner_dir(root))?;
     fs_create_all(&update_cache(root))?;
-    fs_create_all(&control_dir(root))?;
     fs_create_all(&logs_dir(root))?;
     fs_create_all(&temp_dir(root))?;
     Ok(())
@@ -245,7 +225,7 @@ fn recently_modified(p: &Path) -> bool {
 /// - `TEMP/`：引擎/UVR 中间产物。先整目录删，失败再逐文件删（锁占用时常见）。
 /// - `User_Data/update_cache`：半截下载、OTA 暂存、一次性请求 json。
 ///   正在下的大文件不在此列 —— 删了它就是让用户从头再下一遍。
-/// - 绝不碰 Runtime / models / app_config / 已装音色。
+/// - 绝不碰 Runtime / characters / app_config / 已装角色。
 pub fn clean_temps(root: &Path) -> CleanStats {
     let mut stats = CleanStats::default();
 
@@ -459,9 +439,9 @@ fn clean_system_temp_leftovers() -> CleanStats {
 
 /// User-triggered cache wipe from the More page.
 ///
-/// Deletes **regenerable** junk only: conversion TEMP, leftover downloads,
-/// log files, and old diagnostic zips. Never touches Runtime, User_Data/models,
-/// app_config, wallpaper, or installed voices.
+/// Deletes **regenerable** junk only: TEMP, leftover downloads, log files,
+/// and old diagnostic zips. Never touches Runtime, User_Data/characters,
+/// app_config, wallpaper, or installed roles.
 pub fn clear_user_cache(root: &Path) -> CleanStats {
     let mut stats = clean_temps(root);
     stats.merge(clear_log_files(&logs_dir(root)));
@@ -573,19 +553,19 @@ mod cache_clear_tests {
         let td = crate::testutil::scratch("cache-clear-test");
         let _ = std::fs::remove_dir_all(&td);
         let logs = td.join("User_Data").join("logs").join("sts");
-        let models = td.join("User_Data").join("models").join("Anon");
+        let role = td.join("User_Data").join("characters").join("anon");
         std::fs::create_dir_all(&logs).unwrap();
-        std::fs::create_dir_all(&models).unwrap();
+        std::fs::create_dir_all(&role).unwrap();
         std::fs::write(logs.join("sts_fail.log"), b"boom").unwrap();
         std::fs::write(td.join("User_Data").join("app_config.json"), b"{}").unwrap();
-        std::fs::write(models.join("a.pth"), b"pth").unwrap();
+        std::fs::write(role.join("sovits.pth"), b"pth").unwrap();
         std::fs::create_dir_all(td.join("TEMP")).unwrap();
         std::fs::write(td.join("TEMP").join("junk.bin"), b"xxxx").unwrap();
 
         let stats = clear_user_cache(&td);
         assert!(stats.removed_files >= 1);
         assert!(!logs.join("sts_fail.log").exists());
-        assert!(models.join("a.pth").exists());
+        assert!(role.join("sovits.pth").exists());
         assert!(td.join("User_Data").join("app_config.json").exists());
         let _ = std::fs::remove_dir_all(&td);
     }

@@ -420,37 +420,6 @@ fn zip_text(
     zip.write_all(text.as_bytes()).map_err(|e| e.to_string())
 }
 
-fn delay_estimate(cfg: &serde_json::Map<String, Value>) -> Value {
-    let block = cfg
-        .get("block_time")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.25);
-    let xf = cfg
-        .get("crossfade_length")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.08);
-    let extra = cfg
-        .get("extra_time")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(2.5);
-    let nr = cfg
-        .get("I_noise_reduce")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let mut algo = block + xf + 0.01;
-    if nr {
-        algo += xf.min(0.04);
-    }
-    json!({
-        "block_ms": (block * 1000.0).round() as i64,
-        "crossfade_ms": (xf * 1000.0).round() as i64,
-        "extra_time_s": extra,
-        "algo_ms_without_device": (algo * 1000.0).round() as i64,
-        "formula": "device + block + wait_to_start + infer (live; crossfade/extra_time lookback only)",
-        "extra_time_note": "lookback only; not in delay_ms",
-    })
-}
-
 /// 用户在生成诊断包前自己填的那几行。
 ///
 /// 群昵称和 QQ 号是**用户主动交出来**的联系方式 —— 没有它，支援拿到一个
@@ -624,13 +593,6 @@ pub struct DiagEntry {
 /// 群里求助的，多出来的那两个他不知道。
 pub fn diagnostics_manifest(root: &Path) -> Vec<DiagEntry> {
     let mut out = Vec::new();
-    for (arc, path) in [
-        ("configs/inuse/config.json", paths::inuse_config_path(root)),
-    ] {
-        if path.is_file() {
-            out.push(DiagEntry { arc: arc.to_string(), path, clipped: false });
-        }
-    }
     let logs = paths::logs_dir(root);
     for p in logs_for_zip(&logs) {
         let rel = p
@@ -731,33 +693,29 @@ fn dir_bytes(p: &Path) -> u64 {
 /// 路径里的 Windows 用户名照样抹掉 —— 这段文字比诊断包更容易被贴到公开场合。
 pub fn summary_text(root: &Path) -> String {
     let cfg = config::read(root);
-    // 计算后端曾经是从常驻 worker 的 status.json 里读的。那个 worker 随实时
-    // 链路一起没了，这里改由补全信息推断 —— 说不准就说「未知」，不编。
-    let sv = |_k: &str| String::new();
     let cv = |k: &str| cfg.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let dash = crate::i18n::t("s.sumUnknown");
     let or_dash = |s: String| if s.trim().is_empty() { dash.clone() } else { s };
 
     let gpus = crate::provision::list_gpus();
-    let backend = {
-        let b = sv("compute_backend");
-        let d = sv("compute_device");
-        match (b.is_empty(), d.is_empty()) {
-            (true, true) => dash.clone(),
-            (false, false) => format!("{b} / {d}"),
-            _ => format!("{b}{d}"),
-        }
-    };
     let main_gpu = match cfg.get("main_gpu").and_then(|v| v.as_i64()) {
         Some(i) if i >= 0 => i.to_string(),
         _ => crate::i18n::t("s.sumAuto"),
     };
-    let audio = format!(
-        "{} / {} → {}",
-        or_dash(sv("sg_hostapi")),
-        or_dash(sv("sg_input_device")),
-        or_dash(sv("sg_output_device"))
-    );
+    // 合成台把选中的角色 id 存在 synth_role；摘要里要的是人看的名字。
+    let role = {
+        let id = cv("synth_role");
+        crate::synth::list_characters(root)
+            .get("roles")
+            .and_then(|r| r.as_array())
+            .and_then(|a| {
+                a.iter()
+                    .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
+            })
+            .and_then(|r| r.get("name").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string()
+    };
     let findings = crate::selfcheck::run(root);
     let findings_line = if findings.is_empty() {
         crate::i18n::t("s.diagFindingsNone")
@@ -782,20 +740,14 @@ pub fn summary_text(root: &Path) -> String {
             crate::i18n::t("s.sumGpu"),
             if gpus.is_empty() { dash.clone() } else { gpus.join(" / ") }
         ),
-        format!("{}: {}", crate::i18n::t("s.sumBackend"), backend),
         format!("{}: {}", crate::i18n::t("s.sumMainGpu"), main_gpu),
-        format!("{}: {}", crate::i18n::t("s.sumAudio"), audio),
         format!(
             "{}: {}",
             crate::i18n::t("s.sumRuntime"),
             crate::i18n::t(if paths::runtime_ready(root) { "s.sumYes" } else { "s.sumNo" })
         ),
-        format!("{}: {}", crate::i18n::t("s.sumVoice"), or_dash(cv("last_model_name"))),
+        format!("{}: {}", crate::i18n::t("s.sumVoice"), or_dash(role)),
     ];
-    let err = sv("error");
-    if !err.trim().is_empty() {
-        lines.push(format!("{}: {}", crate::i18n::t("s.sumLastError"), err.trim()));
-    }
     lines.push(format!("{}:\n  {}", crate::i18n::t("s.sumFindings"), findings_line));
 
     let text = lines.join("\n");
@@ -881,13 +833,12 @@ pub fn build_diagnostics(
         "engine_core_missing": crate::engine_assets::engine_core_missing(root),
         "ui_source": crate::ui_assets::source_label(),
         "config": Value::Object(cfg.clone()),
-        "delay_estimate": delay_estimate(&cfg),
         "log_inventory": crate::logging::inventory(root),
         "tools": {
             "synth": crate::synth::is_busy(),
             "tts": {
                 "runtime_ready": paths::runtime_ready(root),
-                "model_path": cfg.get("pth_path").and_then(|v| v.as_str()).unwrap_or(""),
+                "role": cfg.get("synth_role").and_then(|v| v.as_str()).unwrap_or(""),
             },
             "separate": crate::separate::status(root),
             "train": crate::train::status(root),
@@ -1166,7 +1117,7 @@ mod tests {
 
         let text = summary_text(&root);
         assert!(text.contains(crate::update::APP_VERSION), "少了版本号：{text}");
-        for key in ["s.sumSystem", "s.sumGpu", "s.sumBackend", "s.sumMainGpu", "s.sumAudio"] {
+        for key in ["s.sumSystem", "s.sumGpu", "s.sumMainGpu", "s.sumVoice", "s.sumRuntime"] {
             let label = crate::i18n::t(key);
             assert!(text.contains(&label), "少了「{label}」：{text}");
         }
@@ -1241,19 +1192,12 @@ mod tests {
         let _locale = crate::i18n::testing::pin("zh-CN");
         let root = crate::testutil::scratch("diag-manifest");
         let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("configs").join("inuse")).unwrap();
-        std::fs::write(
-            root.join("configs").join("inuse").join("config.json"),
-            "{\"pitch\": 0}",
-        )
-        .unwrap();
         let logs = root.join("User_Data").join("logs").join("shell");
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(logs.join("2026-08-21.log"), "启动\n").unwrap();
 
         let manifest = diagnostics_manifest(&root);
         let arcs: Vec<&str> = manifest.iter().map(|e| e.arc.as_str()).collect();
-        assert!(arcs.contains(&"configs/inuse/config.json"), "{arcs:?}");
         assert!(arcs.contains(&"logs/shell/2026-08-21.log"), "{arcs:?}");
         // 不存在的文件不进清单 —— 预览里列一个包里没有的名字是在骗人。
         assert!(!arcs.iter().any(|a| a.starts_with("perf/")), "{arcs:?}");

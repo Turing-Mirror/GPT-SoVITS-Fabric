@@ -517,7 +517,7 @@ fn probe_loudness(root: &Path, files: &[(PathBuf, f64)]) -> Option<(f64, f64)> {
 /// | checkpoints | `logs/<exp>/{logs_s1,logs_s2}/**` | 不能续训，两段微调都要重来 |
 /// | dataset     | `STAGE_ARTIFACTS`                 | 要从格式化那一步重跑 |
 ///
-/// 永不触碰：训练输出目录下已经成形的角色（`User_Data/models/**`）、各类 `.log`。
+/// 永不触碰：训练输出目录下已经成形的角色（`User_Data/characters/**`）、各类 `.log`。
 ///
 /// RVC 那版还有第三类 `snapshots`（`assets/weights/<exp>_eN_sM.pth`，训练途中
 /// 另存的小模型）。GPT-SoVITS 没有这个东西：中途的检查点就在 `logs_s?/` 里，

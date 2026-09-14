@@ -27,7 +27,7 @@ const MANIFEST_URLS: &[&str] = &[
     "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/catalog/online_catalog.snippet.json",
 ];
 
-const UA: &str = "RVCFabric-Shell/1.3";
+const UA: &str = concat!("GPTSoVITSFabric-Shell/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]

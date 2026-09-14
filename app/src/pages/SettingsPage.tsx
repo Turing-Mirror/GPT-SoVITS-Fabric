@@ -63,6 +63,7 @@ function SettingsPageImpl({
 }: Props = {}) {
   const { t, locale, setLocale } = useI18n();
   // Must re-resolve on locale change — module-level t() freezes zh-CN at import.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- tips() 读全局语言，locale 是重算信号
   const TIPS = useMemo(() => tips(), [locale]);
   const tabLabels = useMemo(
     () =>

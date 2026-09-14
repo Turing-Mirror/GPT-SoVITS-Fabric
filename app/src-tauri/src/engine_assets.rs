@@ -1,4 +1,4 @@
-//! GPT-SoVITS 底模（engine-core）供给与遗留 VB-Cable 壳。
+//! GPT-SoVITS 底模（engine-core）供给。
 //!
 //! GPT-SoVITS 推理必装底模，缺一 worker 都起不来：
 //!
@@ -21,11 +21,8 @@
 //! 顶层再放一份 `pretrained_models/` 只会变成上游永远读不到的孤儿。
 //!
 //! 清单路径与命名沿用发布仓 `catalog-src/base-models/*.yaml` 的约定；制品挂
-//! `base-models` Release 标签（发布仓 README 的标签约定）。sha256 是 M0 待回填的
-//! 空值 —— 制品还没发，下载 404 属预期内，不要伪造校验值。
-//!
-//! VB-Cable 是 RVC 版的遗产：GSV 没有虚拟声卡需求，相关函数只保留最小壳
-//! （签名不变、一律按「不需要」处理），等前端/自检侧消费者清理后连壳一起删。
+//! `GSV-engine-core` Release 标签（发布仓 README 的标签约定）。sha256 是 M0
+//! 待回填的空值 —— 制品还没发，下载 404 属预期内，不要伪造校验值。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;

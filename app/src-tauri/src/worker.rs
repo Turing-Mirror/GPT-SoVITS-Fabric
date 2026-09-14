@@ -184,7 +184,6 @@ pub(crate) fn env_for_runtime(root: &Path) -> HashMap<String, String> {
     }
     env.insert(path_key, parts.join(";"));
     env.insert("TM_VOICE_ROOT".into(), root_s);
-    env.insert("TM_REALTIME_WORKER".into(), "1".into());
     env.insert("PYTHONUNBUFFERED".into(), "1".into());
     env.insert("PYTHONNOUSERSITE".into(), "1".into());
     // 管道里的 worker stdout 走 UTF-8，避免中文进度/报错 OSError 22。
@@ -221,9 +220,9 @@ pub(crate) fn env_for_runtime(root: &Path) -> HashMap<String, String> {
 
 /// 把「主显卡」选择变成 worker 进程的环境变量。
 ///
-/// 引擎全线写死 `cuda:0`（configs/config.py 的 `Config.device`，还有 rtrvc /
-/// rmvpe / train_worker 里的一堆 0）。双卡机器上这就是「谁排第一用谁」——
-/// 一块 5060 一块 5090，很可能整场都在用 5060 算。
+/// 引擎全线写死 `cuda:0`（上游 TTS.py / 训练脚本 / 分离脚本里的 device
+/// 选择都是它）。双卡机器上这就是「谁排第一用谁」—— 一块 5060 一块 5090，
+/// 很可能整场都在用 5060 算。
 ///
 /// 不去改引擎那一堆 0，而是在这里遮住其他卡：`CUDA_VISIBLE_DEVICES=n` 之后，
 /// torch 眼里就只剩一块卡，`cuda:0` 自然落到用户选的那块上。训练、分离走的是

@@ -178,7 +178,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   // 是安全问题；这一条讲的是声音权利，跟音色从哪来无关 —— 图灵镜自己训练的
   // 音色一样是拿别人的声音训出来的。两条内容不同，但都只弹一次。
   const [officialAck, setOfficialAck] = useState(false);
-  // 已下载但还没装的第三方音色。第三方 .pth 是 pickle，加载即执行代码，
+  // 已下载但还没装的第三方角色包。包里的 .pth 是 pickle，加载即执行代码，
   // 所以下完停在这里，让用户先自己看一眼再决定装不装。
   const [staged, setStaged] = useState<Record<string, StagedVoice>>({});
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1001,17 +1001,20 @@ function VoiceCard({
   }, [coverHttp]);
   useEffect(() => {
     if (!busy) return;
-    lastMove.current = { at: Date.now(), done: progress?.done ?? 0 };
-    const tick = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(tick);
-  }, [busy]);
-  useEffect(() => {
     const d = progress?.done ?? 0;
-    if (d !== lastMove.current.done) {
+    // 新一次下载开始（busy 翻真）或 done 往前走，都算「还在动」，
+    // 把停滞计时器的基线推到现在 —— 上一次的尾巴不能算进这一次。
+    if (lastMove.current.at === 0 || d !== lastMove.current.done) {
       lastMove.current = { at: Date.now(), done: d };
       setNow(Date.now());
     }
-  }, [progress?.done]);
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [busy, progress?.done]);
+  // busy 翻回假时清掉基线，下一次下载从 0 重开。
+  useEffect(() => {
+    if (!busy) lastMove.current = { at: 0, done: -1 };
+  }, [busy]);
   const author = displayVoiceAuthor(v, loc);
   const parentLabel = voiceParentSeries(v, loc);
   const childLabel = voiceChildGroup(v, loc);

@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 /// UA 里的版本号跟包版本走。写死过的 1.3 在 1.5.4 上原样发了一年，服务端
 /// 按版本统计的数据全是错的；env! 在编译期取 Cargo.toml 的值，零运行时开销。
 const UA: &str = concat!(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RVCFabric/",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GPTSoVITSFabric/",
     env!("CARGO_PKG_VERSION")
 );
 
