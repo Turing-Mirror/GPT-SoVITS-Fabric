@@ -15,7 +15,6 @@
   "upstream_pin": "48b1a01",
   "upstream_commit": "48b1a01",
   "payload_entries": [
-    ".env",
     "GPT_SoVITS",
     "LICENSE",
     "README.md",

@@ -75,7 +75,6 @@ fn stop_file(root: &Path) -> PathBuf {
 }
 
 /// worker 还活着吗。try_wait 拿 Some(_) 就是退了 —— 崩过、被杀过都算。
-/// worker 还活着吗。try_wait 拿 Some(_) 就是退了 —— 崩过、被杀过都算。
 fn worker_alive_mut(g: &mut Option<Resident>) -> bool {
     match g {
         Some(r) => matches!(r.child.try_wait(), Ok(None)),
@@ -179,6 +178,7 @@ fn read_line_with_deadline(r: &mut Resident, timeout: Duration) -> Result<String
 fn kill_pid(pid: u32) {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(0x08000000)
@@ -245,11 +245,11 @@ pub fn list_characters(root: &Path) -> Value {
     if let Ok(rd) = std::fs::read_dir(&base) {
         for e in rd.flatten() {
             let dir = e.path();
-            let cfgPath = dir.join("config.json");
-            if !cfgPath.is_file() {
+            let cfg_path = dir.join("config.json");
+            if !cfg_path.is_file() {
                 continue;
             }
-            let Ok(raw) = std::fs::read_to_string(&cfgPath) else {
+            let Ok(raw) = std::fs::read_to_string(&cfg_path) else {
                 continue;
             };
             let Ok(cfg) = serde_json::from_str::<Value>(&raw) else {
@@ -267,8 +267,22 @@ pub fn list_characters(root: &Path) -> Value {
             let mut lists: Vec<Value> = Vec::new();
             if let Some(arr) = cfg.get("lists").and_then(|v| v.as_array()) {
                 for l in arr {
+                    // `file` 相对包根（`dataset/xxx.list` —— 和 pack_role_pack.py
+                    // 的 `f in rels` 校验、train_worker 写回的 `dataset/<exp>.list`
+                    // 同一套约定）。它是包里带来的字符串：拦住 `..` / 绝对路径 /
+                    // 盘符，不然一个坏包就能把任意文件读给标注解析器。
                     let file = l.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                    let path = dir.join("dataset").join(file);
+                    let rel = file.replace('\\', "/");
+                    let ok = !rel.is_empty()
+                        && !rel.starts_with('/')
+                        && !rel.contains(':')
+                        && rel
+                            .split('/')
+                            .all(|s| !s.is_empty() && s != "." && s != "..");
+                    if !ok {
+                        continue;
+                    }
+                    let path = dir.join(&rel);
                     let Ok(parsed) = crate::annot::load(&path.to_string_lossy()) else {
                         continue;
                     };
@@ -387,8 +401,8 @@ fn synthesize_inner(
             // 两个都得是**目录**：worker 那边最终走的是
             // `HubertModel.from_pretrained()` / `AutoTokenizer.from_pretrained()`，
             // 指到 pretrained_model2.pth 这种具体权重文件上会当场报错。
-            "cnhubert": "pretrained_models/chinese-hubert-base",
-            "bert": "pretrained_models/chinese-roberta-wwm-ext-large",
+            "cnhubert": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
+            "bert": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
             // 主显卡（-1 = 自动）。不传的话 worker 只能自己猜第 0 张，
             // 而上游 TTS_Config 的默认值是 CPU —— 装了 N 卡运行时也白装。
             "main_gpu": crate::config::read(root)

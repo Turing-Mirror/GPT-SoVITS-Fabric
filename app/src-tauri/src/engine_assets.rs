@@ -3,9 +3,22 @@
 //! GPT-SoVITS 推理必装底模，缺一 worker 都起不来：
 //!
 //! * **cnhubert**（chinese-hubert-base）— SSL 音频特征底模；
-//! * **roberta**（chinese-roberta-wwm-ext-large）— BERT 文本特征底模；
+//! * **roberta**（chinese-roberta-wwm-ext-large）— BERT 文本特征底模
+//!   （同时是 g2pw 分词器的 model_source）；
 //! * **GPT 底模 s1v3** — v3/v4/v2Pro/v2ProPlus 共用；
-//! * **SoVITS 底模组** — 默认版本 v2ProPlus 的 s2Gv/s2Dv。
+//! * **SoVITS 底模组** — 默认版本 v2ProPlus 的 s2Gv/s2Dv；
+//! * **sv**（ERes2NetV2 说话人验证）— `sv.py` 的硬编码路径，Pro 模型
+//!   `init_vits_weights` → `init_sv_model` 必走，缺了 load 直接崩；
+//! * **G2PWModel** — 中文多音字模型，`text/chinese2.py` 在模块级建
+//!   `G2PWPinyin(model_dir="GPT_SoVITS/text/G2PWModel")`，缺了它会去
+//!   modelscope 静默拉一百多 MB，第一次中文合成看起来像卡死。
+//!
+//! 落点是**上游自己的布局**：`<安装根>/GPT_SoVITS/pretrained_models/` 与
+//! `<安装根>/GPT_SoVITS/text/G2PWModel/`。上游源码里所有写死的路径
+//! （sv.py、init_vocoder 的 vocoder、v3-LoRA 的 s2Gv3.pth、TTS_Config 的
+//! 默认值、fast_langdetect 的 cache_dir）全都按 `<cwd>/GPT_SoVITS/...`
+//! 解析，worker 的 cwd 就是安装根 —— 把底模放进 vendored 树里它们才看得见。
+//! 顶层再放一份 `pretrained_models/` 只会变成上游永远读不到的孤儿。
 //!
 //! 清单路径与命名沿用发布仓 `catalog-src/base-models/*.yaml` 的约定；制品挂
 //! `base-models` Release 标签（发布仓 README 的标签约定）。sha256 是 M0 待回填的
@@ -14,7 +27,7 @@
 //! VB-Cable 是 RVC 版的遗产：GSV 没有虚拟声卡需求，相关函数只保留最小壳
 //! （签名不变、一律按「不需要」处理），等前端/自检侧消费者清理后连壳一起删。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
@@ -37,13 +50,16 @@ const BASE_MODELS_TAG: &str = "GSV-engine-core";
 /// GSV 必装底模包清单：(Release 附件名 / 缓存名, sha256)。
 ///
 /// 包名沿用发布仓 catalog-src/base-models/*.yaml 的 name 字段加 .zip 后缀；
-/// 对应 hubert+roberta / gpt-s1v3 / v2proplus 三组。sha256 制品发布后回填 ——
-/// 空串期间下载器按现状行为走（跳过校验），update.rs 里「拒绝无有效 sha 的
-/// 补丁」那道安全闸在补丁/角色包路径上，不在这里，不受影响。
+/// 对应 hubert+roberta / gpt-s1v3 / v2proplus(+sv) / g2pw 四组。每个 zip 的
+/// 内部路径都从 `GPT_SoVITS/` 底下算起（`pretrained_models/...`、
+/// `text/G2PWModel/...`），统一解到 `<安装根>/GPT_SoVITS/`。sha256 制品发布
+/// 后回填 —— 空串期间下载器按现状行为走（跳过校验），update.rs 里「拒绝无
+/// 有效 sha 的补丁」那道安全闸在补丁/角色包路径上，不在这里，不受影响。
 const BASE_MODEL_PACKS: &[(&str, &str)] = &[
     ("base-hubert-bert.zip", ""),
     ("base-gpt-s1v3.zip", ""),
     ("base-v2proplus.zip", ""),
+    ("base-g2pw.zip", ""),
 ];
 
 /// 同一时刻只允许一个引擎资源包在下载。
@@ -91,23 +107,37 @@ fn catalog_size_for(root: &Path, cache_name: &str) -> u64 {
 // ---------------------------------------------------------------------------
 
 /// 各底模的最小合法体积。按上游发布体积估，制品发布后校准：
-/// cnhubert ~100MB、roberta ~500MB、s1v3 ~200MB、v2ProPlus s2 各 ~200MB。
+/// cnhubert ~100MB、roberta ~500MB、s1v3 ~200MB、v2ProPlus s2 各 ~200MB、
+/// sv ~50MB、g2pw onnx ~100MB。
 const MIN_HUBERT_BYTES: u64 = 100_000_000;
 const MIN_BERT_BYTES: u64 = 500_000_000;
 const MIN_S1V3_BYTES: u64 = 200_000_000;
 const MIN_S2_BYTES: u64 = 200_000_000;
+const MIN_SV_BYTES: u64 = 10_000_000;
+const MIN_G2PW_BYTES: u64 = 10_000_000;
 /// config.json / tokenizer.json 这类随行文件的下限。它们只有几 KB，
 /// 但少一个 `from_pretrained` 就起不来，所以必须一并把关；给个很小的
 /// 非零下限，只为挡住 0 字节的半截下载。
 const MIN_SIDECAR_BYTES: u64 = 64;
 
+/// 底模统一解到这里：`<安装根>/GPT_SoVITS/`。包里的相对路径
+/// （`pretrained_models/...`、`text/G2PWModel/...`）落进去之后正好是上游
+/// 源码按 cwd 拼出来的位置 —— sv.py、init_vocoder、TTS_Config 默认值、
+/// fast_langdetect 的 cache_dir 全都指这儿，没有第二条约定要维护。
+fn engine_core_dest(root: &Path) -> PathBuf {
+    root.join("GPT_SoVITS")
+}
+
 /// (相对安装根的路径, 最小合法体积) — a truncated download must not
 /// count as ready, which is why sizes are checked and not just existence.
 ///
-/// 安装路径即上游 TTS_Config / worker 期望的 pretrained_models 布局：
-/// chinese-hubert-base/、chinese-roberta-wwm-ext-large/、s1v3.ckpt 与
-/// v2ProPlus/s2{G,D}v2ProPlus.pth。worker 侧会显式传路径覆盖，但两边必须
-/// 对齐同一套约定。
+/// 安装路径即上游源码期望的布局：`GPT_SoVITS/pretrained_models/` 下的
+/// chinese-hubert-base/、chinese-roberta-wwm-ext-large/、s1v3.ckpt、
+/// v2Pro/s2{G,D}v2ProPlus.pth（上游把两个 Pro 底模都放在 v2Pro/ 目录里，
+/// 见 `TTS_Config.default_configs`）、sv/pretrained_eres2netv2w24s4ep4.ckpt
+/// （`sv.py` 写死的相对路径，Pro 推理必加载），以及
+/// `GPT_SoVITS/text/G2PWModel/`（`text/chinese2.py` 写死的 model_dir）。
+/// worker 侧还会显式传绝对路径覆盖，但两边必须对齐同一套约定。
 ///
 /// 前两项是 HuggingFace 模型**目录**，底下走 `from_pretrained()`：光有权重
 /// 文件是起不来的，config.json 少一个就 `OSError`。所以这里按上游
@@ -120,38 +150,44 @@ const MIN_SIDECAR_BYTES: u64 = 64;
 fn engine_core_files() -> Vec<(&'static str, u64)> {
     vec![
         (
-            "pretrained_models/chinese-hubert-base/pytorch_model.bin",
+            "GPT_SoVITS/pretrained_models/chinese-hubert-base/pytorch_model.bin",
             MIN_HUBERT_BYTES,
         ),
         (
-            "pretrained_models/chinese-hubert-base/config.json",
+            "GPT_SoVITS/pretrained_models/chinese-hubert-base/config.json",
             MIN_SIDECAR_BYTES,
         ),
         (
-            "pretrained_models/chinese-hubert-base/preprocessor_config.json",
+            "GPT_SoVITS/pretrained_models/chinese-hubert-base/preprocessor_config.json",
             MIN_SIDECAR_BYTES,
         ),
         (
-            "pretrained_models/chinese-roberta-wwm-ext-large/pytorch_model.bin",
+            "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/pytorch_model.bin",
             MIN_BERT_BYTES,
         ),
         (
-            "pretrained_models/chinese-roberta-wwm-ext-large/config.json",
+            "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/config.json",
             MIN_SIDECAR_BYTES,
         ),
         (
-            "pretrained_models/chinese-roberta-wwm-ext-large/tokenizer.json",
+            "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/tokenizer.json",
             MIN_SIDECAR_BYTES,
         ),
-        ("pretrained_models/s1v3.ckpt", MIN_S1V3_BYTES),
+        ("GPT_SoVITS/pretrained_models/s1v3.ckpt", MIN_S1V3_BYTES),
         (
-            "pretrained_models/v2ProPlus/s2Gv2ProPlus.pth",
+            "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
             MIN_S2_BYTES,
         ),
         (
-            "pretrained_models/v2ProPlus/s2Dv2ProPlus.pth",
+            "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2ProPlus.pth",
             MIN_S2_BYTES,
         ),
+        (
+            "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
+            MIN_SV_BYTES,
+        ),
+        ("GPT_SoVITS/text/G2PWModel/g2pW.onnx", MIN_G2PW_BYTES),
+        ("GPT_SoVITS/text/G2PWModel/config.py", MIN_SIDECAR_BYTES),
     ]
 }
 
@@ -306,7 +342,7 @@ fn hoist_nested(dir: &Path, name: &str) {
     let _ = std::fs::remove_dir(&nested);
 }
 
-/// Download + extract every required base-model pack into the install root.
+/// Download + extract every required base-model pack under `GPT_SoVITS/`.
 ///
 /// `progress` mirrors the shared downloader's (done, total, phase) so the
 /// caller can forward it to the UI. Before it existed, the first-run gate
@@ -323,14 +359,16 @@ pub fn ensure_engine_core(
     if engine_core_ready(root) {
         return Ok(());
     }
+    let dest = engine_core_dest(root);
+    std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
     for &(file, sha) in BASE_MODEL_PACKS {
-        fetch_base_pack(file, sha, root, root, cancel.clone(), progress.clone())?;
+        fetch_base_pack(file, sha, &dest, root, cancel.clone(), progress.clone())?;
     }
     if !engine_core_ready(root) {
         // Same guard: a single top-level folder in the zip would put
         // pretrained_models/ one level too deep.
         for &(file, _) in BASE_MODEL_PACKS {
-            hoist_nested(root, file.trim_end_matches(".zip"));
+            hoist_nested(&dest, file.trim_end_matches(".zip"));
         }
     }
     let missing = engine_core_missing(root);
@@ -436,7 +474,7 @@ mod tests {
     #[test]
     fn truncated_first_base_model_does_not_count_as_ready() {
         let tmp = crate::testutil::scratch("engine-core-trunc");
-        let f = tmp.join("pretrained_models/chinese-hubert-base");
+        let f = tmp.join("GPT_SoVITS/pretrained_models/chinese-hubert-base");
         let _ = std::fs::create_dir_all(&f);
         let _ = std::fs::write(f.join("pytorch_model.bin"), b"too small");
         assert!(engine_core_missing(&tmp)
@@ -448,7 +486,7 @@ mod tests {
     fn hoists_a_single_nested_folder() {
         // 底模包若带单层顶层目录（如 base-hubert-bert/），解出来的
         // pretrained_models 会垫深一层，就绪检查永远找不到文件。
-        let base = crate::testutil::scratch("hoist-test");
+        let base = engine_core_dest(&crate::testutil::scratch("hoist-test"));
         let _ = std::fs::remove_dir_all(&base);
         let nested = base.join("base-hubert-bert");
         std::fs::create_dir_all(nested.join("pretrained_models/chinese-hubert-base")).unwrap();
@@ -470,6 +508,19 @@ mod tests {
         );
         assert!(!nested.exists(), "nested dir removed");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 就绪清单里的每一条都必须落在上游源码自己拼得出来的位置：
+    /// `GPT_SoVITS/pretrained_models/` 或 `GPT_SoVITS/text/`。钉住这条约定 ——
+    /// 哪天有人把 dest 挪回安装根顶层，sv.py 和 vocoder 的硬编码路径就全断了。
+    #[test]
+    fn core_files_live_inside_the_vendored_tree() {
+        for (rel, _) in engine_core_files() {
+            assert!(
+                rel.starts_with("GPT_SoVITS/"),
+                "{rel} 必须落在 GPT_SoVITS/ 下，上游按 <cwd>/GPT_SoVITS/... 解析"
+            );
+        }
     }
 
     #[test]

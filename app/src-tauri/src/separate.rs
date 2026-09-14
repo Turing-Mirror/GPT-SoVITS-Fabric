@@ -378,7 +378,6 @@ fn run_inner(
 mod tests {
     use super::*;
 
-    #[test]
     /// worker 和它依赖的两棵 vendored 树必须真的在 payload 里。
     ///
     /// 这三样以前一样都没有 —— `separate.rs` 整个文件从 RVC 抄过来，脚本却没跟

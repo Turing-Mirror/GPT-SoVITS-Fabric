@@ -17,7 +17,7 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::{config, logging, paths, worker};
+use crate::{logging, paths, worker};
 
 /// 上游 `config.py` 里的 `webui_port_main`。改这里没用，要跟着上游走。
 pub const WEBUI_PORT: u16 = 9874;

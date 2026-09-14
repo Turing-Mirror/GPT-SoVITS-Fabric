@@ -63,13 +63,18 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-PRETRAINED = "pretrained_models"
+#: 底模落点 = 上游布局 `GPT_SoVITS/pretrained_models/`。上游源码里写死的路径
+#: （sv.py 的 sv_path、vocoder、v3-LoRA 底模、g2pw 的 model_source 缺省值、
+#: fast_langdetect 的 cache_dir）全都按 `<cwd>/GPT_SoVITS/...` 解析，底模放
+#: 在顶层 `pretrained_models/` 的话上游一个都找不到。与 `engine_assets.rs`
+#: 的 `engine_core_files` 是同一套约定 —— 不然「预检说齐了、训练说缺」。
+PRETRAINED = "GPT_SoVITS/pretrained_models"
 
-#: 各版本的 s2 底模。路径与 `engine_assets.rs` 的 `engine_core_files` 对齐 ——
-#: 两边必须是同一套约定，不然「预检说齐了、训练说缺」。
+#: 各版本的 s2 底模。目录名照上游 `TTS_Config.default_configs`：两个 Pro 版本
+#: 的底模都在 `v2Pro/` 下（上游没有单独的 v2ProPlus 目录）。
 S2_PRETRAINED = {
-    "v2ProPlus": (f"{PRETRAINED}/v2ProPlus/s2Gv2ProPlus.pth",
-                  f"{PRETRAINED}/v2ProPlus/s2Dv2ProPlus.pth"),
+    "v2ProPlus": (f"{PRETRAINED}/v2Pro/s2Gv2ProPlus.pth",
+                  f"{PRETRAINED}/v2Pro/s2Dv2ProPlus.pth"),
     "v2Pro": (f"{PRETRAINED}/v2Pro/s2Gv2Pro.pth",
               f"{PRETRAINED}/v2Pro/s2Dv2Pro.pth"),
     "v2": (f"{PRETRAINED}/gsv-v2final-pretrained/s2G2333k.pth",
@@ -93,8 +98,10 @@ S1_PRETRAINED = f"{PRETRAINED}/s1v3.ckpt"
 
 CNHUBERT_DIR = f"{PRETRAINED}/chinese-hubert-base"
 BERT_DIR = f"{PRETRAINED}/chinese-roberta-wwm-ext-large"
-#: v2Pro 系列的说话人验证模型。随 v2proplus 包一起发。
-#: Pro 版本上它是硬依赖 —— 见 `format_steps` 的注释，缺了不会报错只会出废模型。
+#: v2Pro 系列的说话人验证模型。路径与上游 `sv.py` 写死的相对路径一致 ——
+#: Pro 模型的**推理**也加载它（`init_vits_weights` → `init_sv_model`），
+#: 所以它归 engine-core 必装，不是训练专属。训练侧见 `format_steps` 的注释，
+#: 缺了不会报错只会出废模型。
 SV_PATH = f"{PRETRAINED}/sv/pretrained_eres2netv2w24s4ep4.ckpt"
 
 STAGES = ("prepare", "format", "sovits", "gpt")
@@ -454,6 +461,39 @@ _STEP_HUBERT = ("2-get-hubert-wav32k.py", "5-wav32k")
 _STEP_SV = ("2-get-sv.py", "7-sv_cn")
 _STEP_SEMANTIC = ("3-get-semantic.py", "6-name2semantic.tsv")
 
+#: 上游脚本按 i_part 分片落盘：`1-get-text.py` 写 `2-name2text-0.txt`，
+#: `3-get-semantic.py` 写 `6-name2semantic-0.tsv` —— 正式名是 webui.py 在
+#: 全部跑完后拼出来的（webui.py:820-827 拼接、1004-1011 补 tsv 表头）。
+#: 不做这一步的话产物检查永远失败，s1_train 也读不到训练集文件。
+#: 值是 (分片前缀, 合并时要补的表头)。
+_MERGED_ARTIFACTS = {
+    "2-name2text.txt": ("2-name2text", None),
+    "6-name2semantic.tsv": ("6-name2semantic", "item_name\tsemantic_audio"),
+}
+
+
+def _merge_parts(opt_dir: Path, artifact: str) -> None:
+    """把 `<前缀>-<i>.<后缀>` 分片拼成正式产物，与上游 webui.py 的收尾一致。
+
+    all_parts 恒为 1，但按通配合并对续跑和手工分片都成立。分片文件合并后删除，
+    与上游相同。
+    """
+    prefix, header = _MERGED_ARTIFACTS[artifact]
+    ext = artifact.rsplit(".", 1)[1]
+    parts = sorted(
+        opt_dir.glob(f"{prefix}-*.{ext}"),
+        key=lambda p: p.stem.rsplit("-", 1)[-1].zfill(8),
+    )
+    if not parts:
+        return
+    lines: list[str] = []
+    for p in parts:
+        lines += p.read_text(encoding="utf-8").strip("\n").split("\n")
+        p.unlink()
+    if header is not None:
+        lines.insert(0, header)
+    (opt_dir / artifact).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
 
 def format_steps(version: str) -> tuple[tuple[str, str], ...]:
     """这个版本要跑哪几步格式化。判据与上游一致：版本名里带 Pro 就要 sv。"""
@@ -512,6 +552,8 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
         path = need(f"GPT_SoVITS/prepare_datasets/{script}",
                     "script_missing", f"{script} is missing", name=script)
         run_step([sys.executable, str(path)], env, stage="format", label=script)
+        if artifact in _MERGED_ARTIFACTS:
+            _merge_parts(opt_dir, artifact)
         if not (opt_dir / artifact).exists():
             raise Fail("no_artifact", f"{script} produced no {artifact}",
                        name=artifact, step=script)

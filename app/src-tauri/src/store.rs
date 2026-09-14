@@ -565,10 +565,6 @@ fn banner_file_name(hint: &str) -> Option<String> {
 }
 
 /// 远程封面挂了时，用文件名去本机 ch-banner 里找（开发仓 / 已缓存的封面）。
-fn local_banner_for_url(root: &Path, url: &str) -> Option<String> {
-    local_banner_for_hint(root, url)
-}
-
 fn local_banner_for_hint(root: &Path, hint: &str) -> Option<String> {
     let name = banner_file_name(hint)?;
     let dirs = [
@@ -826,11 +822,6 @@ pub fn install_voice_entry(
         .unwrap_or(true);
     let pack_url = entry
         .get("pack_url")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let pth_url = entry
-        .get("pth_url")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
@@ -1420,9 +1411,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("tp-yuuka.jpg"), vec![0u8; 200]).unwrap();
         let url = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/covers/tp-yuuka.jpg";
-        let got = local_banner_for_url(&root, url).expect("should find local yuuka");
+        let got = local_banner_for_hint(&root, url).expect("should find local yuuka");
         assert!(got.ends_with("tp-yuuka.jpg"), "{got}");
-        assert!(local_banner_for_url(&root, "https://x/covers/..").is_none());
+        assert!(local_banner_for_hint(&root, "https://x/covers/..").is_none());
         // 相对路径 cover 字段也能对上本机文件。
         let rel = local_banner_for_hint(&root, "ch-banner/tp-yuuka.jpg");
         assert!(rel.unwrap().ends_with("tp-yuuka.jpg"));

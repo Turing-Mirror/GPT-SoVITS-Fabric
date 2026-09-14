@@ -39,7 +39,7 @@ load 同一角色直接复用；load 不同角色 = `init_vits_weights` / `init_
 热切换（旧权重随之释放）；显存不足（OOM）时先 `empty_cache()` 再重试一次，
 仍失败才报错。
 
-**上游接口的三个坑，改之前先看这里**（对照 GPT-SoVITS @ 48b1a01）：
+**上游接口的四个坑，改之前先看这里**（对照 GPT-SoVITS @ 48b1a01）：
 
 1. 换权重的方法叫 `init_vits_weights` / `init_t2s_weights`。
    `set_sovits_weights` / `set_gpt_weights` 是 `api_v2.py` 的 **HTTP 路由名**，
@@ -52,6 +52,11 @@ load 同一角色直接复用；load 不同角色 = `init_vits_weights` / `init_
    写成 `cnhubert_base_path` / `bert_path` 只会给对象挂两个没人读的新属性，
    真路径仍停在相对 cwd 的上游布局。两者都要**目录**，不是权重文件 ——
    底下走的是 `HubertModel.from_pretrained()` / `AutoTokenizer.from_pretrained()`。
+4. `TTS(cfg)` **构造时就加载权重**：`_init_models` 会读
+   `cfg.t2s_weights_path` / `cfg.vits_weights_path`（TTS.py 467-473）。这两个
+   默认值指向 `GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/` 的 v2 底模，
+   我们没随包发 —— 不覆盖的话 `TTS()` 当场 FileNotFoundError，根本走不到
+   换角色权重那一步。所以构造时直接填角色的 gpt/sovits 路径，让它一步到位。
 """
 
 from __future__ import annotations
@@ -71,9 +76,11 @@ if str(ROOT) not in sys.path:
 
 # 两个都是 **目录**：上游 `CNHubert.__init__` 走 `HubertModel.from_pretrained`，
 # BERT 走 `AutoTokenizer/AutoModelForMaskedLM.from_pretrained`，指到具体权重
-# 文件上会当场报错。
-DEFAULT_CNHUBERT = "pretrained_models/chinese-hubert-base"
-DEFAULT_BERT = "pretrained_models/chinese-roberta-wwm-ext-large"
+# 文件上会当场报错。路径是上游布局：底模统一装在 `GPT_SoVITS/pretrained_models/`
+# 下（sv.py / vocoder / g2pw 的 model_source 全都写死了这个前缀，放别处上游
+# 看不见）。engine_assets.rs 的 engine_core_files 与这里必须对齐。
+DEFAULT_CNHUBERT = "GPT_SoVITS/pretrained_models/chinese-hubert-base"
+DEFAULT_BERT = "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large"
 
 
 def emit(**kw) -> None:
@@ -166,9 +173,12 @@ class SynthEngine:
     def _abs(self, rel: str) -> str:
         return str(ROOT / rel) if not Path(rel).is_absolute() else rel
 
-    def _ensure_tts(self, req: dict):
+    def _ensure_tts(self, req: dict) -> bool:
+        """起引擎。**返回 True 表示这次是新建的** —— `TTS(cfg)` 构造时就按
+        cfg 里的权重路径做了 `_init_models`，角色权重已经在里面了，调用方
+        不必再 swap 一遍。"""
         if self._tts is not None:
-            return self._tts
+            return False
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 
         cnhubert = str(req.get("cnhubert") or "") or DEFAULT_CNHUBERT
@@ -188,11 +198,25 @@ class SynthEngine:
         # 不设这两个就永远是 CPU + float32 —— 装了 6GB 的 N 卡运行时也一样。
         cfg.device = device
         cfg.is_half = is_half
+        # TTS() 构造时就把这两份读进来（坑 4）：填角色自己的权重，让默认底模
+        # 那份不存在的路径永远不被碰。
+        sovits = str(req.get("sovits") or "").strip()
+        gpt = str(req.get("gpt") or "").strip()
+        if sovits:
+            cfg.vits_weights_path = self._abs(sovits)
+        if gpt:
+            cfg.t2s_weights_path = self._abs(gpt)
         cfg.update_configs()
+
+        # g2pw 分词器的 model_source 读 env bert_path，缺省落回上游相对路径
+        # —— 那恰好转到这里装的同一目录，但写死成绝对路径更不容易被 cwd 坑。
+        import os
+
+        os.environ.setdefault("bert_path", self._abs(bert))
 
         self._config = cfg
         self._tts = TTS(cfg)
-        return self._tts
+        return True
 
     def _swap_weights(self, sovits: str, gpt: str) -> None:
         """换成目标角色的两份权重。
@@ -233,24 +257,25 @@ class SynthEngine:
             emit(event="ready", role=role_id, cached=True, device=str(getattr(self._config, "device", "")))
             return
 
-        try:
-            self._ensure_tts(req)
-        except Exception as exc:  # noqa: BLE001
-            emit(event="error", job=role_id, message=f"引擎初始化失败：{exc}", code="init_failed")
-            return
+        def _load() -> None:
+            """新建 = TTS(cfg) 构造时按角色权重初始化；已建 = 热切换。"""
+            if not self._ensure_tts(req):
+                self._swap_weights(sovits, gpt)
 
         try:
-            self._swap_weights(sovits, gpt)
+            _load()
         except Exception as exc:  # noqa: BLE001
             if _is_oom(exc):
                 self._free_memory()
                 try:
-                    self._swap_weights(sovits, gpt)
+                    # 构造失败的 TTS() 不会留在 self._tts 上，重试仍是新建路径。
+                    _load()
                 except Exception as exc2:  # noqa: BLE001
                     emit(event="error", job=role_id, message=str(exc2), code="oom")
                     return
             else:
-                emit(event="error", job=role_id, message=str(exc), code="load_failed")
+                code = "init_failed" if self._tts is None else "load_failed"
+                emit(event="error", job=role_id, message=str(exc), code=code)
                 return
 
         self._current = role_id
