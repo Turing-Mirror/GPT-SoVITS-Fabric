@@ -142,17 +142,6 @@ const BY_ID: Record<
     en: "Donald Trump",
     hant: "唐納·川普",
   },
-  guanguan: { zh: "guanguanV1", en: "guanguanV1", series: "RVC原版", series_en: "RVC Original", series_ja: "RVCオリジナル", series_hant: "RVC原版" },
-  keruan: { zh: "keruanV1", en: "keruanV1", series: "RVC原版", series_en: "RVC Original", series_ja: "RVCオリジナル", series_hant: "RVC原版" },
-  kiki: { zh: "kikiV1", en: "kikiV1", series: "RVC原版", series_en: "RVC Original", series_ja: "RVCオリジナル", series_hant: "RVC原版" },
-  "youzhanv2-xi": {
-    zh: "youzhanv2-xi",
-    en: "youzhanv2-xi",
-    series: "RVC原版",
-    series_en: "RVC Original",
-    series_ja: "RVCオリジナル",
-    series_hant: "RVC原版",
-  },
 };
 
 const SERIES_FALLBACK: Record<
@@ -160,7 +149,6 @@ const SERIES_FALLBACK: Record<
   { en?: string; ja?: string; hant?: string; ko?: string }
 > = {
   "原神": { en: "Genshin Impact", ja: "原神", hant: "原神", ko: "원신" },
-  "RVC原版": { en: "RVC Original", ja: "RVCオリジナル", hant: "RVC原版", ko: "RVC 오리지널" },
   "MyGO!!!!!": { en: "MyGO!!!!!", ja: "MyGO!!!!!", hant: "MyGO!!!!!" },
   "BanG Dream": { en: "BanG Dream", ja: "BanG Dream", hant: "BanG Dream", ko: "뱅드림" },
   VOCALOID: { en: "VOCALOID", ja: "VOCALOID", hant: "VOCALOID" },

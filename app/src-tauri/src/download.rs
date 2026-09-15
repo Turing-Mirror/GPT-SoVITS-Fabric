@@ -33,7 +33,7 @@ fn shared_runtime() -> &'static tokio::runtime::Runtime {
     RT.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(8)
-            .thread_name("rvc-dl")
+            .thread_name("gsv-dl")
             .enable_all()
             .build()
             .expect("download runtime")

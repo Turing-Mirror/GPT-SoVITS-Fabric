@@ -770,7 +770,7 @@ fn separate_reveal(path: String) -> Result<(), String> {
     Ok(())
 }
 
-// --- 离线语音转换 STS（音频 → 目标音色）------------------------------------
+// --- 工具窗口的回转入口 -----------------------------------------------------
 
 /// 工具窗口点「下载模型」：把主窗口叫到前面并跳到广场的下载区。
 #[tauri::command]
@@ -847,6 +847,23 @@ fn synth_reveal_output(state: State<'_, Mutex<AppState>>) -> Result<(), String> 
     let dir = synth::out_dir(&root);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     crate::shell_extras::reveal(&dir.join("x"))
+}
+
+/// 首页「最近合成」：输出目录里最新的几条产物。
+#[tauri::command]
+fn synth_recent(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    Ok(synth::recent_outputs(&root, 8))
+}
+
+/// 最近合成条目的「在文件夹中显示」。
+#[tauri::command]
+fn synth_reveal_file(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(path.trim());
+    if p.is_file() {
+        return crate::shell_extras::reveal(&p);
+    }
+    Ok(())
 }
 
 // --- .list 标注管理 --------------------------------------------------------
@@ -1010,7 +1027,7 @@ fn train_cancel() {
 async fn engine_force_kill(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
     tauri::async_runtime::spawn_blocking(move || {
-        // 先把语音转换收掉。
+        // 先把合成收掉。
         //
         // 走正常的取消路径而不是直接杀：合成那边收到取消会自己收尾，
         // 输出文件不会写到一半。收不掉才让后面的强杀兜底。
@@ -1341,6 +1358,8 @@ pub fn run() {
             synth_start,
             synth_cancel,
             synth_reveal_output,
+            synth_recent,
+            synth_reveal_file,
             extra_list,
             extra_download,
             extra_cancel,

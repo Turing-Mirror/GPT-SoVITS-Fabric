@@ -9,19 +9,16 @@ describe("errorActions", () => {
   it("covers the missing-asset family", () => {
     for (const code of [
       "train.pretrained_missing",
-      "train.rmvpe_missing",
-      "train.mute_missing",
-      "train.no_feature",
-      "runtime.not_ready",
-      "runtime.missing_python",
-      "engine.missing_gui",
+      "train.bert_missing",
+      "train.hubert_missing",
+      "train.sv_missing",
     ]) {
       expect(actionCodes()).toContain(code);
     }
   });
 
   it("returns a labelled action for a known code", () => {
-    const a = actionFor("train.no_feature");
+    const a = actionFor("train.pretrained_missing");
     expect(a).not.toBeNull();
     expect(a!.label.length).toBeGreaterThan(0);
     expect(typeof a!.run).toBe("function");

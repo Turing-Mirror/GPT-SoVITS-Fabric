@@ -7,14 +7,14 @@
 //! ```text
 //! User_Data/logs/
 //!   shell/2026-08-13.log     daily stream (window, IPC)
-//!   worker/2026-08-13.log    realtime worker
-//!   sts/sts_YYYYMMDD_HHMMSS.log   one file per conversion
-//!   tts/   separate/   train/   bench/
+//!   worker/2026-08-13.log    resident synth worker protocol trace
+//!   synth/2026-08-13.log     synth worker stderr
+//!   separate/   train/
 //! ```
 //!
 //! Retention is 48 hours by file mtime, swept on startup. Job logs are
 //! always kept until they age out — deleting successes left diagnostics
-//! packs with no record that STS/TTS/separate/train had been used.
+//! packs with no record that synthesis/separate/train had been used.
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -35,16 +35,12 @@ pub const RETAIN: Duration = Duration::from_secs(2 * 24 * 3600);
 
 pub const CH_SHELL: &str = "shell";
 pub const CH_WORKER: &str = "worker";
-pub const CH_STS: &str = "sts";
-pub const CH_TTS: &str = "tts";
+pub const CH_SYNTH: &str = "synth";
 pub const CH_SEPARATE: &str = "separate";
 pub const CH_TRAIN: &str = "train";
-pub const CH_BENCH: &str = "bench";
 
 /// Every channel the packer and the 48h sweeper should know about.
-pub const CHANNELS: &[&str] = &[
-    CH_SHELL, CH_WORKER, CH_STS, CH_TTS, CH_SEPARATE, CH_TRAIN, CH_BENCH,
-];
+pub const CHANNELS: &[&str] = &[CH_SHELL, CH_WORKER, CH_SYNTH, CH_SEPARATE, CH_TRAIN];
 
 /// Point the logger at the product root. Safe to call once; later calls are
 /// ignored so a stray caller cannot redirect the log mid-session.
@@ -72,7 +68,7 @@ pub fn daily_path(root: &Path, channel: &str) -> PathBuf {
     dir.join(format!("{day}.log"))
 }
 
-/// One-shot job log (`sts/sts_20260813_220015.log`).
+/// One-shot job log (`train/train_20260813_220015.log`).
 pub fn run_path(root: &Path, channel: &str) -> PathBuf {
     let dir = channel_dir(root, channel);
     let _ = fs::create_dir_all(&dir);
@@ -408,19 +404,19 @@ mod tests {
     fn inventory_lists_empty_channels() {
         let td = crate::testutil::scratch("log-inv");
         let _ = fs::remove_dir_all(&td);
-        fs::create_dir_all(td.join("User_Data").join("logs").join("sts")).unwrap();
+        fs::create_dir_all(td.join("User_Data").join("logs").join("synth")).unwrap();
         // inventory() joins user_data(root)/logs — fake a product root.
         let root = &td;
-        fs::create_dir_all(root.join("User_Data").join("logs").join("sts")).unwrap();
+        fs::create_dir_all(root.join("User_Data").join("logs").join("synth")).unwrap();
         fs::write(
-            root.join("User_Data").join("logs").join("sts").join("sts_1.log"),
+            root.join("User_Data").join("logs").join("synth").join("synth_1.log"),
             b"x",
         )
         .unwrap();
         let inv = inventory(root);
-        assert_eq!(inv["channels"]["sts"]["count"], 1);
-        assert_eq!(inv["channels"]["tts"]["count"], 0);
-        assert_eq!(inv["channels"]["tts"]["dir_exists"], false);
+        assert_eq!(inv["channels"]["synth"]["count"], 1);
+        assert_eq!(inv["channels"]["separate"]["count"], 0);
+        assert_eq!(inv["channels"]["separate"]["dir_exists"], false);
         let _ = fs::remove_dir_all(&td);
     }
 
@@ -470,8 +466,8 @@ mod tests {
     fn sweep_keeps_fresh_logs_and_json() {
         let td = crate::testutil::scratch("log-sweep");
         let _ = fs::remove_dir_all(&td);
-        fs::create_dir_all(td.join("sts")).unwrap();
-        let fresh = td.join("sts").join("sts_new.log");
+        fs::create_dir_all(td.join("synth")).unwrap();
+        let fresh = td.join("synth").join("synth_new.log");
         let json = td.join("runtime_integrity_last.json");
         fs::write(&fresh, b"new").unwrap();
         fs::write(&json, b"{}").unwrap();

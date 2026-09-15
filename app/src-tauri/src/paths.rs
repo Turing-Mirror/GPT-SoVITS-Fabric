@@ -552,11 +552,11 @@ mod cache_clear_tests {
         // entries with that prefix, and would delete this fixture first.
         let td = crate::testutil::scratch("cache-clear-test");
         let _ = std::fs::remove_dir_all(&td);
-        let logs = td.join("User_Data").join("logs").join("sts");
+        let logs = td.join("User_Data").join("logs").join("synth");
         let role = td.join("User_Data").join("characters").join("anon");
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::create_dir_all(&role).unwrap();
-        std::fs::write(logs.join("sts_fail.log"), b"boom").unwrap();
+        std::fs::write(logs.join("synth_fail.log"), b"boom").unwrap();
         std::fs::write(td.join("User_Data").join("app_config.json"), b"{}").unwrap();
         std::fs::write(role.join("sovits.pth"), b"pth").unwrap();
         std::fs::create_dir_all(td.join("TEMP")).unwrap();
@@ -564,7 +564,7 @@ mod cache_clear_tests {
 
         let stats = clear_user_cache(&td);
         assert!(stats.removed_files >= 1);
-        assert!(!logs.join("sts_fail.log").exists());
+        assert!(!logs.join("synth_fail.log").exists());
         assert!(role.join("sovits.pth").exists());
         assert!(td.join("User_Data").join("app_config.json").exists());
         let _ = std::fs::remove_dir_all(&td);

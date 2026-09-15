@@ -32,21 +32,16 @@ function levelLabel(level: Finding["level"]): string {
  * 二十一条里找自己那条，跟没指一样；所以带上问题的 key，跳过去直接展开。
  */
 const HELP_TARGET: Record<string, string> = {
-  "engine.killed_by_system": "faq#s.faqAlreadyRunningQ",
   "train.out_of_memory": "faq#s.faqVramQ",
-  "audio.underrun": "faq#s.ca98fe8db7",
-  "audio.mme_high_delay": "faq#s.faqLatencyQ",
-  // 训练这几条的答案在「训练音色」那一段里，不在常见情况。
-  "model.training_snapshot": "train",
+  // 训练这条的答案在「训练音色」那一段里，不在常见情况。
   "train.stage_mismatch": "train",
-  "train.preprocess_failures": "train",
 };
 
 function actionFor(f: Finding): { label: string; run: () => void } | null {
   if (f.code === "assets.pretrained_partial") {
     return {
       label: t("s.errActDownload"),
-      run: () => openDownloadModels({ filter: "train" }),
+      run: () => openDownloadModels({ filter: "all" }),
     };
   }
   const target = HELP_TARGET[f.code];

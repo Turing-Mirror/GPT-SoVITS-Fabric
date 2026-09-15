@@ -31,66 +31,49 @@ function toHelp(section: string): () => void {
 }
 
 const CODE_ACTIONS: Record<string, Action> = {
-  // 训练缺件：三样都住在广场的下载区。
+  // 引擎底模缺件：都住在广场的「下载模型」区，引擎资源那组就在最上面，
+  // 不带筛选词。
+  "train.bert_missing": {
+    labelKey: "s.errActDownload",
+    run: toDownloads("train.bert_missing", "all"),
+  },
+  "train.hubert_missing": {
+    labelKey: "s.errActDownload",
+    run: toDownloads("train.hubert_missing", "all"),
+  },
   "train.pretrained_missing": {
     labelKey: "s.errActDownload",
-    run: toDownloads("train.pretrained_missing", "train"),
+    run: toDownloads("train.pretrained_missing", "all"),
   },
-  "train.rmvpe_missing": {
+  "train.sv_missing": {
     labelKey: "s.errActDownload",
-    run: toDownloads("train.rmvpe_missing", "train"),
+    run: toDownloads("train.sv_missing", "all"),
   },
-  "train.mute_missing": {
-    labelKey: "s.errActDownload",
-    run: toDownloads("train.mute_missing", "train"),
-  },
-  // hubert 缺失/损坏走引擎资源入口（和 Runtime 同一页，不带筛选词）。
-  "train.no_feature": {
-    labelKey: "s.errActDownload",
-    run: toDownloads("train.no_feature", "all"),
-  },
-  // 数据集体检不通过的三条：答案在说明页「训练音色」段，跳过去直接展开。
-  "train.no_slices": {
+  // 数据集与转写类问题：答案在说明页「训练音色」段，跳过去直接展开。
+  "train.no_asr": {
     labelKey: "s.errActHelp",
     run: toHelp("train"),
   },
-  "train.no_f0": {
+  "train.dataset_missing": {
     labelKey: "s.errActHelp",
     run: toHelp("train"),
   },
-  "train.no_samples": {
+  "train.list_empty": {
     labelKey: "s.errActHelp",
     run: toHelp("train"),
   },
-  // 运行时没装齐：同一个入口，不带筛选词。
-  "runtime.not_ready": {
-    labelKey: "s.errActRuntime",
-    run: toDownloads("runtime.not_ready", "all"),
-  },
-  "runtime.missing_python": {
-    labelKey: "s.errActRuntime",
-    run: toDownloads("runtime.missing_python", "all"),
-  },
-  "engine.missing_gui": {
-    labelKey: "s.errActRuntime",
-    run: toDownloads("engine.missing_gui", "all"),
-  },
-  // 中文路径：这条只能靠用户搬目录，说明页里对应的答案在「常见情况」。
-  // 深链 faq#key 会直接展开那一条 —— HELP_ANCHORS 里没有 "install"，
-  // 传它等于点了个不动的按钮。
-  "vc.non_ascii_path": {
+  "train.wav_missing": {
     labelKey: "s.errActHelp",
-    run: toHelp("faq#s.8e6b1ba01b"),
+    run: toHelp("train"),
   },
-  // 选到的是训练存档：得先在训练窗「进阶设置 → 模型提取」里转成音色。把训练
-  // 窗开到用户眼前，比让他自己去猜「训练窗」在主界面哪个入口强。不走
-  // ToolWindow 的 openTool —— 那个会先查引擎资源并可能弹下载框，而能碰上这个
-  // 错的人显然已经有整套训练环境；也避免组件间的循环引用。
-  "sts.model_is_archive": {
-    labelKey: "s.errActExtract",
-    run: () => {
-      void invoke("tools_open", { kind: "train" }).catch(() => {});
-    },
+  "train.no_transcript": {
+    labelKey: "s.errActHelp",
+    run: toHelp("train"),
+  },
+  // 显存不足的答案在说明页常见情况里，深链直接展开那一条。
+  "train.oom": {
+    labelKey: "s.errActHelp",
+    run: toHelp("faq#s.faqVramQ"),
   },
 };
 

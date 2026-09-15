@@ -77,6 +77,49 @@ fn stop_file(root: &Path) -> PathBuf {
     paths::update_cache(root).join("synth_stop")
 }
 
+/// 最近的合成产物，按修改时间倒序。首页「最近合成」用。
+pub fn recent_outputs(root: &Path, limit: usize) -> Value {
+    let dir = out_dir(root);
+    let mut rows: Vec<(std::time::SystemTime, String, String)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let is_audio = p
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| matches!(x.to_ascii_lowercase().as_str(), "wav" | "flac" | "mp3" | "ogg"))
+                .unwrap_or(false);
+            if !p.is_file() || !is_audio {
+                continue;
+            }
+            let mtime = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            rows.push((
+                mtime,
+                p.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+                p.to_string_lossy().into_owned(),
+            ));
+        }
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.truncate(limit);
+    json!(rows
+        .into_iter()
+        .map(|(mtime, name, path)| {
+            json!({
+                "name": name,
+                "path": path,
+                "mtime": mtime
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            })
+        })
+        .collect::<Vec<_>>())
+}
+
 /// 「其他」页显示用的后端串（"cuda:0" / "mps" / "cpu"）。没跑过就是空。
 pub fn last_device() -> String {
     LAST_DEVICE
@@ -113,7 +156,7 @@ fn ensure_worker(root: &Path) -> Result<(), String> {
     let errfile = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(crate::logging::daily_path(root, crate::logging::CH_STS))
+        .open(crate::logging::daily_path(root, crate::logging::CH_SYNTH))
         .ok();
 
     let mut cmd = Command::new(&py);

@@ -60,8 +60,8 @@ function isCancelError(e: unknown): boolean {
 /**
  * First-run / missing-Runtime gate: Runtime + VC 运行库 + 引擎资源。
  *
- * 引擎资源（hubert / rmvpe / ffmpeg）不在这里下，改到「广场 → 下载模型」按需补。
- * Only shown when need_provision; does not change everyday VC flow once ready.
+ * 引擎资源（GSV 底模组）不在这里下，改到「广场 → 下载模型」按需补。
+ * Only shown when need_provision; does not change everyday synth flow once ready.
  */
 export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   // 订阅语言。这个组件用的是静态 t()，本身不会因为换语言重渲染；下面的
@@ -88,7 +88,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   >(null);
   const [vcrMsg, setVcrMsg] = useState("");
   /**
-   * 引擎资源（hubert / rmvpe / ffmpeg，约 720MB）这一步。
+   * 引擎资源（GSV 底模组，约 720MB）这一步。
    *
    * `null` = 不用问（已经有了）；`ask` = 摆在补全后面让用户自己决定；
    * 之后是下载中 / 好了 / 失败。
@@ -259,7 +259,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
       const r = await startProvision(variant, false);
       if (r.ok) {
         // 引擎资源不并进补全本体，但补全完要主动问一句 —— 以前完全不提，用户
-        // 点开实时变声才发现还要再下 720MB，那一下的挫败是可以避免的。
+        // 点开合成台才发现还要再下 720MB，那一下的挫败是可以避免的。
         try {
           const ready = await isEngineCoreReady();
           setCore(ready ? null : "ask");
@@ -511,7 +511,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
         <div className="flex items-center gap-2 justify-end">
           {core === "ask" || core === "failed" ? (
             <>
-              {/* 跳过也能先进软件：这三个文件在第一次开启变声前还会再问一次。 */}
+              {/* 跳过也能先进软件：这些文件在第一次合成前还会再问一次。 */}
               <Btn onClick={onDone}>{t("s.provCoreSkip")}</Btn>
               <Btn
                 primary

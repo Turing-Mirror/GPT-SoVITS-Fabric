@@ -178,17 +178,13 @@ fn count_dir(p: &Path) -> u64 {
 // ---------------------------------------------------------------- 底模
 
 fn pretrained(root: &Path) -> Vec<Finding> {
-    let st = crate::train::status(root);
-    let Some(list) = st.get("pretrained").and_then(|v| v.as_array()) else {
+    // 一个文件都还没落盘是「还没装引擎资源」，provision 闸那边的事；
+    // 这条只管装了一半的残缺状态。
+    if !root.join("GPT_SoVITS").exists() {
         return Vec::new();
-    };
-    let missing: Vec<String> = list
-        .iter()
-        .filter(|e| e.get("ready").and_then(|v| v.as_bool()) == Some(false))
-        .filter_map(|e| e.get("sample_rate").and_then(|v| v.as_str()).map(String::from))
-        .collect();
-    if missing.is_empty() || missing.len() == list.len() {
-        // 一个都不缺，或者一个都没有 —— 后者是「还没装运行时」，不是这条规则的事。
+    }
+    let missing = crate::engine_assets::engine_core_missing(root);
+    if missing.is_empty() {
         return Vec::new();
     }
     vec![Finding {

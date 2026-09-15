@@ -478,12 +478,11 @@ export default function App() {
     await invoke("close_finish", { toTray }).catch(() => {});
   };
 
-  // 「强制结束变声引擎」。
+  // 「强制结束合成引擎」。
   //
-  // 它现在会把正在跑的语音转换一起收掉（见 lib.rs 的 engine_force_kill）——
-  // 用户报的就是「结束了引擎，转换还在跑」。但转换可能是一批几小时的活，
-  // 不能闷声吃掉，所以按之前先查一下在不在跑，在跑就问一句。不在跑就直接执行，
-  // 不给已经卡死的人再加一道弹窗。
+  // 它会把正在跑的合成任务一起收掉（见 lib.rs 的 engine_force_kill）。
+  // 一批长文本可能跑几分钟，不能闷声吃掉，所以按之前先查一下在不在跑，
+  // 在跑就问一句。不在跑就直接执行，不给已经卡死的人再加一道弹窗。
   const [killAsk, setKillAsk] = useState(false);
   const doForceKill = async () => {
     setKillAsk(false);
@@ -547,11 +546,8 @@ export default function App() {
   }, []);
 
 
-  // 设置页 / 底栏 / 快捷键 / 切音色都会改配置。底栏自己的 state 以前只在
-  // 挂载和切音色时读一次，设置里拖音高底栏数字不动。
-  // The settings page reads only the device lists out of engine status, but the
-  // whole status object changes every poll tick (mic level, latency), so
-  // passing it straight through re-rendered that page 2.5x a second while
+  // 设置页 / 底栏 / 快捷键 / 切角色都会改配置。底栏自己的 state 以前只在
+  // 挂载和切角色时读一次，设置里改完底栏数字不动。
 
 
   // 「用不了？联系社区」的落点。仓库与社媒那张表只在「其他」页有一份，

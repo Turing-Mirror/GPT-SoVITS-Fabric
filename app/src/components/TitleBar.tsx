@@ -53,7 +53,7 @@ export function TitleBar({
     >
       <img
         src={wordmark}
-        alt="RVC Fabric"
+        alt="GPT-SoVITS Fabric"
         draggable={false}
         data-tauri-drag-region
         className="h-[19px] w-auto select-none flex-none"

@@ -4,6 +4,7 @@ import { Field, Select, Slider, Toggle } from "../components/controls";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openTool } from "../components/ToolWindow";
+import { ErrorNote } from "../components/ErrorNote";
 import { t } from "../i18n/t";
 
 /**
@@ -64,6 +65,7 @@ type Line = {
   total?: number;
   text?: string;
   message?: string;
+  message_code?: string;
 };
 
 function isTauri(): boolean {
@@ -102,6 +104,7 @@ export function TrainPage() {
   const [progress, setProgress] = useState(0);
   const [log, setLog] = useState<string[]>([]);
   const [err, setErr] = useState("");
+  const [errCode, setErrCode] = useState("");
   const [starting, setStarting] = useState(false);
 
   const logRef = useRef<HTMLPreElement>(null);
@@ -154,6 +157,7 @@ export function TrainPage() {
       }
       if (v.phase === "error") {
         setErr(text);
+        setErrCode(v.message_code || "");
         setStage(null);
       }
       if (v.phase === "done") {
@@ -457,7 +461,9 @@ export function TrainPage() {
             </span>
           </div>
           {err ? (
-            <div className="mt-3 text-[12.5px] text-[var(--notify)] break-all">{err}</div>
+            <div className="mt-3">
+              <ErrorNote text={err} code={errCode} />
+            </div>
           ) : null}
         </div>
       </Block>

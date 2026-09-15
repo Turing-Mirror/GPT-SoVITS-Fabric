@@ -322,7 +322,7 @@ fn iter_python_procs() -> Vec<(u32, u32, String)> {
     Vec::new()
 }
 
-/// 壳自己拉起来的一次性任务（STS / 训练 / 分离 / TTS）。关变声时不能杀它们。
+/// 壳自己拉起来的一次性任务（训练 / 分离）。强杀合成引擎时不能杀它们。
 static TOOL_PIDS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 
 /// 记住一个工具子进程，函数返回时自动忘掉。
@@ -362,8 +362,8 @@ fn protected_tool_pids() -> Vec<u32> {
 /// Kill Runtime python processes.
 ///
 /// * `orphans_only` — leftovers after **强制结束** / 关应用. Parent-dead
-///   **or** reparented onto this shell. 普通「停止变声」走软停，不调这里。
-///   STS / train / separate / TTS pids the shell itself spawned are skipped.
+///   **or** reparented onto this shell. 普通「取消合成」走软停，不调这里。
+///   train / separate pids the shell itself spawned are skipped.
 /// * otherwise — every python whose image lives under Runtime. Used on
 ///   关闭应用 so nothing is left behind.
 ///
