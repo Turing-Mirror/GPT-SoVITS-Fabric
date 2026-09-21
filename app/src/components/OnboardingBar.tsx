@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { PageId } from "../lib/nav";
-import { t } from "../i18n/t";/**
+import { t } from "../i18n/t";
+
+/**
  * 新手进度：一行三段，告诉新用户「走到哪了、下一步是什么」。
  *
  * 三条设计约束（都是跟用户约定过的）：
@@ -80,7 +82,7 @@ export function OnboardingBar({
   const go = (page: PageId) => onNavigate(page);
 
   return (
-    <div className="mx-[30px] mt-4 mb-1 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-4 py-3 max-[1020px]:mx-[22px] max-[720px]:mx-4">
+    <div className="mt-4 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-4 py-3">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-[12px] text-[var(--meta)] shrink-0">
           {allDone ? t("s.obDone") : t("s.obLead")}

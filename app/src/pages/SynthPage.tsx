@@ -465,8 +465,10 @@ export function SynthPage() {
 
       <Block title={t("synth.refTitle")} titleTip={t("synth.refTip")} note={t("synth.refNote")}>
         {refs.length === 0 ? (
+          // 角色还没选（或库里根本没有角色）时不能说「这个角色包里没有」——
+          // 没有「这个角色包」。两句话分开讲。
           <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)] max-w-[860px]">
-            {t("synth.refEmpty")}
+            {role ? t("synth.refEmpty") : t("synth.refNoRole")}
           </div>
         ) : (
           <div className="rounded-[var(--r)] overflow-hidden shadow-[var(--glass)] max-w-[860px]">

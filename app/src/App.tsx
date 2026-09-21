@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "./components/StatusBar";
 import { onConfigPatch } from "./lib/config";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
-import { OnboardingBar } from "./components/OnboardingBar";
 import { Nudge } from "./components/Nudge";
 import { Btn } from "./components/ui";
 import { followLinks } from "./lib/links";
@@ -706,7 +705,11 @@ export default function App() {
           switch (id) {
             case "home":
               return (
-                <HomePage onNavigate={setPage} />
+                <HomePage
+                  onNavigate={setPage}
+                  onboardTick={onboardTick}
+                  onOnboardDismissed={() => setOnboardTick((n) => n + 1)}
+                />
               );
             case "plaza":
               return (
@@ -953,13 +956,6 @@ export default function App() {
         }
         onOpenSynth={() => setPage("synth")}
       />
-      {page === "home" ? (
-        <OnboardingBar
-          tick={onboardTick}
-          onDismissed={() => setOnboardTick((n) => n + 1)}
-          onNavigate={setPage}
-        />
-      ) : null}
     </div>
   );
 }

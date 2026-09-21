@@ -1409,21 +1409,27 @@ pub fn run() {
                     }
                 }
             }
-            // Window URL must use the custom scheme registered above.
+            // Window URL: dev 构建直接吃 vite dev server（热更新可用）；release
+            // 走自定义协议，由 exe 旁的 frontend/ 目录供 UI —— 那是 gui_patch
+            // 热更的落点，两套渠道不能混。
             // WebView2 cannot register non-standard schemes at all, so wry
             // rewrites `fabric://localhost/x` to `http://fabric.localhost/x`
             // and intercepts that; Windows is spelled out here to match what
             // the webview will actually report as its origin.
-            #[cfg(windows)]
-            let url = format!("http://{}.localhost/index.html", ui_assets::SCHEME);
-            #[cfg(not(windows))]
-            let url = format!("{}://localhost/index.html", ui_assets::SCHEME);
-            logging::shell_log!("window url: {url}");
-            let main_window = tauri::WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::CustomProtocol(url.parse().expect("fabric url")),
-            )
+            #[cfg(debug_assertions)]
+            let url = tauri::WebviewUrl::External(
+                "http://localhost:1430".parse().expect("dev url"),
+            );
+            #[cfg(not(debug_assertions))]
+            let url = {
+                #[cfg(windows)]
+                let u = format!("http://{}.localhost/index.html", ui_assets::SCHEME);
+                #[cfg(not(windows))]
+                let u = format!("{}://localhost/index.html", ui_assets::SCHEME);
+                tauri::WebviewUrl::CustomProtocol(u.parse().expect("fabric url"))
+            };
+            logging::shell_log!("window url: {url:?}");
+            let main_window = tauri::WebviewWindowBuilder::new(app, "main", url)
             .title("GPT-SoVITS Fabric · dev-0825c")
             .inner_size(1180.0, 780.0)
             .min_inner_size(880.0, 640.0)

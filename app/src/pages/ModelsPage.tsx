@@ -145,7 +145,7 @@ export function ModelsPage({
             ))}
           </div>
         ) : (
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-6 text-center max-w-[720px]">
+        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center max-w-[720px]">
           <div className="text-[13.5px] font-medium">{t("library.emptyTitle")}</div>
           <div className="text-[12.5px] text-[var(--help)] mt-2 leading-relaxed max-w-[420px] mx-auto">
             {t("library.emptyDesc")}

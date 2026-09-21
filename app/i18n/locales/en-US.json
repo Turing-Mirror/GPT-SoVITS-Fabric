@@ -945,6 +945,7 @@
     "playFailed": "That clip failed to play.",
     "previewOnly": "Synthesis is unavailable in browser preview. Use the app.",
     "refEmpty": "This pack has no usable reference lines. Check its dataset/*.list.",
+    "refNoRole": "Pick a character above; its bundled reference lines will be listed here.",
     "refMissing": "file missing",
     "refNote": "From the pack's .list annotations",
     "refTip": "The reference clip steers timbre and emotion. Changing it changes how the same text is delivered.",

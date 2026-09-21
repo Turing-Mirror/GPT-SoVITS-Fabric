@@ -945,6 +945,7 @@
     "playFailed": "No se pudo reproducir ese audio.",
     "previewOnly": "La síntesis no está disponible en la vista previa del navegador. Usa la aplicación.",
     "refEmpty": "Este paquete no tiene líneas de referencia utilizables. Revisa su dataset/*.list.",
+    "refNoRole": "Elige un personaje arriba; aqui apareceran sus lineas de referencia.",
     "refMissing": "falta el archivo",
     "refNote": "De las anotaciones .list del paquete",
     "refTip": "La referencia define el timbre y la emoción. Con otra referencia, el mismo texto suena distinto.",

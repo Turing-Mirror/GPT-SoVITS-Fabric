@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { PagePad, Block, Btn } from "../components/ui";
+import { OnboardingBar } from "../components/OnboardingBar";
 import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
 import type { PageId } from "../lib/nav";
@@ -14,6 +15,9 @@ import type { PageId } from "../lib/nav";
 
 type Props = {
   onNavigate: (id: PageId) => void;
+  /** App 在新手进度落盘/关闭时 +1，进度条重读。 */
+  onboardTick: number;
+  onOnboardDismissed?: () => void;
 };
 
 type Role = {
@@ -55,7 +59,7 @@ function fmtAgo(mtime: number): string {
   return t("home.dAgo", { v0: String(Math.floor(diff / 86400)) });
 }
 
-export function HomePage({ onNavigate }: Props) {
+export function HomePage({ onNavigate, onboardTick, onOnboardDismissed }: Props) {
   const { locale } = useI18n();
   void locale;
   const [roles, setRoles] = useState<Role[]>(isTauri() ? [] : DEMO_ROLES);
@@ -83,25 +87,23 @@ export function HomePage({ onNavigate }: Props) {
 
   return (
     <PagePad>
-      {/* 主视觉 */}
-      <div
-        className="rounded-[var(--r)] p-6 mt-[26px] relative overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(120deg, var(--stage) 0%, color-mix(in srgb, var(--stage) 55%, var(--surface)) 100%)",
-          boxShadow: "var(--glass)",
-        }}
-      >
-        <img
-          src={new URL("../assets/logo_wordmark.png", import.meta.url).href}
-          alt="GPT-SoVITS Fabric"
-          className="h-[44px] w-auto max-w-full"
-          style={{ filter: "var(--logo-filter)" }}
-        />
-        <p className="text-[13px] text-[var(--ink-muted)] mt-3 max-w-[560px] leading-relaxed">
+      {/* 页头：纯文字，不摆横幅卡。词标图在目标机缺资源时会渲染成被裁掉一半
+          的 alt 文本，比没有横幅更难看。 */}
+      <div className="pt-[26px] pb-1.5">
+        <h2 className="text-[25px] font-semibold tracking-tight m-0 max-[860px]:text-[22px]">
+          GPT-SoVITS Fabric
+        </h2>
+        <p className="text-[13px] text-[var(--help)] mt-1.5 mb-0 max-w-[560px] leading-relaxed">
           {t("home.tagline")}
         </p>
       </div>
+
+      {/* 新手进度是首页内容，不是全局通知条：跟随页面走，不出现在底栏脚下。 */}
+      <OnboardingBar
+        tick={onboardTick}
+        onDismissed={onOnboardDismissed}
+        onNavigate={onNavigate}
+      />
 
       {/* 入口卡 */}
       <Block>
@@ -115,7 +117,7 @@ export function HomePage({ onNavigate }: Props) {
               key={c.id}
               type="button"
               onClick={() => onNavigate(c.id)}
-              className="text-left rounded-[var(--r)] bg-[var(--surface)] p-4 cursor-pointer border-0 shadow-[var(--glass)] hover:bg-[color-mix(in_srgb,var(--accent)_5%,var(--surface))] active:scale-[0.98] transition-all duration-200 ease-[var(--ease)]"
+              className="text-left rounded-[var(--r)] bg-transparent p-4 cursor-pointer border-0 shadow-[inset_0_0_0_1px_var(--line)] hover:shadow-[inset_0_0_0_1px_var(--accent)] active:scale-[0.98] transition-all duration-200 ease-[var(--ease)]"
             >
               <div className="text-[14.5px] font-semibold">{c.title}</div>
               <div className="text-[12.5px] text-[var(--help)] mt-1.5 leading-relaxed">{c.desc}</div>

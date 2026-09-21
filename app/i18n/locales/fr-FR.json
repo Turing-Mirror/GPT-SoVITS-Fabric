@@ -945,6 +945,7 @@
     "playFailed": "La lecture de cet audio a échoué.",
     "previewOnly": "La synthèse est indisponible en aperçu navigateur. Utilisez l'application.",
     "refEmpty": "Ce pack n'a aucune ligne de référence utilisable. Vérifiez son dataset/*.list.",
+    "refNoRole": "Choisissez un personnage ci-dessus ; ses lignes de reference apparaitront ici.",
     "refMissing": "fichier manquant",
     "refNote": "Issu des annotations .list du pack",
     "refTip": "La référence oriente le timbre et l’émotion. Changer de référence change le ton, même texte.",

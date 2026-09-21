@@ -198,8 +198,14 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
     const row = variants.find((v) => v.id === variant);
     if (row?.size_label && row.size_label !== "0 B") return row.size_label;
     if (row?.size_bytes && row.size_bytes > 0) return formatBytes(row.size_bytes);
-    // Fallback only when catalog had nothing for this id
-    if (variant === info.recommended_variant && info.recommended_size_label) {
+    // Fallback only when catalog had nothing for this id. "0 B" is what the
+    // catalog writes when it doesn't know the size either — don't repeat it
+    // on the button.
+    if (
+      variant === info.recommended_variant &&
+      info.recommended_size_label &&
+      info.recommended_size_label !== "0 B"
+    ) {
       return info.recommended_size_label;
     }
     return "";
