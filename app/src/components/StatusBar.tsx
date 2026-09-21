@@ -2,12 +2,11 @@ import { memo } from "react";
 import { t } from "../i18n/t";
 
 /**
- * 底部状态条（对应 RVC-Fabric 的 Dock 位，但形态按这个产品来）。
+ * 底部悬浮状态条。
  *
- * GPT-SoVITS Fabric 没有常驻变声流，RVC Dock 中间的模式切换、麦克风电平、
- * 音高/共鸣滑块在这里都没有对应物 —— 所以这条只保留 Dock 的两端：左边
- * 「当前角色」块，右边「引擎状态 + 主行动按钮」。排版与 Dock 相同：满宽、
- * 平铺在页面底色上、顶部一条两端收进页边距的发丝线。
+ * 形状就是 Nudge 那张圆角卡片：页边距内一条、圆角、表面色加淡投影，
+ * 不贴窗口边缘、不是满宽横幅。内容按 RVC Dock 的两端排：左边「当前
+ * 角色 + 引擎状态」，右边主行动按钮。
  *
  * `statusTitle` / `statusSub` 由运行时是否就绪驱动（见 App.tsx）。
  * `roleName` 由 App 读配置里的 `synth_role` 再换成名字传进来；合成台换
@@ -33,55 +32,54 @@ function StatusBarImpl({
   onOpenSynth,
 }: Props) {
   return (
-    <footer className="flex-none relative px-[30px] py-4 flex items-center gap-[30px] flex-wrap max-[1020px]:px-[22px] max-[1020px]:gap-[22px] max-[720px]:px-4 max-[720px]:gap-4">
-      {/* Hairline: inset ends, not full-width border-top */}
-      <div
-        aria-hidden
-        className="absolute top-0 left-[30px] right-[30px] h-px bg-[var(--hairline)] max-[1020px]:left-[22px] max-[1020px]:right-[22px] max-[720px]:left-4 max-[720px]:right-4"
-      />
-
-      <div className="min-w-[190px] max-w-[240px] max-[720px]:min-w-0 max-[720px]:max-w-none max-[720px]:flex-1 max-[720px]:basis-full">
-        <div className="text-[15px] font-semibold">
+    <footer
+      className={[
+        "shrink-0 mx-[30px] mb-3 mt-1 flex items-center gap-4 flex-wrap",
+        "rounded-[var(--r)] bg-[var(--surface)] px-4 py-3",
+        "shadow-[0_6px_20px_-10px_rgba(0,0,0,.3),inset_0_0_0_1px_var(--hairline)]",
+        "max-[1020px]:mx-[22px] max-[720px]:mx-4",
+      ].join(" ")}
+    >
+      <div className="min-w-0">
+        <div className="text-[13.5px] font-semibold leading-tight truncate">
           {roleName ? t("statusbar.role", { name: roleName }) : t("statusbar.noRole")}
         </div>
-        <div
-          className="text-[11.5px] text-[var(--meta)] mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
-          title={loading ? t("statusbar.loading") : statusSub ? `${statusTitle} · ${statusSub}` : statusTitle}
-        >
-          {loading ? t("statusbar.loading") : statusSub ? `${statusTitle} · ${statusSub}` : statusTitle}
+        <div className="text-[11.5px] text-[var(--meta)] leading-tight truncate mt-0.5">
+          {loading
+            ? t("statusbar.loading")
+            : statusSub
+              ? `${statusTitle} · ${statusSub}`
+              : statusTitle}
         </div>
       </div>
-
-      <div className="ml-auto flex items-center gap-[18px]">
-        {progress != null ? (
-          <div
-            className="h-1 w-[132px] overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--ink)_10%,transparent)]"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progress)}
-          >
-            <div
-              className="h-full bg-[var(--accent)] transition-[width] duration-200 ease-out"
-              style={{ width: `${Math.max(4, Math.min(100, progress))}%` }}
-            />
-          </div>
-        ) : null}
-        <button
-          type="button"
-          onClick={onOpenSynth}
-          className={[
-            "border-0 rounded-[var(--rs)] px-7 py-3 cursor-pointer whitespace-nowrap",
-            "text-sm font-semibold bg-[var(--accent)] text-[var(--accent-ink)]",
-            "transition-[transform,filter] duration-200 ease-[var(--spring)]",
-            "hover:brightness-95",
-            "active:scale-[0.965]",
-            "focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2",
-          ].join(" ")}
+      {progress != null ? (
+        <div
+          className="h-1 w-[132px] overflow-hidden rounded-sm bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] flex-none"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
         >
-          {t("statusbar.openSynth")}
-        </button>
-      </div>
+          <div
+            className="h-full bg-[var(--accent)] transition-[width] duration-200 ease-out"
+            style={{ width: `${Math.max(4, Math.min(100, progress))}%` }}
+          />
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={onOpenSynth}
+        className={[
+          "ml-auto border-0 rounded-[var(--rs)] px-7 py-2.5 cursor-pointer whitespace-nowrap",
+          "text-sm font-semibold bg-[var(--accent)] text-[var(--accent-ink)]",
+          "transition-[transform,filter] duration-200 ease-[var(--spring)]",
+          "hover:brightness-95",
+          "active:scale-[0.965]",
+          "focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2",
+        ].join(" ")}
+      >
+        {t("statusbar.openSynth")}
+      </button>
     </footer>
   );
 }
