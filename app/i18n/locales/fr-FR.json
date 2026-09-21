@@ -1126,5 +1126,14 @@
     "cancel": "Arrêter",
     "reveal": "Ouvrir le dossier de sortie",
     "doneCount": "Terminé : {v0} fichiers produits."
+  },
+  "statusbar": {
+    "role": "Personnage actuel : {name}",
+    "noRole": "Aucun personnage",
+    "loading": "Démarrage du moteur…",
+    "openSynth": "Synthétiser",
+    "readyTitle": "Environnement prêt",
+    "needRuntimeTitle": "Environnement incomplet",
+    "needRuntimeSub": "Complétez le runtime pour lancer la synthèse"
   }
 }

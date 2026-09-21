@@ -1126,5 +1126,14 @@
     "cancel": "停止",
     "reveal": "出力先を開く",
     "doneCount": "分離が完了しました。{v0} 個のファイルを書き出しました。"
+  },
+  "statusbar": {
+    "role": "現在のキャラクター：{name}",
+    "noRole": "キャラクター未選択",
+    "loading": "エンジン起動中…",
+    "openSynth": "合成へ",
+    "readyTitle": "実行環境の準備完了",
+    "needRuntimeTitle": "実行環境が未完了",
+    "needRuntimeSub": "Runtime を揃えると合成できます"
   }
 }

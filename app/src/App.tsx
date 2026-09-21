@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { StatusBar } from "./components/StatusBar";
 import { OnboardingBar } from "./components/OnboardingBar";
+import { onConfigPatch } from "./lib/config";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { Nudge } from "./components/Nudge";
 import { Btn } from "./components/ui";
@@ -292,6 +294,38 @@ export default function App() {
       });
     return () => {
       alive = false;
+    };
+  }, []);
+
+  // 底栏那格：当前角色。合成台把选择持久化进配置的 `synth_role`，这里读
+  // 同一个键、再用 `synth_characters` 把 id 换成名字。角色被删掉之后显示
+  // 空 —— id 还留在配置里，但人已经不在了，继续显示它的名字是在骗人。
+  const [roleName, setRoleName] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const sync = async () => {
+      const cfg = await invoke<Record<string, unknown>>("config_get").catch(() => null);
+      const id = String(cfg?.synth_role ?? "").trim();
+      if (!alive) return;
+      if (!id) {
+        setRoleName("");
+        return;
+      }
+      const r = await invoke<{ roles?: { id: string; name?: string }[] }>(
+        "synth_characters",
+      ).catch(() => null);
+      if (!alive) return;
+      setRoleName((r?.roles ?? []).find((x) => x.id === id)?.name ?? "");
+    };
+    void sync();
+    // 合成台换角色时 `c.set` 会广播补丁，底栏跟着变 —— 不订阅的话要等下次
+    // 重开软件才对得上。
+    const off = onConfigPatch((patch) => {
+      if ("synth_role" in patch) void sync();
+    });
+    return () => {
+      alive = false;
+      off();
     };
   }, []);
 
@@ -896,6 +930,20 @@ export default function App() {
       <WebDialogHost />
       <NativeDialogHint />
 
+      <StatusBar
+        roleName={roleName}
+        statusTitle={
+          engine.provision.runtime_ready
+            ? t("statusbar.readyTitle")
+            : t("statusbar.needRuntimeTitle")
+        }
+        statusSub={
+          engine.provision.runtime_ready
+            ? undefined
+            : t("statusbar.needRuntimeSub")
+        }
+        onOpenSynth={() => setPage("synth")}
+      />
       {page === "home" ? (
         <OnboardingBar
           tick={onboardTick}

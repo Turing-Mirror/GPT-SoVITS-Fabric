@@ -1126,5 +1126,14 @@
     "cancel": "Detener",
     "reveal": "Abrir carpeta de salida",
     "doneCount": "Listo: se generaron {v0} archivos."
+  },
+  "statusbar": {
+    "role": "Personaje actual: {name}",
+    "noRole": "Sin personaje",
+    "loading": "Iniciando motor…",
+    "openSynth": "Sintetizar",
+    "readyTitle": "Entorno listo",
+    "needRuntimeTitle": "Entorno incompleto",
+    "needRuntimeSub": "Complete el runtime para poder sintetizar"
   }
 }
