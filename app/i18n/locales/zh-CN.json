@@ -1071,15 +1071,6 @@
     "faqQ4": "如何把角色分享给别人？",
     "faqA4": "在角色库中选择该角色并点击「导出角色包」，生成的 zip 可以直接投稿到社区广场，审核通过后其他用户即可一键安装。"
   },
-  "statusbar": {
-    "role": "当前角色：{name}",
-    "noRole": "未选择角色",
-    "loading": "引擎启动中…",
-    "openSynth": "去合成",
-    "readyTitle": "运行环境就绪",
-    "needRuntimeTitle": "运行环境未补全",
-    "needRuntimeSub": "补全 Runtime 后即可合成"
-  },
   "more": {
     "resTitle": "资源与高级",
     "resNote": "底模与预训练资源统一在此管理",

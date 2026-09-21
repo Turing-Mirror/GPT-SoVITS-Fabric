@@ -1071,15 +1071,6 @@
     "faqQ4": "캐릭터를 공유하는 방법은?",
     "faqA4": "라이브러리에서 해당 캐릭터의 팩 내보내기를 실행한 뒤, 생성된 zip을 커뮤니티 광장에 투고하세요. 심사를 통과하면 원클릭 설치가 가능합니다."
   },
-  "statusbar": {
-    "role": "현재 캐릭터: {name}",
-    "noRole": "캐릭터 미선택",
-    "loading": "엔진 시작 중…",
-    "openSynth": "합성하기",
-    "readyTitle": "실행 환경 준비됨",
-    "needRuntimeTitle": "실행 환경이 갖춰지지 않음",
-    "needRuntimeSub": "Runtime를 갖추면 합성할 수 있습니다"
-  },
   "more": {
     "resTitle": "리소스 및 고급",
     "resNote": "베이스 모델과 사전 학습 리소스를 한곳에서 관리",

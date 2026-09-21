@@ -1071,15 +1071,6 @@
     "faqQ4": "Comment partager un personnage ?",
     "faqA4": "Bibliothèque → Exporter le pack, puis envoyez le zip sur la Place. Après validation, installation en un clic."
   },
-  "statusbar": {
-    "role": "Personnage actuel : {name}",
-    "noRole": "Aucun personnage",
-    "loading": "Démarrage du moteur…",
-    "openSynth": "Synthétiser",
-    "readyTitle": "Environnement prêt",
-    "needRuntimeTitle": "Environnement incomplet",
-    "needRuntimeSub": "Complétez le runtime pour lancer la synthèse"
-  },
   "more": {
     "resTitle": "Ressources et avancé",
     "resNote": "Modèles de base et ressources préentraînées au même endroit",

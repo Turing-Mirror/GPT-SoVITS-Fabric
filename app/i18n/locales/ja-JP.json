@@ -1071,15 +1071,6 @@
     "faqQ4": "キャラクターの共有方法は？",
     "faqA4": "ライブラリの「パック書き出し」で zip を生成し、プラザへ投稿してください。審査後にワンクリック導入が可能になります。"
   },
-  "statusbar": {
-    "role": "現在のキャラクター：{name}",
-    "noRole": "キャラクター未選択",
-    "loading": "エンジン起動中…",
-    "openSynth": "合成へ",
-    "readyTitle": "実行環境の準備完了",
-    "needRuntimeTitle": "実行環境が未完了",
-    "needRuntimeSub": "Runtime を揃えると合成できます"
-  },
   "more": {
     "resTitle": "リソースと詳細",
     "resNote": "基底モデルと事前学習リソースはここで管理",

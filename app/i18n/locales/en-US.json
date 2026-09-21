@@ -1071,15 +1071,6 @@
     "faqQ4": "How do I share a character?",
     "faqA4": "Use Library → Export pack, then submit the zip to the community Plaza. After review it becomes one-click installable for everyone."
   },
-  "statusbar": {
-    "role": "Current character: {name}",
-    "noRole": "No character selected",
-    "loading": "Starting engine…",
-    "openSynth": "Synthesize",
-    "readyTitle": "Runtime ready",
-    "needRuntimeTitle": "Runtime incomplete",
-    "needRuntimeSub": "Complete the runtime to start synthesising"
-  },
   "more": {
     "resTitle": "Resources & advanced",
     "resNote": "Base models and pretrained assets in one place",
