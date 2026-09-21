@@ -92,7 +92,7 @@ export function ModelsPage({
       <AdBanner banner={banner ?? null} />
 
       <Block title={t("library.installTitle")} note={t("library.installNote")}>
-        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 max-w-[720px]">
+        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
               <div className="text-[13.5px] font-medium">{t("library.packName")}</div>
@@ -115,7 +115,7 @@ export function ModelsPage({
         note={roles.length ? t("library.listCount", { v0: String(roles.length) }) : t("library.listNote")}
       >
         {roles.length ? (
-          <div className="max-w-[720px] rounded-[var(--r)] bg-[var(--group)] px-5 py-2">
+          <div className=" rounded-[var(--r)] bg-[var(--group)] px-5 py-2">
             {roles.map((r) => (
               <ListItem
                 key={r.id}
@@ -145,7 +145,7 @@ export function ModelsPage({
             ))}
           </div>
         ) : (
-        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center max-w-[720px]">
+        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center">
           <div className="text-[13.5px] font-medium">{t("library.emptyTitle")}</div>
           <div className="text-[12.5px] text-[var(--help)] mt-2 leading-relaxed max-w-[420px] mx-auto">
             {t("library.emptyDesc")}
@@ -159,7 +159,7 @@ export function ModelsPage({
       </Block>
 
       <Block title={t("library.fmtTitle")} titleTip={t("library.fmtTip")}>
-        <pre className="max-w-[720px] rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0">{`character.zip
+        <pre className=" rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0">{`character.zip
 ├─ config.json      # 名称 / 作者 / 版本 / 推荐参数
 ├─ cover.jpg
 ├─ models/

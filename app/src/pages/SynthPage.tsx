@@ -416,7 +416,7 @@ export function SynthPage() {
         action={<Btn onClick={() => setReloadTick((n) => n + 1)}>{t("synth.roleRefresh")}</Btn>}
       >
         {empty ? (
-          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)] max-w-[860px]">
+          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)]">
             {t("synth.roleEmpty")}
           </div>
         ) : (
@@ -467,11 +467,11 @@ export function SynthPage() {
         {refs.length === 0 ? (
           // 角色还没选（或库里根本没有角色）时不能说「这个角色包里没有」——
           // 没有「这个角色包」。两句话分开讲。
-          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)] max-w-[860px]">
+          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)]">
             {role ? t("synth.refEmpty") : t("synth.refNoRole")}
           </div>
         ) : (
-          <div className="rounded-[var(--r)] overflow-hidden shadow-[var(--glass)] max-w-[860px]">
+          <div className="rounded-[var(--r)] overflow-hidden shadow-[var(--glass)]">
             {refs.map((row, i) => {
               const key = `${row.from}#${row.line}`;
               const on = ref != null && key === `${ref.from}#${ref.line}`;
@@ -541,7 +541,7 @@ export function SynthPage() {
           ) : null
         }
       >
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px] max-w-[720px]">
+        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
           <Field
             label={t("synth.pSpeed")}
             tip={t("synth.pSpeedTip")}
@@ -620,7 +620,7 @@ export function SynthPage() {
       </Block>
 
       <Block title={t("synth.textTitle")}>
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 max-w-[860px]">
+        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4">
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}

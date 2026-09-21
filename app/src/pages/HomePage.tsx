@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { PagePad, Block, Btn } from "../components/ui";
-import { OnboardingBar } from "../components/OnboardingBar";
 import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
 import type { PageId } from "../lib/nav";
@@ -15,9 +14,6 @@ import type { PageId } from "../lib/nav";
 
 type Props = {
   onNavigate: (id: PageId) => void;
-  /** App 在新手进度落盘/关闭时 +1，进度条重读。 */
-  onboardTick: number;
-  onOnboardDismissed?: () => void;
 };
 
 type Role = {
@@ -59,7 +55,7 @@ function fmtAgo(mtime: number): string {
   return t("home.dAgo", { v0: String(Math.floor(diff / 86400)) });
 }
 
-export function HomePage({ onNavigate, onboardTick, onOnboardDismissed }: Props) {
+export function HomePage({ onNavigate }: Props) {
   const { locale } = useI18n();
   void locale;
   const [roles, setRoles] = useState<Role[]>(isTauri() ? [] : DEMO_ROLES);
@@ -97,13 +93,6 @@ export function HomePage({ onNavigate, onboardTick, onOnboardDismissed }: Props)
           {t("home.tagline")}
         </p>
       </div>
-
-      {/* 新手进度是首页内容，不是全局通知条：跟随页面走，不出现在底栏脚下。 */}
-      <OnboardingBar
-        tick={onboardTick}
-        onDismissed={onOnboardDismissed}
-        onNavigate={onNavigate}
-      />
 
       {/* 入口卡 */}
       <Block>

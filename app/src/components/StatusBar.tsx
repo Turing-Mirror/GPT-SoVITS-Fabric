@@ -31,10 +31,13 @@ function StatusBarImpl({
   onOpenSynth,
 }: Props) {
   return (
-    <footer
-      className="shrink-0 px-4 py-2.5 flex items-center gap-3 flex-wrap border-t border-[var(--hairline)] bg-[var(--surface)]"
-      style={{ boxShadow: "0 -1px 10px rgba(0,0,0,0.05)" }}
-    >
+    <footer className="shrink-0 relative px-[30px] py-3 flex items-center gap-4 flex-wrap max-[1020px]:px-[22px] max-[720px]:px-4">
+      {/* 发丝线两端收进页边距，不做满宽 border-top —— 满宽实底条会把这一行
+          读成「遮住半个窗口的一条横幅」，而不是页面底部的一个状态区。 */}
+      <span
+        aria-hidden
+        className="absolute top-0 left-[30px] right-[30px] h-px bg-[var(--hairline)] max-[1020px]:left-[22px] max-[1020px]:right-[22px] max-[720px]:left-4 max-[720px]:right-4"
+      />
       <div className="min-w-0">
         <div className="text-[12.5px] font-medium leading-tight truncate">
           {roleName ? t("statusbar.role", { name: roleName }) : t("statusbar.noRole")}

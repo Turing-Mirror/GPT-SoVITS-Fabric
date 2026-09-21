@@ -252,7 +252,7 @@ export function TrainPage() {
       />
 
       {st.interrupted ? (
-        <div className="max-w-[860px] rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent)] px-4 py-3 text-[12.5px] mb-4">
+        <div className=" rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent)] px-4 py-3 text-[12.5px] mb-4">
           {t("train.interrupted", {
             v0: String(st.interrupted.exp ?? ""),
             v1: String(st.interrupted.epoch ?? 0),
@@ -262,7 +262,7 @@ export function TrainPage() {
       ) : null}
 
       <Block title={t("train.modelTitle")} note={t("train.modelNote")}>
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 max-w-[720px] flex flex-col gap-[16px]">
+        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
           <Field
             label={t("train.version")}
             tip={t("train.versionTip")}
@@ -296,7 +296,7 @@ export function TrainPage() {
       </Block>
 
       <Block title={t("train.datasetTitle")} note={t("train.datasetNote")}>
-        <div className="max-w-[720px] flex flex-col gap-[10px]">
+        <div className=" flex flex-col gap-[10px]">
           <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-5 flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
               <div className="text-[13.5px] font-medium">{t("train.listFile")}</div>
@@ -378,7 +378,7 @@ export function TrainPage() {
       </Block>
 
       <Block title={t("train.hyperTitle")}>
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px] max-w-[720px]">
+        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
           <Field
             label={t("train.epochs")}
             control={<Slider value={epochs} min={1} max={200} step={1} onChange={setEpochs} />}
@@ -417,7 +417,7 @@ export function TrainPage() {
       </Block>
 
       <Block title={t("train.pipelineTitle")}>
-        <div className="max-w-[860px]">
+        <div className="">
           <div className="grid grid-cols-4 gap-[8px]">
             {STAGES.map((s) => {
               const running = stage === s;
@@ -471,7 +471,7 @@ export function TrainPage() {
       <Block title={t("train.logTitle")} note={t("train.logNote")}>
         <pre
           ref={logRef}
-          className="max-w-[860px] rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto max-h-[220px] m-0 whitespace-pre-wrap tabular-nums"
+          className=" rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto max-h-[220px] m-0 whitespace-pre-wrap tabular-nums"
         >
           {log.length ? log.join("\n") : t("train.logEmpty")}
         </pre>

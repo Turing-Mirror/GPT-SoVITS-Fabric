@@ -82,7 +82,7 @@ export function OnboardingBar({
   const go = (page: PageId) => onNavigate(page);
 
   return (
-    <div className="mt-4 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-4 py-3">
+    <div className="mx-[30px] mt-4 mb-1 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-4 py-3 max-[1020px]:mx-[22px] max-[720px]:mx-4">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-[12px] text-[var(--meta)] shrink-0">
           {allDone ? t("s.obDone") : t("s.obLead")}
