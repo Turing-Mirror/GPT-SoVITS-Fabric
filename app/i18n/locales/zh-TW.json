@@ -1128,12 +1128,9 @@
     "doneCount": "分離完成，產出 {v0} 個檔案。"
   },
   "statusbar": {
-    "role": "目前角色：{name}",
-    "noRole": "未選擇角色",
-    "loading": "引擎啟動中…",
-    "openSynth": "去合成",
-    "readyTitle": "執行環境就緒",
     "needRuntimeTitle": "執行環境未補齊",
-    "needRuntimeSub": "補齊 Runtime 後即可合成"
+    "needRuntimeSub": "補齊 Runtime 後即可合成",
+    "fixRuntime": "去補全",
+    "later": "稍後"
   }
 }

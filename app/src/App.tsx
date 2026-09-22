@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StatusBar } from "./components/StatusBar";
 import { OnboardingBar } from "./components/OnboardingBar";
-import { onConfigPatch } from "./lib/config";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { Nudge } from "./components/Nudge";
 import { Btn } from "./components/ui";
@@ -241,6 +239,8 @@ export default function App() {
 
   const [showProvision, setShowProvision] = useState(false);
   const [provisionDismissed, setProvisionDismissed] = useState(false);
+  /** 补全弹窗关掉之后，底部 Nudge 再问一次 —— 那次也关了，这个会话就不再提。 */
+  const [runtimeNudgeDismissed, setRuntimeNudgeDismissed] = useState(false);
   // 新装 ui_locale_picked===false 时先选语言，再走 Runtime 补全。
   const [showLangGate, setShowLangGate] = useState(false);
   const [langGateChecked, setLangGateChecked] = useState(false);
@@ -294,38 +294,6 @@ export default function App() {
       });
     return () => {
       alive = false;
-    };
-  }, []);
-
-  // 底栏那格：当前角色。合成台把选择持久化进配置的 `synth_role`，这里读
-  // 同一个键、再用 `synth_characters` 把 id 换成名字。角色被删掉之后显示
-  // 空 —— id 还留在配置里，但人已经不在了，继续显示它的名字是在骗人。
-  const [roleName, setRoleName] = useState("");
-  useEffect(() => {
-    let alive = true;
-    const sync = async () => {
-      const cfg = await invoke<Record<string, unknown>>("config_get").catch(() => null);
-      const id = String(cfg?.synth_role ?? "").trim();
-      if (!alive) return;
-      if (!id) {
-        setRoleName("");
-        return;
-      }
-      const r = await invoke<{ roles?: { id: string; name?: string }[] }>(
-        "synth_characters",
-      ).catch(() => null);
-      if (!alive) return;
-      setRoleName((r?.roles ?? []).find((x) => x.id === id)?.name ?? "");
-    };
-    void sync();
-    // 合成台换角色时 `c.set` 会广播补丁，底栏跟着变 —— 不订阅的话要等下次
-    // 重开软件才对得上。
-    const off = onConfigPatch((patch) => {
-      if ("synth_role" in patch) void sync();
-    });
-    return () => {
-      alive = false;
-      off();
     };
   }, []);
 
@@ -840,10 +808,36 @@ export default function App() {
       {/* 同时最多出现一条。更新排最前 —— 它是开机 4 秒就出来的，那会儿另外
           两条的触发条件（用满 60 秒 / 变声十次）都还远没到。
           统计邀请次之，两条撞在一起会把底栏顶掉半个屏。 */}
+      {/* 运行环境未补全排最前：它挡的是整个产品的主力功能，比首引/更新都
+          急。只在补全弹窗被关掉之后才出现 —— 弹窗开着的时候它俩说的是同一
+          件事，一起出现就是复读。补全完成它自己消失。 */}
       {/* 首次引导排在最前：更新提示是开机 4 秒就出来的，统计和关注更靠后，
           而这条只在用户第一次点「开启变声」的那几秒里有意义，错过就没了。
           它关掉之后被它压住的那条会自己顶上来。 */}
-      {askGuide ? (
+      {engine.provision.need_provision && provisionDismissed && !runtimeNudgeDismissed ? (
+        <Nudge
+          title={t("statusbar.needRuntimeTitle")}
+          actions={
+            <>
+              <Btn onClick={() => setRuntimeNudgeDismissed(true)}>
+                {t("statusbar.later")}
+              </Btn>
+              <Btn
+                primary
+                onClick={() => {
+                  setRuntimeNudgeDismissed(true);
+                  setProvisionDismissed(false);
+                  setShowProvision(true);
+                }}
+              >
+                {t("statusbar.fixRuntime")}
+              </Btn>
+            </>
+          }
+        >
+          {t("statusbar.needRuntimeSub")}
+        </Nudge>
+      ) : askGuide ? (
         <Nudge
           title={t("s.guideFirstTitle")}
           actions={
@@ -930,20 +924,6 @@ export default function App() {
       <WebDialogHost />
       <NativeDialogHint />
 
-      <StatusBar
-        roleName={roleName}
-        statusTitle={
-          engine.provision.runtime_ready
-            ? t("statusbar.readyTitle")
-            : t("statusbar.needRuntimeTitle")
-        }
-        statusSub={
-          engine.provision.runtime_ready
-            ? undefined
-            : t("statusbar.needRuntimeSub")
-        }
-        onOpenSynth={() => setPage("synth")}
-      />
       {page === "home" ? (
         <OnboardingBar
           tick={onboardTick}

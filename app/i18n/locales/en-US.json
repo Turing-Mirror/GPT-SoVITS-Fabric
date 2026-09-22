@@ -1128,12 +1128,9 @@
     "doneCount": "Done — {v0} files produced."
   },
   "statusbar": {
-    "role": "Current character: {name}",
-    "noRole": "No character selected",
-    "loading": "Starting engine…",
-    "openSynth": "Synthesize",
-    "readyTitle": "Runtime ready",
     "needRuntimeTitle": "Runtime incomplete",
-    "needRuntimeSub": "Complete the runtime to start synthesising"
+    "needRuntimeSub": "Complete the runtime to start synthesising",
+    "fixRuntime": "Provision now",
+    "later": "Later"
   }
 }

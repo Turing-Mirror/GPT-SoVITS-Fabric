@@ -1128,12 +1128,9 @@
     "doneCount": "分离完成，产出 {v0} 个文件。"
   },
   "statusbar": {
-    "role": "当前角色：{name}",
-    "noRole": "未选择角色",
-    "loading": "引擎启动中…",
-    "openSynth": "去合成",
-    "readyTitle": "运行环境就绪",
     "needRuntimeTitle": "运行环境未补全",
-    "needRuntimeSub": "补全 Runtime 后即可合成"
+    "needRuntimeSub": "补全 Runtime 后即可合成",
+    "fixRuntime": "去补全",
+    "later": "稍后"
   }
 }
