@@ -435,7 +435,7 @@ export function SynthPage() {
                     "active:scale-[0.97]",
                     on
                       ? "shadow-[inset_0_0_0_2px_var(--accent)] bg-[var(--accent-soft)]"
-                      : "shadow-[var(--glass)] bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)]",
+                      : "bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)]",
                   ].join(" ")}
                 >
                   <div
@@ -471,7 +471,7 @@ export function SynthPage() {
             {role ? t("synth.refEmpty") : t("synth.refNoRole")}
           </div>
         ) : (
-          <div className="rounded-[var(--r)] overflow-hidden shadow-[var(--glass)]">
+          <div className="rounded-[var(--r)] overflow-hidden bg-[var(--group)]">
             {refs.map((row, i) => {
               const key = `${row.from}#${row.line}`;
               const on = ref != null && key === `${ref.from}#${ref.line}`;
@@ -487,7 +487,7 @@ export function SynthPage() {
                     i > 0 ? "border-t border-[var(--hairline)]" : "",
                     on
                       ? "bg-[var(--accent-soft)]"
-                      : "bg-[var(--surface)] hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
+                      : "hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
                   ].join(" ")}
                 >
                   <span
@@ -541,7 +541,7 @@ export function SynthPage() {
           ) : null
         }
       >
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
+        <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
           <Field
             label={t("synth.pSpeed")}
             tip={t("synth.pSpeedTip")}
@@ -620,7 +620,7 @@ export function SynthPage() {
       </Block>
 
       <Block title={t("synth.textTitle")}>
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4">
+        <div className="rounded-[var(--r)] bg-[var(--group)] p-4">
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}

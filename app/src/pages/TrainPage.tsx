@@ -262,7 +262,7 @@ export function TrainPage() {
       ) : null}
 
       <Block title={t("train.modelTitle")} note={t("train.modelNote")}>
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
+        <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
           <Field
             label={t("train.version")}
             tip={t("train.versionTip")}
@@ -320,7 +320,7 @@ export function TrainPage() {
             <Btn onClick={() => openTool("separate")}>{t("train.sepOpen")}</Btn>
           </div>
 
-          <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
+          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
             <Field
               label={t("train.expName")}
               tip={t("train.expNameTip")}
@@ -349,7 +349,7 @@ export function TrainPage() {
 
           {/* 数字全部来自 train_scan_dataset / train_inspect_dataset。
               没有 ffprobe 时 available=false，那几项就写「—」，不编。 */}
-          <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 grid grid-cols-2 max-[560px]:grid-cols-1 gap-x-6 gap-y-3">
+          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 grid grid-cols-2 max-[560px]:grid-cols-1 gap-x-6 gap-y-3">
             {[
               { label: t("train.statTotal"), value: scan ? String(scan.files ?? 0) : "—" },
               {
@@ -378,7 +378,7 @@ export function TrainPage() {
       </Block>
 
       <Block title={t("train.hyperTitle")}>
-        <div className="rounded-[var(--r)] bg-[var(--surface)] shadow-[var(--glass)] p-4 flex flex-col gap-[16px]">
+        <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
           <Field
             label={t("train.epochs")}
             control={<Slider value={epochs} min={1} max={200} step={1} onChange={setEpochs} />}

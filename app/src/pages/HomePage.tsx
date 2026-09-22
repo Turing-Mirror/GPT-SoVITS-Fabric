@@ -136,7 +136,7 @@ export function HomePage({ onNavigate }: Props) {
                   key={r.id}
                   type="button"
                   onClick={() => pickRole(r)}
-                  className="text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 shadow-[var(--glass)] bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] active:scale-[0.97] transition-all duration-200 ease-[var(--ease)]"
+                  className="text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] active:scale-[0.97] transition-all duration-200 ease-[var(--ease)]"
                 >
                   {r.cover_exists && r.cover && r.dir && isTauri() ? (
                     <img
