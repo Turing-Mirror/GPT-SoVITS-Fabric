@@ -82,38 +82,27 @@ export function ModelsPage({
       <PageHead
         title={t("library.title")}
         sub={t("library.subtitle")}
-        actions={
-          <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
-        }
       />
 
       {/* 广场投放。Rust 侧一直在 `plaza_feed` 里返回 banner，
           而 `usePlaza` 把它丢掉、这一页也没挂过组件 —— 投放位形同虚设。 */}
       <AdBanner banner={banner ?? null} />
 
-      <Block title={t("library.installTitle")} note={t("library.installNote")}>
-        <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <div className="text-[13.5px] font-medium">{t("library.packName")}</div>
-              <div className="text-[12px] text-[var(--help)] mt-1 leading-relaxed">
-                {t("library.packDesc")}
-              </div>
-            </div>
+      <Block
+        title={t("library.listTitle")}
+        note={roles.length ? t("library.listCount", { v0: String(roles.length) }) : t("library.listNote")}
+        action={
+          <div className="flex items-center gap-2">
+            <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
             <Btn primary busy={busy} onClick={() => void importPack()}>
               {t("library.import")}
             </Btn>
           </div>
-          {msg ? (
-            <div className="mt-3 text-[12.5px] text-[var(--accent)]">{msg}</div>
-          ) : null}
-        </div>
-      </Block>
-
-      <Block
-        title={t("library.listTitle")}
-        note={roles.length ? t("library.listCount", { v0: String(roles.length) }) : t("library.listNote")}
+        }
       >
+        {msg ? (
+          <div className="text-[12.5px] text-[var(--accent)] mb-2">{msg}</div>
+        ) : null}
         {roles.length ? (
           <div className=" rounded-[var(--r)] bg-[var(--group)] px-5 py-2">
             {roles.map((r) => (
