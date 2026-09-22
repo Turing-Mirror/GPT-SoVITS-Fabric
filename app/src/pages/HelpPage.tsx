@@ -1,5 +1,13 @@
-import { useEffect, useState, memo } from "react";
-import { Block, Group, ListItem, PageHead, PagePad } from "../components/ui";
+import { useEffect, useMemo, useState, memo } from "react";
+import {
+  AccordionGroup,
+  Block,
+  PageHead,
+  PagePad,
+  type AccordionItem,
+} from "../components/ui";
+import { useGlossary, useGlossarySectionTitle } from "../lib/glossary";
+import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
 
 /**
@@ -8,6 +16,12 @@ import { t } from "../i18n/t";
  * 保留 RVC-Fabric 的信息架构：锚点分节 + 手风琴问答，任何一处结论都能深链
  * 到具体小节。内容按 GPT-SoVITS Fabric 重写：安装与首次运行、角色包导入、
  * 合成指南、训练指南、.list 标注格式、常见问题。
+ *
+ * 每条问答三层：标题（问题）、一行摘要（扫读用）、展开后的完整答案。
+ * 摘要和答案是两条文案 —— 摘要只写结论，答案写操作步骤，别互相复读。
+ *
+ * 词条表（专有名词）和问答共用同一套手风琴，但展开状态分开管：
+ * 词条是查字典式的浏览，展开一条不该把刚才看的那条答案收掉。
  */
 
 export const HELP_ANCHORS = new Set([
@@ -17,9 +31,72 @@ export const HELP_ANCHORS = new Set([
   "train",
   "listformat",
   "faq",
+  "glossary",
 ]);
 
-type QA = { q: string; a: string };
+/** i18n 校验靠源码里的字面量认活键，所以 Q/H/A 三个 key 全写实、不拼模板。 */
+const SECTIONS: {
+  anchor: string;
+  titleKey: string;
+  items: { id: string; q: string; h: string; a: string }[];
+}[] = [
+  {
+    anchor: "firstrun",
+    titleKey: "help.firstrunTitle",
+    items: [
+      { id: "fr1", q: "help.frQ1", h: "help.frH1", a: "help.frA1" },
+      { id: "fr2", q: "help.frQ2", h: "help.frH2", a: "help.frA2" },
+      { id: "fr3", q: "help.frQ3", h: "help.frH3", a: "help.frA3" },
+    ],
+  },
+  {
+    anchor: "packs",
+    titleKey: "help.packsTitle",
+    items: [
+      { id: "pack1", q: "help.packQ1", h: "help.packH1", a: "help.packA1" },
+      { id: "pack2", q: "help.packQ2", h: "help.packH2", a: "help.packA2" },
+      { id: "pack3", q: "help.packQ3", h: "help.packH3", a: "help.packA3" },
+    ],
+  },
+  {
+    anchor: "synth",
+    titleKey: "help.synthTitle",
+    items: [
+      { id: "synth1", q: "help.synthQ1", h: "help.synthH1", a: "help.synthA1" },
+      { id: "synth2", q: "help.synthQ2", h: "help.synthH2", a: "help.synthA2" },
+      { id: "synth3", q: "help.synthQ3", h: "help.synthH3", a: "help.synthA3" },
+      { id: "synth4", q: "help.synthQ4", h: "help.synthH4", a: "help.synthA4" },
+    ],
+  },
+  {
+    anchor: "train",
+    titleKey: "help.trainGuideTitle",
+    items: [
+      { id: "train1", q: "help.trainQ1", h: "help.trainH1", a: "help.trainA1" },
+      { id: "train2", q: "help.trainQ2", h: "help.trainH2", a: "help.trainA2" },
+      { id: "train3", q: "help.trainQ3", h: "help.trainH3", a: "help.trainA3" },
+    ],
+  },
+  {
+    anchor: "listformat",
+    titleKey: "help.listTitle",
+    items: [
+      { id: "list1", q: "help.listQ1", h: "help.listH1", a: "help.listA1" },
+      { id: "list2", q: "help.listQ2", h: "help.listH2", a: "help.listA2" },
+      { id: "list3", q: "help.listQ3", h: "help.listH3", a: "help.listA3" },
+    ],
+  },
+  {
+    anchor: "faq",
+    titleKey: "help.faqTitle",
+    items: [
+      { id: "faq1", q: "help.faqQ1", h: "help.faqH1", a: "help.faqA1" },
+      { id: "faq2", q: "help.faqQ2", h: "help.faqH2", a: "help.faqA2" },
+      { id: "faq3", q: "help.faqQ3", h: "help.faqH3", a: "help.faqA3" },
+      { id: "faq4", q: "help.faqQ4", h: "help.faqH4", a: "help.faqA4" },
+    ],
+  },
+];
 
 function useHelpFocus(focus: string, focusNonce: number) {
   const [hit, setHit] = useState("");
@@ -32,72 +109,6 @@ function useHelpFocus(focus: string, focusNonce: number) {
   return hit;
 }
 
-function Faq({ items, highlight }: { items: QA[]; highlight: string }) {
-  return (
-    <Group>
-      {items.map((f, i) => (
-        <div
-          key={i}
-          className={
-            highlight && f.q === highlight
-              ? "rounded-[var(--rs)] shadow-[inset_0_0_0_2px_var(--accent)]"
-              : ""
-          }
-        >
-          <ListItem title={f.q} desc={f.a} />
-        </div>
-      ))}
-    </Group>
-  );
-}
-
-const FIRST_RUN: QA[] = [
-  {
-    q: t("help.frQ1"),
-    a: t("help.frA1"),
-  },
-  {
-    q: t("help.frQ2"),
-    a: t("help.frA2"),
-  },
-  {
-    q: t("help.frQ3"),
-    a: t("help.frA3"),
-  },
-];
-
-const PACK_GUIDE: QA[] = [
-  { q: t("help.packQ1"), a: t("help.packA1") },
-  { q: t("help.packQ2"), a: t("help.packA2") },
-  { q: t("help.packQ3"), a: t("help.packA3") },
-];
-
-const SYNTH_GUIDE: QA[] = [
-  { q: t("help.synthQ1"), a: t("help.synthA1") },
-  { q: t("help.synthQ2"), a: t("help.synthA2") },
-  { q: t("help.synthQ3"), a: t("help.synthA3") },
-  { q: t("help.synthQ4"), a: t("help.synthA4") },
-];
-
-const TRAIN_GUIDE: QA[] = [
-  { q: t("help.trainQ1"), a: t("help.trainA1") },
-  { q: t("help.trainQ2"), a: t("help.trainA2") },
-  { q: t("help.trainQ3"), a: t("help.trainA3") },
-];
-
-const LIST_FORMAT: QA[] = [
-  { q: t("help.listQ1"), a: t("help.listA1") },
-  { q: t("help.listQ2"), a: t("help.listA2") },
-  { q: t("help.listQ3"), a: t("help.listA3") },
-];
-
-const FAQ: QA[] = [
-  { q: t("help.faqQ1"), a: t("help.faqA1") },
-  { q: t("help.faqQ2"), a: t("help.faqA2") },
-  { q: t("help.faqQ3"), a: t("help.faqA3") },
-  { q: t("help.faqQ4"), a: t("help.faqA4") },
-];
-
 function HelpPageImpl({
   focus,
   focusNonce,
@@ -106,35 +117,101 @@ function HelpPageImpl({
   focusNonce: number;
   onOpenCommunity?: () => void;
 }) {
+  // 订阅语言：问答与词条都随界面语言切换重算。
+  const { locale } = useI18n();
+  const glossary = useGlossary();
+  const glossaryTitle = useGlossarySectionTitle();
   const hit = useHelpFocus(focus, focusNonce);
+
+  // 问答区和词条区各自最多展开一条，互不干扰。
+  const [open, setOpen] = useState("");
+  const [openTerm, setOpenTerm] = useState("");
+
+  const sections = useMemo(
+    () =>
+      SECTIONS.map((s) => ({
+        ...s,
+        title: t(s.titleKey),
+        items: s.items.map(
+          (e): AccordionItem => ({
+            id: e.id,
+            title: t(e.q),
+            desc: t(e.h),
+            content: t(e.a),
+          }),
+        ),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t() 读全局 locale，locale 变化必须触发重算
+    [locale],
+  );
+
+  const glossaryItems = useMemo(
+    () =>
+      glossary.map(
+        (term): AccordionItem => ({
+          id: term.id,
+          title: term.term,
+          desc: term.brief,
+          content: term.detail,
+        }),
+      ),
+    [glossary],
+  );
+
+  // 跳转落地：focus 形如「synth」或「synth#synth2」。带条目 id 时
+  // 直接把那条展开 —— 指到一整块等于没指。
+  useEffect(() => {
+    if (!focus || !focusNonce) return;
+    const [sec, itemId] = focus.split("#");
+    if (!sec || !HELP_ANCHORS.has(sec)) return;
+    if (sec === "glossary") {
+      if (itemId) setOpenTerm(itemId);
+    } else if (itemId) {
+      setOpen(itemId);
+    } else {
+      // 没带条目 id 就展开该节第一条，否则跳过去只看到一排标题。
+      const first = sections.find((s) => s.anchor === sec)?.items[0].id;
+      if (first) setOpen(first);
+    }
+    const el = document.getElementById(`help-${sec}`);
+    const pane = el?.closest(".overflow-y-auto");
+    if (el && pane instanceof HTMLElement) {
+      // offsetTop 不受 transform 影响；换页动画期间 scrollIntoView 落点会漂。
+      pane.scrollTop = Math.max(0, el.offsetTop - 12);
+    } else {
+      el?.scrollIntoView({ block: "start" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sections 随语言重建，focus 才是触发源
+  }, [focus, focusNonce]);
 
   return (
     <PagePad>
       <PageHead title={t("help.title")} sub={t("help.subtitle")} />
 
-      <Block id="help-firstrun" title={t("help.firstrunTitle")} note={String(FIRST_RUN.length)}>
-        <Faq items={FIRST_RUN} highlight={hit} />
-      </Block>
+      {sections.map((s) => (
+        <Block key={s.anchor} id={`help-${s.anchor}`} title={s.title} note={String(s.items.length)}>
+          <AccordionGroup
+            items={s.items}
+            openId={open}
+            onToggle={(id) => setOpen((c) => (c === id ? "" : id))}
+            openLabel={t("s.5d5815647c")}
+            closedLabel={t("s.b0e24833f7")}
+            highlight={hit.startsWith(`${s.anchor}#`) ? hit.split("#")[1] : undefined}
+          />
+        </Block>
+      ))}
 
-      <Block id="help-packs" title={t("help.packsTitle")} note={String(PACK_GUIDE.length)}>
-        <Faq items={PACK_GUIDE} highlight={hit} />
-      </Block>
-
-      <Block id="help-synth" title={t("help.synthTitle")} note={String(SYNTH_GUIDE.length)}>
-        <Faq items={SYNTH_GUIDE} highlight={hit} />
-      </Block>
-
-      <Block id="help-train" title={t("help.trainGuideTitle")} note={String(TRAIN_GUIDE.length)}>
-        <Faq items={TRAIN_GUIDE} highlight={hit} />
-      </Block>
-
-      <Block id="help-listformat" title={t("help.listTitle")} note={String(LIST_FORMAT.length)}>
-        <Faq items={LIST_FORMAT} highlight={hit} />
-      </Block>
-
-      <Block id="help-faq" title={t("help.faqTitle")} note={String(FAQ.length)}>
-        <Faq items={FAQ} highlight={hit} />
-      </Block>
+      {glossaryItems.length ? (
+        <Block id="help-glossary" title={glossaryTitle} note={String(glossaryItems.length)}>
+          <AccordionGroup
+            items={glossaryItems}
+            openId={openTerm}
+            onToggle={(id) => setOpenTerm((c) => (c === id ? "" : id))}
+            openLabel={t("s.5d5815647c")}
+            closedLabel={t("s.b0e24833f7")}
+          />
+        </Block>
+      ) : null}
     </PagePad>
   );
 }

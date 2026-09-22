@@ -235,6 +235,63 @@ export function ListItem({
   );
 }
 
+export type AccordionItem = {
+  id: string;
+  title: string;
+  desc?: string;
+  content: ReactNode;
+};
+
+/** 帮助页的手风琴行组：标题 + 一行摘要，点开看完整答案。 */
+export function AccordionGroup({
+  items,
+  openId,
+  onToggle,
+  openLabel,
+  closedLabel,
+  highlight,
+}: {
+  items: readonly AccordionItem[];
+  openId: string;
+  onToggle: (id: string) => void;
+  openLabel: ReactNode;
+  closedLabel: ReactNode;
+  /** 从别的入口跳进来时短暂描边的那一条（id 匹配）。 */
+  highlight?: string;
+}) {
+  return (
+    <Group>
+      {items.map((item) => {
+        const expanded = openId === item.id;
+        return (
+          <div
+            key={item.id}
+            className={
+              highlight === item.id
+                ? "rounded-[var(--rs)] shadow-[inset_0_0_0_2px_var(--accent)]"
+                : ""
+            }
+          >
+            <ListItem
+              title={item.title}
+              desc={item.desc}
+              expanded={expanded}
+              onClick={() => onToggle(item.id)}
+              right={
+                <span className="text-[13.5px] text-[var(--ink-muted)]">
+                  {expanded ? openLabel : closedLabel}
+                </span>
+              }
+            >
+              {item.content}
+            </ListItem>
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
+
 /**
  * 小问号。真身在 `Tooltip.tsx` —— 这里只是把名字接着导出，免得十几个
  * 引用处全部改 import。
