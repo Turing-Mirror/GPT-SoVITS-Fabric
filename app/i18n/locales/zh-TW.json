@@ -1089,8 +1089,6 @@
     "refCount": "參考音訊 {v0} 條",
     "emptyTitle": "還沒有本機角色",
     "emptyDesc": "從廣場安裝官方或社群角色包，或在訓練台用自己的素材訓練一個。",
-    "emptyGoPlaza": "去廣場安裝",
-    "emptyImport": "匯入角色包",
     "fmtTitle": "角色包結構",
     "fmtTip": "角色包內路徑一律相對包根；.list 每行四列以豎線分隔。",
     "importDone": "已匯入：{v0}。到「合成」頁就能選到它了。"

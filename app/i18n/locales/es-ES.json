@@ -1089,8 +1089,6 @@
     "refCount": "{v0} audios de referencia",
     "emptyTitle": "Todavía no hay personajes",
     "emptyDesc": "Instala paquetes desde la Plaza o entrena el tuyo con tu propio audio.",
-    "emptyGoPlaza": "Buscar en la Plaza",
-    "emptyImport": "Importar paquete",
     "fmtTitle": "Estructura del paquete",
     "fmtTip": "Rutas relativas a la raíz del paquete; cada línea .list tiene cuatro columnas separadas por barras.",
     "importDone": "Se ha importado {v0}. Ya está disponible en la página de síntesis."

@@ -1089,8 +1089,6 @@
     "refCount": "{v0} reference clips",
     "emptyTitle": "No characters yet",
     "emptyDesc": "Install official or community packs from the Plaza, or train your own from raw audio.",
-    "emptyGoPlaza": "Browse the Plaza",
-    "emptyImport": "Import a pack",
     "fmtTitle": "Pack layout",
     "fmtTip": "Paths inside a pack are relative to its root; each .list line has four pipe-separated columns.",
     "importDone": "Imported {v0}. It is now available on the Synthesis page."

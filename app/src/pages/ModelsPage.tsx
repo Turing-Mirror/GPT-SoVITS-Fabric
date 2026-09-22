@@ -136,12 +136,9 @@ export function ModelsPage({
         ) : (
         <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center">
           <div className="text-[13.5px] font-medium">{t("library.emptyTitle")}</div>
+          {/* 入口在标题行（去广场/导入角色包），这里只解释，不再放第二套按钮。 */}
           <div className="text-[12.5px] text-[var(--help)] mt-2 leading-relaxed max-w-[420px] mx-auto">
             {t("library.emptyDesc")}
-          </div>
-          <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
-            <Btn onClick={() => onOpenPlaza?.()}>{t("library.emptyGoPlaza")}</Btn>
-            <Btn onClick={() => void importPack()}>{t("library.emptyImport")}</Btn>
           </div>
         </div>
         )}

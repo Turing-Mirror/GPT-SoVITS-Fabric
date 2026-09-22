@@ -1089,8 +1089,6 @@
     "refCount": "参考音频 {v0} 条",
     "emptyTitle": "还没有本地角色",
     "emptyDesc": "从广场安装官方或社区角色包，或在训练台用自己的素材训练一个。",
-    "emptyGoPlaza": "去广场安装",
-    "emptyImport": "导入角色包",
     "fmtTitle": "角色包结构",
     "fmtTip": "角色包内路径一律相对包根；.list 每行四列以竖线分隔。",
     "importDone": "已导入：{v0}。到「合成」页就能选到它了。"

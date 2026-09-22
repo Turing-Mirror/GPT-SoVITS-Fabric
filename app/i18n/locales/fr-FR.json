@@ -1089,8 +1089,6 @@
     "refCount": "{v0} extraits de référence",
     "emptyTitle": "Aucun personnage pour l’instant",
     "emptyDesc": "Installez des packs depuis la Place ou entraînez le vôtre avec votre propre audio.",
-    "emptyGoPlaza": "Chercher sur la Place",
-    "emptyImport": "Importer un pack",
     "fmtTitle": "Structure d’un pack",
     "fmtTip": "Chemins relatifs à la racine du pack ; chaque ligne .list comporte quatre colonnes séparées par des barres.",
     "importDone": "{v0} a été importé. Il est désormais disponible sur la page de synthèse."
