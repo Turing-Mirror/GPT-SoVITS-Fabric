@@ -777,6 +777,10 @@ export default function App() {
         </div>
       ) : null}
 
+      {/* Nudge 全部收进这层浮层：absolute 叠在页面之上、不占布局，
+          否则每条提示都会在底部顶出一条跟背景同色的带子，看着像伪 dock。
+          pointer-events 穿透空区，卡片自己再吃事件。 */}
+      <div className="absolute inset-x-0 bottom-0 z-[40] pointer-events-none">
       {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么
           用不了）。一个会话里关掉就不再出现 —— 不落配置，因为坑没填之前
           下次启动本来就该再说一次。 */}
@@ -916,6 +920,7 @@ export default function App() {
           }
         >{t("s.7f3ebfb67b")}</Nudge>
       ) : null}
+      </div>
 
       {qr ? (
         <QrDialog src={qr.src} label={qr.label} onClose={() => setQr(null)} />
