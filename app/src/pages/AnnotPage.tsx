@@ -448,7 +448,7 @@ function AnnotPageImpl() {
                               {r.issues.map((i) => (
                                 <span
                                   key={i}
-                                  className="text-[10.5px] px-1.5 py-px rounded-full text-[#c44] bg-[color-mix(in_srgb,#c44_10%,transparent)]"
+                                  className="text-[10.5px] px-1.5 py-px rounded-full text-[var(--danger)] bg-[var(--danger-soft)]"
                                 >
                                   {issueText(i)}
                                 </span>
@@ -485,7 +485,7 @@ function AnnotPageImpl() {
                             onClick={() => removeRow(r.line)}
                             aria-label={t("s.annot.removeRow")}
                             title={t("s.annot.removeRow")}
-                            className="w-[22px] h-[22px] rounded-[var(--rs)] border-0 bg-transparent text-[var(--meta)] cursor-pointer hover:text-[#c44]"
+                            className="w-[22px] h-[22px] rounded-[var(--rs)] border-0 bg-transparent text-[var(--meta)] cursor-pointer hover:text-[var(--danger)]"
                           >
                             ×
                           </button>

@@ -131,7 +131,7 @@ function SettingsPageImpl({
 
       <PagePad>
         {c.error ? (
-          <p className="text-[12.5px] text-[#b8534f] mt-4 mb-0">{c.error}</p>
+          <p className="text-[12.5px] text-[var(--danger)] mt-4 mb-0">{c.error}</p>
         ) : null}
 
         {c.restartKeys.length ? (

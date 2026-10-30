@@ -651,7 +651,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
       ) : null}
 
       {err ? (
-        <div className="mb-3 text-[12px] leading-relaxed whitespace-pre-line break-words text-[color-mix(in_srgb,#c44_90%,var(--ink))]">
+        <div className="mb-3 text-[12px] leading-relaxed whitespace-pre-line break-words text-[var(--danger)]">
           {err}
         </div>
       ) : null}

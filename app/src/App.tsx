@@ -34,7 +34,7 @@ import { useI18n } from "./i18n";
 import { t } from "./i18n/t";
 
 /**
- * 变声多少次之后问一句「要不要关注」。
+ * 合成完成多少次之后问一句「要不要关注」。
  *
  * 十次的意思是：这人已经把软件用起来了，不是打开看两眼就走的。太早问等于
  * 拦路要东西，太晚问他早就忘了这软件是谁做的。
@@ -730,7 +730,7 @@ export default function App() {
 
       {killAsk ? (
         <div className="absolute inset-0 z-[60] grid place-items-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
-          <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] p-6">
+          <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
             <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">{t("s.killStsAskBody")}</p>
             <div className="flex gap-2.5 justify-end">
@@ -751,7 +751,7 @@ export default function App() {
 
       {closeAsk ? (
         <div className="absolute inset-0 z-[60] grid place-items-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
-          <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] p-6">
+          <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
             <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-4 leading-relaxed">{t("s.bc19958103")}</p>
             <label className="flex items-center gap-2.5 text-[13px] cursor-pointer mb-5 select-none">
@@ -810,13 +810,13 @@ export default function App() {
       ) : null}
 
       {/* 同时最多出现一条。更新排最前 —— 它是开机 4 秒就出来的，那会儿另外
-          两条的触发条件（用满 60 秒 / 变声十次）都还远没到。
+          两条的触发条件（用满 60 秒 / 合成十次）都还远没到。
           统计邀请次之，两条撞在一起会把底栏顶掉半个屏。 */}
       {/* 运行环境未补全排最前：它挡的是整个产品的主力功能，比首引/更新都
           急。只在补全弹窗被关掉之后才出现 —— 弹窗开着的时候它俩说的是同一
           件事，一起出现就是复读。补全完成它自己消失。 */}
       {/* 首次引导排在最前：更新提示是开机 4 秒就出来的，统计和关注更靠后，
-          而这条只在用户第一次点「开启变声」的那几秒里有意义，错过就没了。
+          而这条只在用户第一次开始合成的那几秒里有意义，错过就没了。
           它关掉之后被它压住的那条会自己顶上来。 */}
       {engine.provision.need_provision && provisionDismissed && !runtimeNudgeDismissed ? (
         <Nudge

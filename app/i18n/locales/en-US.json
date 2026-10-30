@@ -218,7 +218,9 @@
       "cancelled": "Cancelled",
       "usage": "Usage: train_worker.py <request.json>",
       "bad_request": "Cannot read the request file: {error}",
-      "train_failed": "Training failed (exit code {code}). See {log}"
+      "train_failed": "Training failed (exit code {code}). See {log}",
+      "dup_name": "Two audio files share the name {name}. Rename one and try again.",
+      "no_audio": "None of the audio files could be read. Check that the files are intact."
     },
     "synth": {
       "bad_request": "Incomplete synthesis request.",
@@ -228,7 +230,8 @@
       "oom": "Out of GPU memory, synthesis interrupted. Try shorter text or close other VRAM-heavy programs and retry.",
       "synth_failed": "Synthesis failed.",
       "cancelled": "Cancelled.",
-      "empty": "Synthesis produced no audio."
+      "empty": "Synthesis produced no audio.",
+      "ref_length": "The reference audio must be 3–10 seconds long. Choose another reference."
     }
   },
   "s": {
@@ -270,7 +273,6 @@
     "1a66c860cd": "Unable to read separation process output",
     "1ae90bfb23": "By series",
     "1cf582864a": "Downloading {name}…",
-    "1db2e283ac": "render crashed: {v0}",
     "1e1016e5c8": "First use downloads the Runtime (includes PyTorch; a few GB). It deploys automatically after downloading.",
     "1fd4658c44": "Not checked yet. An automatic check runs at startup.",
     "206f264868": "Not now",
@@ -338,7 +340,6 @@
     "49fd445d8b": "Loading settings…",
     "4a02ebe151": "Unsafe archive path: {name}",
     "4aa2306395": "Generate",
-    "4b829fbdac": "Default",
     "4bbcf94739": "Download complete",
     "4c65a5e25e": "NVIDIA (best for most NVIDIA cards)",
     "4d0b4688c7": "Cancel",
@@ -367,7 +368,6 @@
     "60a21a8105": "Training failed",
     "60d30d777c": "Please download only from sources you trust.\n\n",
     "612dddefc4": "Choose the dataset folder (holding this speaker’s dry vocal audio)",
-    "61f43bf584": "UI error",
     "62b46f24ae": "Recommended",
     "63a937a39e": "By proceeding, you acknowledge the above.",
     "63bb17a9d2": "Settings changed. They take effect on the next synthesis.",
@@ -422,7 +422,7 @@
     "7c134b6e64": "Turing Mirror",
     "7cf7bfff3c": "Expired",
     "7d2fe2ae0a": "Likely a network blip or an unresponsive server — the app isn't frozen.",
-    "7d4cfa5986": "When done, the VC runtime is prepared — the engine cannot start without it. Engine resources are downloaded on demand under Plaza → Download models.",
+    "7d4cfa5986": "The VC++ runtime is installed afterwards. Engine resources can then be downloaded under Plaza → Download models.",
     "7dc4ea39fd": "Training process ended without reporting a result",
     "7dd9064298": "Ready · {v0}",
     "7e9782377b": "No separation models available right now.",
@@ -524,7 +524,6 @@
     "d359cf1384": "Like GPT-SoVITS Fabric? Follow Turing Mirror!",
     "d47379f917": "Refreshing",
     "d5c27cb2ba": "Setting up…",
-    "d851b62cf4": "Running tasks are unaffected and can still be controlled from the tray icon’s context menu. Please send us the diagnostic bundle from More → Runtime status so we can look into this.",
     "d9702f047c": "Join",
     "da1fd957dc": "Bilibili",
     "da2d806e5f": "Maximize",
@@ -545,7 +544,6 @@
     "e5c12c3be5": "Wallpaper",
     "e5d3918de2": "Extracting Runtime…",
     "e64959c277": "{key} missing from config::defaults()",
-    "e6b7c3d266": "(nothing available)",
     "e8a77f003d": "Download the engine resources before the actual models.",
     "e9ddef6eab": "Unable to create output directory: {e}",
     "eb033e6340": "Can be downloaded from within the app",
@@ -642,7 +640,6 @@
     "227d108a35": "Runtime is ready, skipping download.",
     "c77af9b599": "Downloading {a0} / {a1} ({a2}%) · {a3}",
     "a64a986f63": "Runtime setup completed",
-    "1cab0503c2": "(Currently unavailable)",
     "244d1be15c": "Approx. {v0}",
     "af8a2d5711": "Detected GPU: {v0}",
     "92f35590d5": "Start downloading",
@@ -702,7 +699,7 @@
     "trainOutPick": "Choose where to save characters",
     "trainOutRelative": "The output folder must be a full path (for example D:\\GSVCharacters); “{a0}” is not one.",
     "trainOutUnwritable": "Cannot create the save folder {a0}: {a1}. Please pick a writable location before starting.",
-    "provCoreAsk": "Chinese HuBERT, Chinese RoBERTa and the GPT-SoVITS base models — about 720 MB. Both synthesis and training need them. Download now, or later from the Plaza.",
+    "provCoreAsk": "Base models required for synthesis and training (Chinese HuBERT, Chinese RoBERTa, GPT-SoVITS base models, polyphone and language detection models), about 2.1 GB. Download now, or later under Plaza → Download models.",
     "provCoreGet": "Download engine resources",
     "provCoreSkip": "Not now; enter the app",
     "provCoreDownloading": "Downloading engine resources…",
@@ -947,6 +944,7 @@
     "refEmpty": "This pack has no usable reference lines. Check its dataset/*.list.",
     "refNoRole": "Pick a character above; its bundled reference lines will be listed here.",
     "refMissing": "file missing",
+    "refLength": "Needs 3–10 s",
     "refNote": "From the pack's .list annotations",
     "refTip": "The reference clip steers timbre and emotion. Changing it changes how the same text is delivered.",
     "refTitle": "Reference audio",
@@ -1146,5 +1144,110 @@
     "needRuntimeSub": "Complete the runtime to start synthesising",
     "fixRuntime": "Provision now",
     "later": "Later"
+  },
+  "ui": {
+    "select": {
+      "empty": "No options available",
+      "missing": " (unavailable)"
+    },
+    "range": {
+      "defaultMark": "Default value"
+    },
+    "window": {
+      "minimize": "Minimize",
+      "maximize": "Maximize",
+      "close": "Close"
+    },
+    "nav": {
+      "newContent": "New content"
+    },
+    "tray": {
+      "show": "Show window",
+      "quit": "Quit"
+    },
+    "error": {
+      "title": "The interface hit an error",
+      "safe": "Your files, settings and running tasks are not affected. Try again first; if that does not help, try the other options in order.",
+      "retry": "Try again",
+      "home": "Back to Home",
+      "reload": "Reload",
+      "resetUi": "Restore default interface",
+      "resetNote": "Restoring the default interface only resets the look and layout. No data is deleted.",
+      "details": "Error details",
+      "hint": "When reporting the problem, please include the text below.",
+      "copy": "Copy error details",
+      "copied": "Copied",
+      "copyFailed": "Copy failed. Please select the text and copy it manually"
+    },
+    "common": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "confirm": "OK",
+      "more": "More",
+      "clear": "Clear",
+      "search": "Search",
+      "back": "Back"
+    },
+    "pager": {
+      "label": "Pages",
+      "prev": "Previous page",
+      "next": "Next page"
+    },
+    "cal": {
+      "today": "Today",
+      "prev": "Previous month",
+      "next": "Next month"
+    },
+    "notice": {
+      "clearAll": "Clear all",
+      "now": "Now"
+    },
+    "sidebar": {
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar"
+    },
+    "panel": {
+      "hide": "Hide {name}",
+      "show": "Show {name}"
+    },
+    "comments": {
+      "all": "All",
+      "count": "{n} comments",
+      "hot": "Top",
+      "new": "Newest",
+      "none": "No comments yet",
+      "fold": "Hide replies",
+      "moreReplies": "Show {n} more replies",
+      "replyTo": "Reply to {name}",
+      "author": "Author",
+      "replied": "replied to",
+      "like": "Like",
+      "reply": "Reply",
+      "delete": "Delete",
+      "report": "Report",
+      "post": "Post",
+      "hint": "Add a comment",
+      "reviewHint": "Write a review",
+      "quick": "Quick phrases"
+    },
+    "wizard": {
+      "count": "Step {n} of {total}",
+      "later": "Continue later",
+      "prev": "Back",
+      "next": "Next",
+      "skip": "Skip this step",
+      "finish": "Finish",
+      "close": "Don’t show again"
+    },
+    "errorNote": {
+      "show": "Show details",
+      "hide": "Hide details",
+      "copy": "Copy full error",
+      "copied": "Copied"
+    },
+    "hotkey": {
+      "press": "Press a shortcut",
+      "none": "None"
+    }
   }
 }

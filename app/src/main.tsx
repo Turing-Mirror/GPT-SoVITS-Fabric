@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { logToHost } from "./trm/lib/host";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToolWindow, toolFromHash } from "./components/ToolWindow";
 import { I18nProvider } from "./i18n";
@@ -45,7 +46,7 @@ if (tool) {
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <I18nProvider>
-      <ErrorBoundary>
+      <ErrorBoundary onError={logToHost}>
         {tool ? <ToolWindow kind={tool} /> : <App />}
       </ErrorBoundary>
     </I18nProvider>

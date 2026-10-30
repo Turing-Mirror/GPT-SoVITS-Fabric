@@ -349,7 +349,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
 
   return (
     <div className="absolute inset-0 z-[50] flex items-center justify-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
-      <div className="w-full max-w-[520px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] p-7">
+      <div className="w-full max-w-[520px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-7">
         <h2 className="text-[22px] font-semibold m-0 mb-2">{t("s.405125fb37")}</h2>
         <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">
           {info.recommend_reason ||
@@ -479,7 +479,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
         ) : null}
 
         {error ? (
-          <p className="text-[12.5px] text-[#c43] m-0 mb-3 leading-relaxed whitespace-pre-line">
+          <p className="text-[12.5px] text-[var(--danger)] m-0 mb-3 leading-relaxed whitespace-pre-line">
             {error}
           </p>
         ) : null}

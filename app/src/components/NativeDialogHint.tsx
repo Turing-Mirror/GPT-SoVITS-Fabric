@@ -18,7 +18,7 @@ export function NativeDialogHint() {
       aria-live="polite"
       className="pointer-events-none fixed inset-x-0 top-0 z-[120] flex justify-center px-4 pt-3"
     >
-      <div className="max-w-[min(560px,92vw)] rounded-[var(--rs)] bg-[var(--surface)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-muted)] shadow-[0_10px_30px_-12px_rgba(20,26,33,.38)]">
+      <div className="max-w-[min(560px,92vw)] rounded-[var(--rs)] bg-[var(--surface)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--ink-muted)] shadow-[0_10px_30px_-12px_var(--scrim)]">
         {hint}
       </div>
     </div>

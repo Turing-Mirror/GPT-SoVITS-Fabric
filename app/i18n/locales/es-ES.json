@@ -218,7 +218,9 @@
       "cancelled": "Cancelado",
       "usage": "Uso: train_worker.py <request.json>",
       "bad_request": "No se puede leer el archivo de solicitud: {error}",
-      "train_failed": "El entrenamiento falló (código de salida {code}). Consulte {log}"
+      "train_failed": "El entrenamiento falló (código de salida {code}). Consulte {log}",
+      "dup_name": "Dos archivos de audio tienen el mismo nombre: {name}. Cambie uno y vuelva a intentarlo.",
+      "no_audio": "No se pudo leer ningún archivo de audio. Compruebe que los archivos estén íntegros."
     },
     "synth": {
       "bad_request": "La solicitud de síntesis está incompleta.",
@@ -228,7 +230,8 @@
       "oom": "Memoria de GPU insuficiente, síntesis interrumpida. Prueba con un texto más corto o cierra otros programas que usen VRAM y reintenta.",
       "synth_failed": "La síntesis falló.",
       "cancelled": "Cancelado.",
-      "empty": "La síntesis no produjo audio."
+      "empty": "La síntesis no produjo audio.",
+      "ref_length": "El audio de referencia debe durar entre 3 y 10 segundos. Elija otra referencia."
     }
   },
   "s": {
@@ -270,7 +273,6 @@
     "1a66c860cd": "No se puede obtener la salida del proceso de separación",
     "1ae90bfb23": "Por serie",
     "1cf582864a": "Descargando {name}…",
-    "1db2e283ac": "render falló: {v0}",
     "1e1016e5c8": "El primer uso descarga el entorno de ejecución (con PyTorch; ocupa varios GB). Tras la descarga se despliega solo.",
     "1fd4658c44": "Aún no se ha comprobado. Se comprueba automáticamente al iniciar.",
     "206f264868": "Ahora no",
@@ -338,7 +340,6 @@
     "49fd445d8b": "Cargando ajustes…",
     "4a02ebe151": "Ruta de archivo no segura: {name}",
     "4aa2306395": "Generar",
-    "4b829fbdac": "Valor inicial",
     "4bbcf94739": "Descarga completada",
     "4c65a5e25e": "NVIDIA (recomendado para la mayoría de NVIDIA)",
     "4d0b4688c7": "Cancelar",
@@ -367,7 +368,6 @@
     "60a21a8105": "Error de entrenamiento",
     "60d30d777c": "Descarga solo de fuentes de confianza.\n\n",
     "612dddefc4": "Elija la carpeta del conjunto de datos (con el audio seco de esta persona)",
-    "61f43bf584": "Error de interfaz",
     "62b46f24ae": "Recomendado",
     "63a937a39e": "Continuar la instalación implica que has leído y aceptas lo anterior.",
     "63bb17a9d2": "Ajustes modificados. Se aplicarán en la próxima síntesis.",
@@ -422,7 +422,7 @@
     "7c134b6e64": "Turing Mirror",
     "7cf7bfff3c": "Caducado",
     "7d2fe2ae0a": "Probablemente inestabilidad de red o un servidor que no responde; el programa no está congelado.",
-    "7d4cfa5986": "Al terminar se prepara el runtime de VC; sin él el motor no arranca. Los recursos del motor se descargan bajo demanda en Plaza → Descargar modelos.",
+    "7d4cfa5986": "Después se instala el runtime de VC++. Los recursos del motor pueden descargarse luego en Plaza → Descargar modelos.",
     "7dc4ea39fd": "El proceso de entrenamiento terminó sin informar del resultado",
     "7dd9064298": "Listo · {v0}",
     "7e9782377b": "No hay modelos de separación disponibles por ahora.",
@@ -524,7 +524,6 @@
     "d359cf1384": "¿Te gusta GPT-SoVITS Fabric? ¡Sigue a Turing Mirror!",
     "d47379f917": "Actualizando",
     "d5c27cb2ba": "Instalando…",
-    "d851b62cf4": "Las tareas en curso no se ven afectadas y siguen controlándose desde el menú contextual del icono de la bandeja. Envíenos el paquete de diagnóstico de Más → Estado de ejecución para que podamos investigarlo.",
     "d9702f047c": "Participar",
     "da1fd957dc": "Bilibili",
     "da2d806e5f": "Maximizar",
@@ -545,7 +544,6 @@
     "e5c12c3be5": "Fondo",
     "e5d3918de2": "Descomprimiendo Runtime…",
     "e64959c277": "Falta {key} en config::defaults()",
-    "e6b7c3d266": "(nada disponible)",
     "e8a77f003d": "Descarga primero los recursos del motor y luego los modelos concretos.",
     "e9ddef6eab": "No se puede crear la carpeta de salida: {e}",
     "eb033e6340": "Se puede descargar e instalar desde el programa",
@@ -642,7 +640,6 @@
     "227d108a35": "Runtime listo, omitiendo descarga.",
     "c77af9b599": "Descargando {a0} / {a1} ({a2}%) · {a3}",
     "a64a986f63": "Complementación de Runtime completada",
-    "1cab0503c2": "(Actualmente no disponible)",
     "244d1be15c": "Aprox. {v0}",
     "af8a2d5711": "Tarjeta gráfica detectada: {v0}",
     "92f35590d5": "Iniciar descarga",
@@ -702,7 +699,7 @@
     "trainOutPick": "Elige dónde guardar las voces",
     "trainOutRelative": "La carpeta de destino debe ser una ruta completa (por ejemplo D:\\GSVCharacters); «{a0}» no lo es.",
     "trainOutUnwritable": "No se puede crear la carpeta {a0}: {a1}. Elige una ubicación con permiso de escritura antes de empezar.",
-    "provCoreAsk": "HuBERT en chino, RoBERTa en chino y los modelos base de GPT-SoVITS: unos 720 MB. Hacen falta tanto para sintetizar como para entrenar. Descárguelos ahora o más tarde desde la Plaza.",
+    "provCoreAsk": "Modelos base necesarios para sintetizar y entrenar (HuBERT y RoBERTa en chino, modelos base de GPT-SoVITS, modelos de polifonía y detección de idioma), unos 2,1 GB. Descárguelos ahora o más tarde en Plaza → Descargar modelos.",
     "provCoreGet": "Descargar recursos del motor",
     "provCoreSkip": "Más tarde; entrar en la aplicación",
     "provCoreDownloading": "Descargando recursos del motor…",
@@ -947,6 +944,7 @@
     "refEmpty": "Este paquete no tiene líneas de referencia utilizables. Revisa su dataset/*.list.",
     "refNoRole": "Elige un personaje arriba; aqui apareceran sus lineas de referencia.",
     "refMissing": "falta el archivo",
+    "refLength": "Requiere 3–10 s",
     "refNote": "De las anotaciones .list del paquete",
     "refTip": "La referencia define el timbre y la emoción. Con otra referencia, el mismo texto suena distinto.",
     "refTitle": "Audio de referencia",
@@ -1146,5 +1144,110 @@
     "needRuntimeSub": "Complete el runtime para poder sintetizar",
     "fixRuntime": "Instalar",
     "later": "Más tarde"
+  },
+  "ui": {
+    "select": {
+      "empty": "Sin opciones disponibles",
+      "missing": " (no disponible)"
+    },
+    "range": {
+      "defaultMark": "Valor inicial"
+    },
+    "window": {
+      "minimize": "Minimizar",
+      "maximize": "Maximizar",
+      "close": "Cerrar"
+    },
+    "nav": {
+      "newContent": "Contenido nuevo"
+    },
+    "tray": {
+      "show": "Mostrar la ventana",
+      "quit": "Salir"
+    },
+    "error": {
+      "title": "La interfaz ha fallado",
+      "safe": "Tus archivos, ajustes y tareas en curso no se han visto afectados. Prueba primero a reintentar; si no funciona, prueba las demás opciones en orden.",
+      "retry": "Reintentar",
+      "home": "Volver al inicio",
+      "reload": "Recargar",
+      "resetUi": "Restaurar la interfaz predeterminada",
+      "resetNote": "Restaurar la interfaz solo recupera el aspecto y la disposición predeterminados. No se elimina ningún dato.",
+      "details": "Detalles del error",
+      "hint": "Al informar del problema, incluye el texto siguiente.",
+      "copy": "Copiar detalles del error",
+      "copied": "Copiado",
+      "copyFailed": "No se pudo copiar. Selecciona el texto y cópialo manualmente"
+    },
+    "common": {
+      "close": "Cerrar",
+      "cancel": "Cancelar",
+      "confirm": "Aceptar",
+      "more": "Más",
+      "clear": "Borrar",
+      "search": "Buscar",
+      "back": "Atrás"
+    },
+    "pager": {
+      "label": "Páginas",
+      "prev": "Página anterior",
+      "next": "Página siguiente"
+    },
+    "cal": {
+      "today": "Hoy",
+      "prev": "Mes anterior",
+      "next": "Mes siguiente"
+    },
+    "notice": {
+      "clearAll": "Borrar todo",
+      "now": "Ahora"
+    },
+    "sidebar": {
+      "collapse": "Contraer barra lateral",
+      "expand": "Expandir barra lateral"
+    },
+    "panel": {
+      "hide": "Ocultar {name}",
+      "show": "Mostrar {name}"
+    },
+    "comments": {
+      "all": "Todo",
+      "count": "{n} comentarios",
+      "hot": "Destacados",
+      "new": "Recientes",
+      "none": "Todavía no hay comentarios",
+      "fold": "Ocultar respuestas",
+      "moreReplies": "Ver {n} respuestas más",
+      "replyTo": "Responder a {name}",
+      "author": "Autor",
+      "replied": "respondió a",
+      "like": "Me gusta",
+      "reply": "Responder",
+      "delete": "Eliminar",
+      "report": "Denunciar",
+      "post": "Publicar",
+      "hint": "Escribe un comentario",
+      "reviewHint": "Escribe una reseña",
+      "quick": "Frases rápidas"
+    },
+    "wizard": {
+      "count": "Paso {n} de {total}",
+      "later": "Continuar más tarde",
+      "prev": "Atrás",
+      "next": "Siguiente",
+      "skip": "Omitir este paso",
+      "finish": "Terminar",
+      "close": "No volver a mostrar"
+    },
+    "errorNote": {
+      "show": "Ver detalles",
+      "hide": "Ocultar detalles",
+      "copy": "Copiar el error completo",
+      "copied": "Copiado"
+    },
+    "hotkey": {
+      "press": "Pulse un atajo",
+      "none": "Ninguno"
+    }
   }
 }

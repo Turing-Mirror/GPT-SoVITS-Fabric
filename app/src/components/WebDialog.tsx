@@ -73,7 +73,7 @@ export function WebDialogHost() {
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] p-6"
+        className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="text-[13px] text-[var(--ink)] m-0 mb-4 leading-relaxed whitespace-pre-wrap">

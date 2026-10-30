@@ -184,6 +184,8 @@ const DYNAMIC_PREFIXES = [
   "extras.items.",
   "settings.tabs.",
   "s.annot.issue.",
+  // TRM UI 组件库的文案（随 app/src/trm 整段同步），本产品没用到的组件也保留原样。
+  "ui.",
 ];
 
 // 「引用」在这一道里放得比第三道宽：`labelKey: "nav.home"` 这类把 key 存进

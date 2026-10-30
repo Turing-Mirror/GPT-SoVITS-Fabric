@@ -162,7 +162,7 @@ export function DiagnosticsDialog({
         aria-modal="true"
         className={
           "relative w-full max-w-[460px] max-h-[88vh] overflow-y-auto rounded-[var(--r)] " +
-          "bg-[var(--surface)] p-6 shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] " +
+          "bg-[var(--surface)] p-6 shadow-[0_22px_56px_-18px_var(--scrim)] " +
           (dragging ? "outline outline-1 outline-[var(--accent)]" : "")
         }
         onClick={(e) => e.stopPropagation()}

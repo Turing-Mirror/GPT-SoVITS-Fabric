@@ -218,7 +218,9 @@
       "cancelled": "Annulé",
       "usage": "Utilisation : train_worker.py <request.json>",
       "bad_request": "Impossible de lire le fichier de requête : {error}",
-      "train_failed": "L'entraînement a échoué (code de sortie {code}). Voir {log}"
+      "train_failed": "L'entraînement a échoué (code de sortie {code}). Voir {log}",
+      "dup_name": "Deux fichiers audio portent le même nom : {name}. Renommez-en un et réessayez.",
+      "no_audio": "Aucun fichier audio n'a pu être lu. Vérifiez que les fichiers sont intacts."
     },
     "synth": {
       "bad_request": "Requête de synthèse incomplète.",
@@ -228,7 +230,8 @@
       "oom": "Mémoire GPU insuffisante, synthèse interrompue. Essayez un texte plus court ou fermez les programmes gourmands en VRAM puis réessayez.",
       "synth_failed": "La synthèse a échoué.",
       "cancelled": "Annulé.",
-      "empty": "La synthèse n'a produit aucun audio."
+      "empty": "La synthèse n'a produit aucun audio.",
+      "ref_length": "L'audio de référence doit durer de 3 à 10 secondes. Choisissez une autre référence."
     }
   },
   "s": {
@@ -270,7 +273,6 @@
     "1a66c860cd": "Impossible d'obtenir la sortie du processus de séparation",
     "1ae90bfb23": "Par série",
     "1cf582864a": "Téléchargement de {name}…",
-    "1db2e283ac": "render a planté : {v0}",
     "1e1016e5c8": "La première utilisation télécharge l'environnement d'exécution (avec PyTorch ; plusieurs Go nécessaires). Il se déploie tout seul après téléchargement.",
     "1fd4658c44": "Pas encore vérifié. Une vérification automatique a lieu au démarrage.",
     "206f264868": "Pas pour le moment",
@@ -338,7 +340,6 @@
     "49fd445d8b": "Chargement des paramètres…",
     "4a02ebe151": "Chemin d'archive non sûr : {name}",
     "4aa2306395": "Générer",
-    "4b829fbdac": "Valeur initiale",
     "4bbcf94739": "Téléchargement terminé",
     "4c65a5e25e": "NVIDIA (recommandé pour la plupart des cartes NVIDIA)",
     "4d0b4688c7": "Annuler",
@@ -367,7 +368,6 @@
     "60a21a8105": "Échec de l'entraînement",
     "60d30d777c": "Téléchargez uniquement depuis des sources de confiance.\n\n",
     "612dddefc4": "Choisissez le dossier du jeu de données (contenant les voix sèches de cette personne)",
-    "61f43bf584": "Erreur d'interface",
     "62b46f24ae": "Recommandé",
     "63a937a39e": "Continuer l'installation implique que vous avez lu et acceptez ce qui précède.",
     "63bb17a9d2": "Réglages modifiés. Ils prendront effet à la prochaine synthèse.",
@@ -422,7 +422,7 @@
     "7c134b6e64": "Turing Mirror",
     "7cf7bfff3c": "Expiré",
     "7d2fe2ae0a": "Sûrement une fluctuation réseau ou un serveur muet ; le logiciel n'est pas figé.",
-    "7d4cfa5986": "À la fin, le runtime VC est préparé : sans lui le moteur ne démarre pas. Les ressources du moteur se téléchargent à la demande dans Place → Télécharger des modèles.",
+    "7d4cfa5986": "Le runtime VC++ est ensuite installé. Les ressources du moteur peuvent ensuite être téléchargées dans Place → Télécharger des modèles.",
     "7dc4ea39fd": "Le processus d'entraînement s'est terminé sans rapporter de résultat",
     "7dd9064298": "Prêt · {v0}",
     "7e9782377b": "Aucun modèle de séparation disponible pour le moment.",
@@ -524,7 +524,6 @@
     "d359cf1384": "GPT-SoVITS Fabric vous plaît ? Suivez Turing Mirror !",
     "d47379f917": "Actualisation",
     "d5c27cb2ba": "Installation…",
-    "d851b62cf4": "Les tâches en cours ne sont pas affectées et restent pilotables depuis le menu contextuel de l’icône de notification. Envoyez-nous le paquet de diagnostic généré par Plus → État d’exécution afin que nous puissions analyser le problème.",
     "d9702f047c": "Participer",
     "da1fd957dc": "Bilibili",
     "da2d806e5f": "Agrandir",
@@ -545,7 +544,6 @@
     "e5c12c3be5": "Fond d'écran",
     "e5d3918de2": "Extraction du Runtime…",
     "e64959c277": "{key} absent de config::defaults()",
-    "e6b7c3d266": "(rien de disponible)",
     "e8a77f003d": "Téléchargez d'abord les ressources du moteur, puis les modèles précis.",
     "e9ddef6eab": "Impossible de créer le dossier de sortie : {e}",
     "eb033e6340": "Téléchargeable et installable depuis le logiciel",
@@ -642,7 +640,6 @@
     "227d108a35": "Runtime prêt, téléchargement ignoré.",
     "c77af9b599": "Téléchargement en cours {a0} / {a1} ({a2}%) · {a3}",
     "a64a986f63": "Achèvement du Runtime terminé",
-    "1cab0503c2": "(Actuellement indisponible)",
     "244d1be15c": "Env. {v0}",
     "af8a2d5711": "Carte graphique détectée : {v0}",
     "92f35590d5": "Démarrer le téléchargement",
@@ -702,7 +699,7 @@
     "trainOutPick": "Choisir où enregistrer les voix",
     "trainOutRelative": "Le dossier de destination doit être un chemin complet (par exemple D:\\GSVCharacters) ; « {a0} » n’en est pas un.",
     "trainOutUnwritable": "Impossible de créer le dossier {a0} : {a1}. Choisissez un emplacement inscriptible avant de lancer.",
-    "provCoreAsk": "HuBERT chinois, RoBERTa chinois et les modèles de base GPT-SoVITS — environ 720 Mo. Ils sont nécessaires à la synthèse comme à l’entraînement. Téléchargez-les maintenant ou plus tard depuis la Place.",
+    "provCoreAsk": "Modèles de base nécessaires à la synthèse et à l’entraînement (HuBERT et RoBERTa chinois, modèles de base GPT-SoVITS, modèles de polyphonie et de détection de langue), environ 2,1 Go. Téléchargez-les maintenant ou plus tard dans Place → Télécharger des modèles.",
     "provCoreGet": "Télécharger les ressources moteur",
     "provCoreSkip": "Plus tard ; entrer dans l'application",
     "provCoreDownloading": "Téléchargement des ressources moteur…",
@@ -947,6 +944,7 @@
     "refEmpty": "Ce pack n'a aucune ligne de référence utilisable. Vérifiez son dataset/*.list.",
     "refNoRole": "Choisissez un personnage ci-dessus ; ses lignes de reference apparaitront ici.",
     "refMissing": "fichier manquant",
+    "refLength": "3 à 10 s requis",
     "refNote": "Issu des annotations .list du pack",
     "refTip": "La référence oriente le timbre et l’émotion. Changer de référence change le ton, même texte.",
     "refTitle": "Audio de référence",
@@ -1146,5 +1144,110 @@
     "needRuntimeSub": "Complétez le runtime pour lancer la synthèse",
     "fixRuntime": "Installer",
     "later": "Plus tard"
+  },
+  "ui": {
+    "select": {
+      "empty": "Aucune option disponible",
+      "missing": " (indisponible)"
+    },
+    "range": {
+      "defaultMark": "Valeur par défaut"
+    },
+    "window": {
+      "minimize": "Réduire",
+      "maximize": "Agrandir",
+      "close": "Fermer"
+    },
+    "nav": {
+      "newContent": "Nouveau contenu"
+    },
+    "tray": {
+      "show": "Afficher la fenêtre",
+      "quit": "Quitter"
+    },
+    "error": {
+      "title": "L’interface a rencontré une erreur",
+      "safe": "Vos fichiers, réglages et tâches en cours ne sont pas affectés. Réessayez d’abord ; si cela ne suffit pas, essayez les autres options dans l’ordre.",
+      "retry": "Réessayer",
+      "home": "Retour à l’accueil",
+      "reload": "Recharger",
+      "resetUi": "Rétablir l’interface par défaut",
+      "resetNote": "Rétablir l’interface ne réinitialise que l’apparence et la disposition. Aucune donnée n’est supprimée.",
+      "details": "Détails de l’erreur",
+      "hint": "Pour signaler le problème, joignez le texte ci-dessous.",
+      "copy": "Copier les détails",
+      "copied": "Copié",
+      "copyFailed": "Échec de la copie. Sélectionnez le texte et copiez-le manuellement"
+    },
+    "common": {
+      "close": "Fermer",
+      "cancel": "Annuler",
+      "confirm": "OK",
+      "more": "Plus",
+      "clear": "Effacer",
+      "search": "Rechercher",
+      "back": "Retour"
+    },
+    "pager": {
+      "label": "Pages",
+      "prev": "Page précédente",
+      "next": "Page suivante"
+    },
+    "cal": {
+      "today": "Aujourd’hui",
+      "prev": "Mois précédent",
+      "next": "Mois suivant"
+    },
+    "notice": {
+      "clearAll": "Tout effacer",
+      "now": "À l’instant"
+    },
+    "sidebar": {
+      "collapse": "Réduire la barre latérale",
+      "expand": "Déployer la barre latérale"
+    },
+    "panel": {
+      "hide": "Masquer {name}",
+      "show": "Afficher {name}"
+    },
+    "comments": {
+      "all": "Tout",
+      "count": "{n} commentaires",
+      "hot": "Populaires",
+      "new": "Récents",
+      "none": "Aucun commentaire pour l’instant",
+      "fold": "Masquer les réponses",
+      "moreReplies": "Afficher {n} autres réponses",
+      "replyTo": "Répondre à {name}",
+      "author": "Auteur",
+      "replied": "a répondu à",
+      "like": "J’aime",
+      "reply": "Répondre",
+      "delete": "Supprimer",
+      "report": "Signaler",
+      "post": "Publier",
+      "hint": "Ajouter un commentaire",
+      "reviewHint": "Rédiger un avis",
+      "quick": "Phrases rapides"
+    },
+    "wizard": {
+      "count": "Étape {n} sur {total}",
+      "later": "Continuer plus tard",
+      "prev": "Précédent",
+      "next": "Suivant",
+      "skip": "Passer cette étape",
+      "finish": "Terminer",
+      "close": "Ne plus afficher"
+    },
+    "errorNote": {
+      "show": "Afficher les détails",
+      "hide": "Masquer les détails",
+      "copy": "Copier l’erreur complète",
+      "copied": "Copié"
+    },
+    "hotkey": {
+      "press": "Appuyez sur un raccourci",
+      "none": "Aucun"
+    }
   }
 }

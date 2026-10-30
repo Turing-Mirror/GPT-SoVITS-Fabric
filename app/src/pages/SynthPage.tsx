@@ -78,6 +78,31 @@ const FALLBACK: Params = {
   repetition_penalty: 1.35,
 };
 
+/** 上游 TTS.py 的硬性范围（16 kHz 下 48000–160000 采样）：超出直接报错。 */
+const REF_SEC = { min: 3, max: 10 };
+
+/** 时长只读元数据，按路径缓存；切换角色再切回来不重复探测。 */
+const durCache = new Map<string, number>();
+
+function probeDuration(src: string): Promise<number> {
+  return new Promise((resolve) => {
+    const a = new Audio();
+    a.preload = "metadata";
+    const done = (v: number) => {
+      a.removeAttribute("src");
+      a.load();
+      resolve(v);
+    };
+    a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? a.duration : NaN);
+    a.onerror = () => done(NaN);
+    a.src = src;
+  });
+}
+
+function refFits(sec: number | undefined): boolean {
+  return sec == null || Number.isNaN(sec) || (sec >= REF_SEC.min && sec <= REF_SEC.max);
+}
+
 const LANG_BADGE: Record<string, string> = {
   zh: "中",
   all_zh: "中",
@@ -226,10 +251,39 @@ export function SynthPage() {
   );
   const recommended = useMemo(() => recommendedOf(role), [role]);
   const refs = useMemo(() => refsOf(role), [role]);
-  const ref = useMemo(
-    () => refs.find((r) => `${r.from}#${r.line}` === refKey) ?? refs.find((r) => r.exists) ?? null,
-    [refs, refKey],
-  );
+  const [durs, setDurs] = useState<Record<string, number>>({});
+  const usable = useCallback((r: RefRow) => r.exists && refFits(durs[r.abs]), [durs]);
+  const ref = useMemo(() => {
+    const picked = refs.find((r) => `${r.from}#${r.line}` === refKey);
+    if (picked && usable(picked)) return picked;
+    // 默认优先已确认时长合格的，其次尚未探测完的。
+    return (
+      refs.find((r) => r.exists && durs[r.abs] != null && refFits(durs[r.abs])) ??
+      refs.find(usable) ??
+      null
+    );
+  }, [refs, refKey, durs, usable]);
+
+  // 参考音频时长：逐条读元数据，结果随到随显示。
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    const todo = refs.filter((r) => r.exists && !durCache.has(r.abs));
+    const flush = () =>
+      setDurs(Object.fromEntries(refs.filter((r) => durCache.has(r.abs)).map((r) => [r.abs, durCache.get(r.abs)!])));
+    flush();
+    void (async () => {
+      for (const r of todo) {
+        const sec = await probeDuration(convertFileSrc(r.abs));
+        if (!alive) return;
+        durCache.set(r.abs, sec);
+        flush();
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [refs]);
 
   // 首次加载：上次用的角色、上次用的参数。角色没了就落到第一个。
   useEffect(() => {
@@ -475,15 +529,17 @@ export function SynthPage() {
             {refs.map((row, i) => {
               const key = `${row.from}#${row.line}`;
               const on = ref != null && key === `${ref.from}#${ref.line}`;
+              const sec = durs[row.abs];
+              const ok = usable(row);
               return (
                 <button
                   key={key}
                   type="button"
-                  disabled={!row.exists}
+                  disabled={!ok}
                   onClick={() => setRefKey(key)}
                   className={[
                     "w-full text-left px-3.5 py-2.5 border-0 flex items-center gap-3 transition-colors duration-150",
-                    row.exists ? "cursor-pointer" : "cursor-not-allowed opacity-55",
+                    ok ? "cursor-pointer" : "cursor-not-allowed opacity-55",
                     i > 0 ? "border-t border-[var(--hairline)]" : "",
                     on
                       ? "bg-[var(--accent-soft)]"
@@ -504,11 +560,16 @@ export function SynthPage() {
                     <span className="block text-[13px] truncate">{row.text}</span>
                     <span className="block text-[11.5px] text-[var(--meta)] truncate mt-0.5">
                       {row.from} · {row.wav}
+                      {sec != null && !Number.isNaN(sec) ? ` · ${sec.toFixed(1)} s` : ""}
                     </span>
                   </span>
                   {!row.exists ? (
-                    <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-full text-[#c44] bg-[color-mix(in_srgb,#c44_10%,transparent)]">
+                    <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-full text-[var(--danger)] bg-[var(--danger-soft)]">
                       {t("synth.refMissing")}
+                    </span>
+                  ) : !ok ? (
+                    <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-full text-[var(--warn)] bg-[color-mix(in_srgb,var(--warn)_14%,transparent)]">
+                      {t("synth.refLength")}
                     </span>
                   ) : null}
                   <span className="shrink-0 w-[20px] h-[20px] rounded-[6px] grid place-items-center text-[10.5px] bg-[var(--stage)] text-[var(--accent)] font-semibold">
@@ -664,7 +725,7 @@ export function SynthPage() {
                   className={[
                     "h-full rounded-full bg-[var(--accent)]",
                     // 引擎报不出总量，所以这条是「在动」而不是「到了几成」。
-                    busy ? "w-1/3 dock-bar-indeterminate" : "w-full",
+                    busy ? "w-1/3 trm-bar-indeterminate" : "w-full",
                   ].join(" ")}
                 />
               </div>
