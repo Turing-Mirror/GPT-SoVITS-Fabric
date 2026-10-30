@@ -36,3 +36,10 @@ Thumbs.db
 
 # 构建产物（安装包与边车）
 dist/
+
+# 本机构建与开发用的产品根（Runtime 构建、底模、开发根）
+data/
+
+# 打包前由 prepare_engine_payload.py --runtime 生成
+app/src-tauri/engine-payload/GPT_SoVITS/text/ja_userdic/user.dict
+app/src-tauri/engine-payload/GPT_SoVITS/text/ja_userdic/userdict.md5

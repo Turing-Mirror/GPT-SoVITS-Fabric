@@ -93,7 +93,7 @@ def s2_config_name(version: str) -> str:
     return f"s2{version}.json" if version in ("v2Pro", "v2ProPlus") else "s2.json"
 
 
-#: GPT 底模。v3/v4/v2Pro/v2ProPlus 共用 s1v3（catalog-src/base-models 的说明）。
+#: GPT 底模。v3/v4/v2Pro/v2ProPlus 共用 s1v3。
 S1_PRETRAINED = f"{PRETRAINED}/s1v3.ckpt"
 
 CNHUBERT_DIR = f"{PRETRAINED}/chinese-hubert-base"
@@ -149,9 +149,11 @@ def say(stage: str, code: str, fallback: str, *, done=None, total=None, **params
 class Fail(Exception):
     """能翻译的失败。壳侧按 code 取词，params 填空。"""
 
-    def __init__(self, code: str, fallback: str, **params) -> None:
+    # 第一个参数不叫 code：语言包里的占位符就有 {code}（退出码），
+    # 作为关键字参数传进 params 时会和它撞名。
+    def __init__(self, msg_code: str, fallback: str, **params) -> None:
         super().__init__(fallback)
-        self.code = f"train.{code}"
+        self.code = f"train.{msg_code}"
         self.fallback = fallback
         self.params = params
 
@@ -328,8 +330,11 @@ _TRAIN_LOG = None
 
 def base_env(req: dict) -> dict:
     env = dict(os.environ)
+    # 上游脚本用 `from text.cleaner import ...`、`import utils` 这种裸导入，
+    # 整合包靠 site-packages 里一个 .pth 把 `GPT_SoVITS/` 加进路径；我们的
+    # Runtime 没有那个 .pth，所以两层都显式给。
     env["PYTHONPATH"] = os.pathsep.join(
-        [str(ROOT), env.get("PYTHONPATH", "")]
+        [str(ROOT), str(ROOT / "GPT_SoVITS"), env.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
     env["PYTHONIOENCODING"] = "utf-8"
     env["is_half"] = "True" if req["is_half"] else "False"
@@ -523,9 +528,27 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
         raise Fail("wav_missing", f"annotation points at a missing file: {missing[0]['wav']}",
                    name=missing[0]["wav"])
 
+    # 上游按「文件名」找音频：取路径的 basename 拼到 inp_wav_dir 上
+    # （2-get-hubert-wav32k.py），子目录里的音频（角色包的 audios/ 布局）因此
+    # 一条都找不到；它又把每条失败吞掉，这一步照样「成功」，直到 s2 训练拿到
+    # 空数据集除零。所以交给上游的是一份绝对路径的副本，inp_wav_dir 留空。
+    # 产物也按文件名存，不同目录下的同名文件会互相覆盖，先拦住。
+    seen: dict[str, str] = {}
+    for r in rows:
+        key = Path(r["abs"]).name.lower()
+        if seen.setdefault(key, r["abs"]) != r["abs"]:
+            raise Fail("dup_name", f"two audio files share the name {Path(r['abs']).name}",
+                       name=Path(r["abs"]).name)
+    opt_dir.mkdir(parents=True, exist_ok=True)
+    feed = opt_dir / "input.list"
+    feed.write_text(
+        "".join(f"{r['abs']}|{r['speaker']}|{r['lang']}|{r['text']}\n" for r in rows),
+        encoding="utf-8",
+    )
+
     env = base_env(req)
-    env["inp_text"] = str(list_path)
-    env["inp_wav_dir"] = str(list_path.parent)
+    env["inp_text"] = str(feed)
+    env["inp_wav_dir"] = ""
     env["exp_name"] = req["exp"]
     env["opt_dir"] = str(opt_dir)
     env["bert_pretrained_dir"] = str(need(
@@ -568,6 +591,9 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
         if not (opt_dir / artifact).exists():
             raise Fail("no_artifact", f"{script} produced no {artifact}",
                        name=artifact, step=script)
+        # 上游逐条吞掉解码失败，目录在、里面空也算「成功」。
+        if artifact == _STEP_HUBERT[1] and not any((opt_dir / artifact).iterdir()):
+            raise Fail("no_audio", "none of the audio files could be read")
     say("format", "formatted", "the training set is ready", done=total, total=total)
 
 
@@ -610,6 +636,9 @@ def stage_sovits(req: dict, opt_dir: Path, weights_dir: Path) -> None:
 
     tmp = opt_dir / "s2_config.json"
     tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    # s2_train 往这里存检查点却不自己建目录，上游 webui 起训前替它建好
+    # （webui.py 的 open1Ba）。不建的话第一轮训完存盘时报找不到路径。
+    (opt_dir / f"logs_s2_{req['version']}").mkdir(parents=True, exist_ok=True)
 
     script = need("GPT_SoVITS/s2_train.py", "script_missing",
                   "GPT_SoVITS/s2_train.py is missing", name="s2_train.py")

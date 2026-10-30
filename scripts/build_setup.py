@@ -86,6 +86,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="打 GPT-SoVITS Fabric 安装包")
     ap.add_argument("--prev", help="上一个发布版本；给了就校验版本必须更大")
     ap.add_argument("--upstream", help="上游 GPT-SoVITS 源码树（传给 prepare_engine_payload）")
+    ap.add_argument("--runtime", help="Runtime 目录（传给 prepare_engine_payload，预编译日语词典）")
     ap.add_argument("--skip-frontend", action="store_true", help="跳过 npm run build")
     ap.add_argument("--dry-run", action="store_true", help="只跑到 tauri build 之前")
     args = ap.parse_args()
@@ -107,6 +108,8 @@ def main() -> int:
         # 没指上游就只校验，不重铺 —— 仓库里那份已经是钉在 pin 上的，
         # 平时打包不需要每次都从上游拷一遍。
         prep += ["--check"]
+    if args.runtime:
+        prep += ["--runtime", args.runtime]
     run(prep, REPO, "引擎负载")
 
     if args.dry_run:

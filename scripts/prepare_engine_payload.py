@@ -51,8 +51,8 @@ PAYLOAD = REPO / "app" / "src-tauri" / "engine-payload"
 TAURI_CONF = REPO / "app" / "src-tauri" / "tauri.conf.json"
 
 #: 随包发的上游版本。**改这个值 = 承诺重新核对三个 worker 的契约。**
-#: 当前值是 2026-08-18 的 `Fix Fun-ASR-Nano Transformers requirement (#2824)`。
-UPSTREAM_PIN = "48b1a01"
+#: 当前值是 2026-10-19 的 `fix(streaming): 支持API v2语义流式文本切分 (#2850)`，含 V5。
+UPSTREAM_PIN = "b4570b8"
 
 #: 从上游整个搬过来的目录。`GPT_SoVITS/pretrained_models` 不搬 ——
 #: 那是底模的落点，几百 MB，走 engine-core 按需补全。
@@ -234,16 +234,43 @@ def write_meta(up: Path, commit: str) -> None:
     print(f"[payload] setup_package.json ← upstream {commit or '(非 git)'}")
 
 
+#: 日语用户词典。上游第一次处理日语文本时才把 13 万行的 csv 编成 user.dict，
+#: 要两三分钟，用户看到的是「第一次合成卡住」。打包前用 Runtime 先编好，
+#: 连同上游用来判断是否要重编的 md5 一起放进负载。
+JA_USERDIC = PAYLOAD / "GPT_SoVITS" / "text" / "ja_userdic"
+
+
+def compile_ja_userdict(runtime: Path) -> None:
+    py = runtime / "python.exe"
+    if not py.is_file():
+        fail(f"找不到 Runtime：{py}")
+    csv = JA_USERDIC / "userdict.csv"
+    code = (
+        "import hashlib, pyopenjtalk, sys; csv, out, md5 = sys.argv[1:4]; "
+        "pyopenjtalk.mecab_dict_index(csv, out); "
+        "open(md5, 'w', encoding='utf-8').write(hashlib.md5(open(csv, 'rb').read()).hexdigest())"
+    )
+    r = subprocess.run([str(py), "-I", "-c", code, str(csv),
+                        str(JA_USERDIC / "user.dict"), str(JA_USERDIC / "userdict.md5")])
+    if r.returncode != 0:
+        fail("日语用户词典编译失败")
+    print("[payload] 日语用户词典已预编译")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="准备 GPT-SoVITS Fabric 的引擎负载")
     ap.add_argument("--upstream", help="上游 GPT-SoVITS 源码树")
     ap.add_argument("--check", action="store_true", help="只校验，不改文件")
+    ap.add_argument("--runtime", help="Runtime 目录；给了就预编译日语用户词典")
     ap.add_argument(
         "--allow-pin-drift",
         action="store_true",
         help="允许上游 commit 与 UPSTREAM_PIN 不一致（只在核对完 worker 之后用）",
     )
     args = ap.parse_args()
+
+    if args.runtime:
+        compile_ja_userdict(Path(args.runtime))
 
     if args.check:
         problems = check_resources()

@@ -4,7 +4,7 @@
 //! 跨批复用显存里的权重是整个产品体验的根基（docs/DECISIONS.md D2）。所以这里
 //! 管的是一个长命进程的生命周期：
 //!
-//!   * spawn：`Runtime\pythonw.exe tools\synth_worker.py --resident --lru 2`，
+//!   * spawn：`Runtime\pythonw.exe tools\synth_worker.py --resident`，
 //!     ready 行表示协议层就绪（GPT_SoVITS 是懒加载，缺源码不影响 ready）
 //!   * 协议：stdin 写请求，stdout 逐行读回应；请求→回应严格串行，
 //!     所以作业线程直接同步读，不需要额外的 reader 线程
@@ -161,7 +161,7 @@ fn ensure_worker(root: &Path) -> Result<(), String> {
 
     let mut cmd = Command::new(&py);
     cmd.arg(script.as_os_str())
-        .args(["--resident", "--lru", "2"])
+        .arg("--resident")
         .current_dir(root)
         .envs(crate::worker::env_for_runtime(root))
         .stdin(Stdio::piped())

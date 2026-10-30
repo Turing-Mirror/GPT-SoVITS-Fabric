@@ -7,7 +7,7 @@
 
 用法::
 
-    Runtime\\pythonw.exe tools/synth_worker.py --resident --lru 2
+    Runtime\\pythonw.exe tools/synth_worker.py --resident
 
 请求（stdin，一行一条）::
 
@@ -25,7 +25,7 @@
 stdout 每行一条 JSON::
 
     {"event":"ready",    "role":"<id>", "cached":bool, "device":"..."}
-    {"event":"chunk",    "job":"<id>", "seq":n, "path":"...", "sec":12.3}
+    {"event":"chunk",    "job":"<id>", "seq":n, "sec":12.3}
     {"event":"done",     "job":"<id>", "t_first_ms":n, "t_total_ms":n, "out":"...", "sec":12.3}
     {"event":"error",    "job":"<id>", "message":"...", "code":"oom|cancelled|..."}
     {"event":"unloaded", "role":"<id>"}
@@ -39,7 +39,10 @@ load 同一角色直接复用；load 不同角色 = `init_vits_weights` / `init_
 热切换（旧权重随之释放）；显存不足（OOM）时先 `empty_cache()` 再重试一次，
 仍失败才报错。
 
-**上游接口的四个坑，改之前先看这里**（对照 GPT-SoVITS @ 48b1a01）：
+stdout 只走协议行。上游加载权重时会往 stdout 打印（`Loading VITS weights...`），
+所以启动时把 `sys.stdout` 换成 stderr，协议行写进单独留下的原 stdout。
+
+**上游接口的四个坑，改之前先看这里**（对照 GPT-SoVITS @ b4570b8）：
 
 1. 换权重的方法叫 `init_vits_weights` / `init_t2s_weights`。
    `set_sovits_weights` / `set_gpt_weights` 是 `api_v2.py` 的 **HTTP 路由名**，
@@ -63,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import wave
@@ -73,6 +77,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+#: 协议通道。其余一切打印（上游的、第三方库的）都去 stderr，见模块说明。
+_PROTO = sys.stdout
+sys.stdout = sys.stderr
+
+# 上游入口（api_v2 / inference_webui）启动时都先跑这一步：把 `GPT_SoVITS/`
+# 插进 sys.path（TTS.py 用 `from AR.models...` 这种裸导入）、登记 torch 与
+# Accel 的 DLL 目录、把工作目录切到安装根（底模路径全按 cwd 拼）。
+from tools.portable_runtime import activate  # noqa: E402
+
+activate(change_cwd=True)
 
 # 两个都是 **目录**：上游 `CNHubert.__init__` 走 `HubertModel.from_pretrained`，
 # BERT 走 `AutoTokenizer/AutoModelForMaskedLM.from_pretrained`，指到具体权重
@@ -91,18 +106,19 @@ def emit(**kw) -> None:
         kw["message_code"] = f"synth.{kw['code']}"
     line = json.dumps(kw, ensure_ascii=False) + "\n"
     try:
-        sys.stdout.write(line)
-        sys.stdout.flush()
+        _PROTO.write(line)
+        _PROTO.flush()
     except (OSError, UnicodeEncodeError):
         try:
-            sys.stdout.buffer.write(line.encode("utf-8", errors="replace"))
-            sys.stdout.buffer.flush()
+            _PROTO.buffer.write(line.encode("utf-8", errors="replace"))
+            _PROTO.buffer.flush()
         except Exception:
             pass
 
 
 def _ensure_stdio_utf8() -> None:
-    for stream in (sys.stdout, sys.stderr):
+    # stdin 也要：请求里有中日文，没开 UTF-8 模式时它按系统代码页解码。
+    for stream in (sys.stdin, _PROTO, sys.stderr):
         try:
             if hasattr(stream, "reconfigure"):
                 stream.reconfigure(encoding="utf-8", errors="replace")
@@ -143,13 +159,10 @@ def _is_oom(exc: BaseException) -> bool:
 class SynthEngine:
     """TTS_infer_pack.TTS 的薄封装：角色热切换 + OOM 退避 + 分片回传。"""
 
-    def __init__(self, lru_size: int = 2) -> None:
-        self.lru_size = max(1, lru_size)
+    def __init__(self) -> None:
         self._tts = None
         self._config = None
         self._current: str | None = None
-        self._loaded: set[str] = set()
-        self._order: list[str] = []
         self._stop_file: Path | None = None
 
     # ---- 生命周期 -------------------------------------------------------
@@ -184,6 +197,14 @@ class SynthEngine:
         不必再 swap 一遍。"""
         if self._tts is not None:
             return False
+        # 上游入口（api_v2 / inference_webui）都先跑这一步：把 `GPT_SoVITS/`
+        # 插进 sys.path（TTS.py 用 `from AR.models...` 这种裸导入）、登记 torch
+        # 与 Accel 的 DLL 目录、工作目录切到安装根（底模路径全按 cwd 拼）。
+        # 放在这里而不是模块顶部：它会 import transformers，要好几秒，
+        # 放顶部会拖慢 ready 行，撞上壳侧的启动超时。
+        from tools.portable_runtime import activate
+
+        activate(change_cwd=True)
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 
         cnhubert = str(req.get("cnhubert") or "") or DEFAULT_CNHUBERT
@@ -197,9 +218,10 @@ class SynthEngine:
         cfg = TTS_Config()
         # 版本照角色包来：TTS_Config() 恒为 v2，而 update_version 同时会
         # 切换 languages 白名单（v1 没有 yue/ko）。init_vits_weights 之后还会
-        # 按检查点形状再认一次版本，这里只是把起点摆正。
+        # 按检查点再认一次版本，这里只是把起点摆正。认得的版本以上游自己的
+        # default_configs 为准（含 v5dev / v5turbo），不在这里另抄一份。
         version = str(req.get("version") or "").strip()
-        if version in ("v1", "v2", "v3", "v4", "v2Pro", "v2ProPlus"):
+        if version in cfg.default_configs:
             cfg.update_version(version)
         # 底模路径显式覆盖：TTS_Config 的默认值指上游仓库布局，我们按
         # engine_assets 的安装路径来。属性名照上游写（cnhuhbert 的多余 h 是
@@ -235,7 +257,7 @@ class SynthEngine:
         方法名是 `init_vits_weights` / `init_t2s_weights`；`set_sovits_weights`
         / `set_gpt_weights` 只存在于 api_v2 的 HTTP 层，`TTS` 类上没有。
         版本不用我们告诉它：`init_vits_weights` 会从检查点里的
-        `enc_p.text_embedding.weight` 形状自己认（TTS.py 505-522）。
+        检查点头与哈希自己认（`process_ckpt.get_sovits_version_from_path_fast`）。
         """
         self._tts.init_vits_weights(sovits)
         self._tts.init_t2s_weights(gpt)
@@ -264,7 +286,6 @@ class SynthEngine:
         self._stop_file = Path(str(req.get("stop_file"))) if req.get("stop_file") else None
 
         if role_id == self._current:
-            self._touch(role_id)
             emit(event="ready", role=role_id, cached=True, device=str(getattr(self._config, "device", "")))
             return
 
@@ -293,16 +314,9 @@ class SynthEngine:
                 return
 
         self._current = role_id
-        self._loaded.add(role_id)
-        self._touch(role_id)
-        while len(self._order) > self.lru_size:
-            self._order.pop(0)
         emit(event="ready", role=role_id, cached=False, device=str(getattr(self._config, "device", "")))
 
     def unload(self, role_id: str) -> None:
-        self._loaded.discard(role_id)
-        if role_id in self._order:
-            self._order.remove(role_id)
         if role_id == self._current:
             self._current = None
         self._free_memory()
@@ -364,9 +378,7 @@ class SynthEngine:
                     first_ms = int((time.perf_counter() - t0) * 1000)
                 sr = int(chunk_sr)
                 frames.append(bytes(chunk))
-                part = out_dir / f"{job}.part{seq}.wav"
-                _write_wav(part, [bytes(chunk)], sr)
-                emit(event="chunk", job=job, seq=seq, path=str(part), sec=round(time.perf_counter() - t0, 2))
+                emit(event="chunk", job=job, seq=seq, sec=round(time.perf_counter() - t0, 2))
                 seq += 1
                 if self._stopped():
                     cancelled = True
@@ -379,6 +391,9 @@ class SynthEngine:
             if _is_oom(exc):
                 self._free_memory()
                 emit(event="error", job=job, message="显存不足", code="oom", detail=str(exc))
+            elif isinstance(exc, OSError) and re.search(r"3\s*[~～\-–]\s*10", str(exc)):
+                # 上游硬性要求参考音频 3–10 秒，报错文案随系统语言变，这里转成可翻译的码。
+                emit(event="error", job=job, message="参考音频时长不在 3–10 秒内", code="ref_length", detail=str(exc))
             else:
                 emit(event="error", job=job, message="合成失败", code="synth_failed", detail=str(exc))
             return
@@ -415,10 +430,9 @@ def main() -> int:
     _ensure_stdio_utf8()
     ap = argparse.ArgumentParser(description="GPT-SoVITS Fabric resident synth worker")
     ap.add_argument("--resident", action="store_true", help="常驻模式（Rust 托管时固定传入）")
-    ap.add_argument("--lru", type=int, default=2, help="角色 LRU 记忆上限（上游单实例，见类注释）")
-    args = ap.parse_args()
+    ap.parse_args()
 
-    engine = SynthEngine(lru_size=args.lru)
+    engine = SynthEngine()
     emit(event="ready", role=None, protocol=2, root=str(ROOT))
 
     for line in sys.stdin:

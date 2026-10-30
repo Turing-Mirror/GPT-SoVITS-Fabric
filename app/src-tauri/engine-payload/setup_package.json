@@ -12,8 +12,8 @@
   "installer": "tauri_nsis",
   "note": "薄包：壳+源码。Runtime（nvidia/cpu）+ 底模组均从 CNB Release 按标签补全",
   "upstream_repo": "https://github.com/RVC-Boss/GPT-SoVITS",
-  "upstream_pin": "48b1a01",
-  "upstream_commit": "48b1a01",
+  "upstream_pin": "b4570b8",
+  "upstream_commit": "b4570b8",
   "payload_entries": [
     "GPT_SoVITS",
     "LICENSE",

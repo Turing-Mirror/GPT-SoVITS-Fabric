@@ -129,6 +129,15 @@ pub fn runtime_python(root: &Path) -> Option<PathBuf> {
     None
 }
 
+/// ffmpeg / ffprobe 随 Runtime 发（`build_runtime.py` 放在 Runtime 根），
+/// 上游 `tools/portable_runtime.py` 也按这个位置找。产品根下的同名文件作兜底。
+pub fn audio_tool(root: &Path, stem: &str) -> Option<PathBuf> {
+    let name = if cfg!(windows) { format!("{stem}.exe") } else { stem.to_string() };
+    [runtime_dir(root).join(&name), root.join(&name)]
+        .into_iter()
+        .find(|p| p.is_file())
+}
+
 /// True when Runtime looks usable (python + torch present), same spirit as
 /// launcher.runtime_provision.runtime_ready.
 pub fn runtime_ready(root: &Path) -> bool {

@@ -256,10 +256,9 @@ fn dir_or_file_bytes(p: &Path) -> u64 {
 /// 全程可跳过：拿不到 ffprobe（比如开发机上）就返回 available=false，界面不显示
 /// 这一块，而不是报错。
 pub fn inspect_dataset(root: &Path, dir: &Path) -> Value {
-    let probe = root.join(if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" });
-    if !probe.is_file() {
+    let Some(probe) = paths::audio_tool(root, "ffprobe") else {
         return json!({ "available": false });
-    }
+    };
     let mut files = Vec::new();
     collect_audio(dir, &mut files, 0);
     if files.is_empty() {
@@ -461,10 +460,7 @@ fn parse_volume_report(text: &str) -> (Option<f64>, f64) {
 /// 返回 (平均响度 dB, 静音占比 0..1)；ffmpeg 不在或全军覆没就 None，界面
 /// 不显示这一块。
 fn probe_loudness(root: &Path, files: &[(PathBuf, f64)]) -> Option<(f64, f64)> {
-    let ffmpeg = root.join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
-    if !ffmpeg.is_file() {
-        return None;
-    }
+    let ffmpeg = paths::audio_tool(root, "ffmpeg")?;
     const CAP: f64 = 120.0;
     let mut vols: Vec<f64> = Vec::new();
     let mut silence_sum = 0.0;
