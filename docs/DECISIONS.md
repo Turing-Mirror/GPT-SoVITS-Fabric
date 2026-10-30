@@ -12,14 +12,16 @@
 
 - 复用 RVC-Fabric 三层架构：Tauri(Rust) 壳 + Python Worker，JSON 文件协议 + stdout 行协议。
 - 推理内核：常驻 worker 直接 `import GPT_SoVITS.TTS_infer_pack.TTS`，不走 api_v2.py HTTP（避免端口/防火墙）；api_v2 作为高级功能保留入口。
-- 显存管理在 Python worker 内（模型 LRU 缓存、热切换、显存不足自动卸载）。
+- 显存管理在 Python worker 内：同一时刻只驻留一个角色，换角色即热切换；显存不足时释放缓存并报 `oom`。
+- 上游的模块搜索路径、DLL 目录与工作目录由 `tools/portable_runtime.activate()` 设置，worker 首次加载模型前调用；上游的 `print` 改走 stderr，stdout 只留给行协议。
 - 长文本/批量队列由 Rust 侧编排（逐句喂 worker），复用 cancel/进度事件模式。
 
 ## D3 Runtime [已定]
 
-- 自建新 Runtime：Python 3.10 + torch cu12x，满足最新上游依赖（transformers>=4.51, funasr>=1.3.7）。
-- 变体仅 nvidia + cpu 两个（上游无 DirectML 路径）。
-- 首启补全复用 provision 管线；底模按版本组 extras（hubert/roberta/s1v3/v2Pro(+)/v4+vocoder/sv/UVR5/ASR）。
+- 自建 Runtime：Python 3.12.10（nuget 完整版，含 `include/` 与 `libs/`，triton 编译需要）+ torch 2.7.1。依赖取上游 `requirements_py312_win_cu128_china.txt`，整理为 `scripts/runtime/requirements_{nvidia,cpu}.txt`。
+- 变体仅 nvidia（cu128）+ cpu 两个（上游无 DirectML 路径）。cpu 版去掉 flash-attn、triton、onnxruntime-gpu。
+- 构建：`python scripts/build_runtime.py --variant nvidia|cpu`。构建时预取 NLTK 数据与 pyopenjtalk 词典（否则首次日语合成要在线下载，实测 145 秒），并放入 ffmpeg/ffprobe，打成 `runtime-<变体>-<日期>.tar.gz`（去掉 `torch/lib/*.lib`）。
+- 首启补全复用 provision 管线；必装底模为 engine-core 五个包，其余（V5 底模、人声分离模型）为可选 extras。
 
 ## D4 角色包格式 [已定 v0.3 —— .list 为核心]
 
@@ -49,7 +51,13 @@
 - UI 默认 v2ProPlus。
 - **推理**支持加载 v1/v2/v2Pro/v2ProPlus/v3/v4 —— 版本不用我们告诉它：
   上游 `TTS.init_vits_weights` 从检查点里 `enc_p.text_embedding.weight` 的形状
-  自己认（TTS.py 505-522）。
+  自己认。
+- **V5**（上游 b4570b8 新增 `v5dev` / `v5turbo`，48 kHz 输出）：推理已接通，
+  底模 `gsv-v5-pretrained`（s2Gv5dev / s2Gv5turbo / vocoder）作为可选 extras
+  `gsv-v5`，不进 engine-core。worker 只认上游 `default_configs` 里有的版本名。
+  V5 训练走 LoRA 路径，暂未开放。
+- **参考音频须 3–10 秒**（上游硬性检查）。合成台读取每条参考的时长，超出范围
+  的置灰；worker 把上游的报错转成 `synth.ref_length`。
 - **训练**只开 `v2ProPlus / v2Pro / v2` 三个（`train.rs` 的 `TRAIN_VERSIONS`，
   前端的下拉直接取它，不再各写一份）。v3/v4 走的是 `s2_train_v3_lora.py`
   那条 LoRA 路径，与 `s2_train.py` 不是同一套参数与产物，要开得单独做；
@@ -99,7 +107,7 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
 
 ## D8 打包与发布 [已定]
 
-- **上游源码随包发，钉在 `UPSTREAM_PIN`**（当前 48b1a01），不做成可下载
+- **上游源码随包发，钉在 `UPSTREAM_PIN`**（当前 b4570b8，2026-10-19），不做成可下载
   extras。三个 worker 的契约是对着那个版本逐行核过的（方法名、属性名、
   返回值形状、配置键、产物目录），让它跟壳分开升级就是在等下一轮
   「合成台一次都没跑起来过」。`prepare_engine_payload.py` 会拦着不让漂。
@@ -126,13 +134,30 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
   `GSV-roles` / `GSV-covers`。分开是因为更新节奏完全不同，混在一个标签里
   没法单独重传。封面走 Release 附件不走 git raw（raw 对图片不给正确的
   Content-Type）。
+- **engine-core 是五个 zip**：`base-hubert-bert` / `base-gpt-s1v3` /
+  `base-v2proplus`（含 sv）/ `base-g2pw` / `base-langdetect`，由
+  `scripts/build_engine_core.py` 打出（不压缩，`--v5` 另出 `base-v5.zip`）。
+  sha256 写在壳内 `engine_assets.rs` 的 `BASE_MODEL_PACKS`，大小写进清单
+  `engine_core` 段供下载器分连接与显示进度。重打任何一个包都要同步两处。
+- **清单编译**：`python scripts/build_catalog.py --sources <发布仓>/catalog/sources.json
+  --out <发布仓>/index.json --bundle app/src-tauri/engine-payload/configs/online_catalog.json`。
+  `--bundle` 只覆盖编译出的段，内置清单里的 `community` 等段保留。
+  extras 可用 `repo` 指向其他发布仓（人声分离模型目前复用 RVC-Fabric-Releases 的 `pymss` 标签）。
+- **日语用户词典在打包时预编译**（`prepare_engine_payload.py --runtime`），
+  生成的 `user.dict` / `userdict.md5` 不入库。
 - **在线角色包装进 `User_Data/characters/`**，走 `characters::install_zip`
   那条已经有测试的路径。以前装进 `User_Data/models/`（RVC 音色的位置），
   合成台从来不看那里。
 
 ## D7 UI/UX 继承 [已定]
 
-从 RVC-Fabric 原样沿用（只读复制后改造，不回写）：
+组件与设计令牌改用 TRM UI（`Turing-Mirror/TRM-UI`），复制到 `app/src/trm/`：
+`components/` 下的 ui / controls / SegmentControl / Tooltip / ErrorBoundary 是对
+`../trm/components/*` 的转出；i18n 的语言状态由 TRM 的 `I18nProvider` 持有，产品侧只
+补 Tauri 存储、`tMsg` 与术语表；`index.css` 取 TRM 的令牌，颜色一律走令牌。更新 TRM UI
+时整目录覆盖 `app/src/trm/`。Nudge、ErrorNote、TitleBar、PageHost 仍是产品自有版本。
+
+以下从 RVC-Fabric 沿用（只读复制后改造，不回写）：
 
 - **设计令牌**（app/src/index.css）：Schale 浅蓝体系、`--accent #1289f0`、明暗双主题
   （data-theme + prefers-color-scheme）、14/8px 圆角、玻璃拟态 --glass、原生控件
