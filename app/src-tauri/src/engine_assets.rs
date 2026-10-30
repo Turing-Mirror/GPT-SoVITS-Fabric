@@ -20,9 +20,9 @@
 //! 解析，worker 的 cwd 就是安装根 —— 把底模放进 vendored 树里它们才看得见。
 //! 顶层再放一份 `pretrained_models/` 只会变成上游永远读不到的孤儿。
 //!
-//! 清单路径与命名沿用发布仓 `catalog-src/base-models/*.yaml` 的约定；制品挂
-//! `GSV-engine-core` Release 标签（发布仓 README 的标签约定）。sha256 是 M0
-//! 待回填的空值 —— 制品还没发，下载 404 属预期内，不要伪造校验值。
+//! 清单路径与命名沿用发布仓 `catalog/sources.json` 的 `engine_core` 段；制品挂
+//! `GSV-engine-core` Release 标签（发布仓 README 的标签约定）。sha256 见
+//! `BASE_MODEL_PACKS`，由 `scripts/build_engine_core.py` 打包时算出。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -46,17 +46,33 @@ const BASE_MODELS_TAG: &str = "GSV-engine-core";
 
 /// GSV 必装底模包清单：(Release 附件名 / 缓存名, sha256)。
 ///
-/// 包名沿用发布仓 catalog-src/base-models/*.yaml 的 name 字段加 .zip 后缀；
-/// 对应 hubert+roberta / gpt-s1v3 / v2proplus(+sv) / g2pw 四组。每个 zip 的
+/// 对应 hubert+roberta / gpt-s1v3 / v2proplus(+sv) / g2pw / 语种识别五组，
+/// 由 `scripts/build_engine_core.py` 按 `engine_core_files` 的清单打出。每个 zip 的
 /// 内部路径都从 `GPT_SoVITS/` 底下算起（`pretrained_models/...`、
-/// `text/G2PWModel/...`），统一解到 `<安装根>/GPT_SoVITS/`。sha256 制品发布
-/// 后回填 —— 空串期间下载器按现状行为走（跳过校验），update.rs 里「拒绝无
-/// 有效 sha 的补丁」那道安全闸在补丁/角色包路径上，不在这里，不受影响。
+/// `text/G2PWModel/...`），统一解到 `<安装根>/GPT_SoVITS/`。sha256 取自
+/// 打包脚本写出的 `manifest.json`；重打任何一个包都要同步改这里，否则
+/// 用户那边下完校验不过，会反复重下。
 const BASE_MODEL_PACKS: &[(&str, &str)] = &[
-    ("base-hubert-bert.zip", ""),
-    ("base-gpt-s1v3.zip", ""),
-    ("base-v2proplus.zip", ""),
-    ("base-g2pw.zip", ""),
+    (
+        "base-hubert-bert.zip",
+        "6b68a21a344931460fc12288382eecfe751f67ddfb97eecf440ce6625eee63c5",
+    ),
+    (
+        "base-gpt-s1v3.zip",
+        "a0bdc3d323b3cdcd0b728f32c46c8d017c1f01b71d36c3357c0f6cfa15329ea8",
+    ),
+    (
+        "base-v2proplus.zip",
+        "4b1a31ec85c75333a3e5c0dc5f66885cd599b867c7b5feb8a470648540065e68",
+    ),
+    (
+        "base-g2pw.zip",
+        "c74963eba422412f0e86c3623d7ef24251579fcef236f971f68c5c34516fade5",
+    ),
+    (
+        "base-langdetect.zip",
+        "a0fe2fbfb0decf18bd03b599e6ed3fb59060a2eca9fe2225d482cf768f164543",
+    ),
 ];
 
 /// 同一时刻只允许一个引擎资源包在下载。
@@ -112,6 +128,8 @@ const MIN_S1V3_BYTES: u64 = 200_000_000;
 const MIN_S2_BYTES: u64 = 200_000_000;
 const MIN_SV_BYTES: u64 = 10_000_000;
 const MIN_G2PW_BYTES: u64 = 10_000_000;
+/// fast_langdetect 的 lid.176.bin 约 126MB。
+const MIN_LANGDETECT_BYTES: u64 = 100_000_000;
 /// config.json / tokenizer.json 这类随行文件的下限。它们只有几 KB，
 /// 但少一个 `from_pretrained` 就起不来，所以必须一并把关；给个很小的
 /// 非零下限，只为挡住 0 字节的半截下载。
@@ -182,6 +200,13 @@ fn engine_core_files() -> Vec<(&'static str, u64)> {
         (
             "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
             MIN_SV_BYTES,
+        ),
+        // 合成按「自动」认语种（synth_worker 的 text_lang=auto），走的是
+        // fast_langdetect；上游 langsegmenter.py 把它的 cache_dir 指到这里，
+        // 文件不在就当场去 Facebook 的 CDN 下 126MB。
+        (
+            "GPT_SoVITS/pretrained_models/fast_langdetect/lid.176.bin",
+            MIN_LANGDETECT_BYTES,
         ),
         ("GPT_SoVITS/text/G2PWModel/config.py", MIN_SIDECAR_BYTES),
         // G2PWPinyin 构造时无条件读这两份字表（onnx_api.py:113-114），

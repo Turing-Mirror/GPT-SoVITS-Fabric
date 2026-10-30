@@ -87,35 +87,28 @@ fn release_url(tag: &str, name: &str) -> String {
 
 /// CNB 连不上时的内置兜底。
 ///
-/// **两个变体的 sha 都是空的，这是有意的。** 这个产品的 Runtime 还没构建过
-/// （发布仓 `catalog-src/runtimes/*.yaml` 的 sha256 同样空着），所以这里没有
-/// 任何一个真值可填。给出约定的文件名让 spec 结构合法、URL 拼得出来，sha
-/// 留空 —— `run_provision` 那道 64 位十六进制校验会拒绝安装，用户看到的是
-/// 「校验信息缺失」，而不是装完一个来路不明的包。
-///
-/// NVIDIA 这一条以前带着 `d76ac4e8…` 和 6.07 GB —— 那是 **RVC-Fabric 的
-/// 运行时**，连文件名都一模一样（对照 RVC 的 catalog.rs:99 和它发布仓的
-/// index.json）。URL 却拼在 GSV 仓的 `GSV-runtime` 标签下，那里什么都没有。
-/// 也就是说：CNB 一抖，用户拿到的是一个 404；就算有人真把那个 tar 传上去，
-/// 装进来的也是 RVC 的 Python 环境 —— 而 DECISIONS D3 要的是自建的
-/// 3.10 + transformers≥4.51 + funasr≥1.3.7。**带着一个真 sha 的假兜底比
-/// 没有兜底危险得多：它会让校验通过。**
+/// **两个变体的 sha 都是空的，这是有意的。** Runtime 由 `scripts/build_runtime.py`
+/// 构建，真值只写进发布仓 `catalog/sources.json` 编译出的清单；这里的兜底只
+/// 保证 spec 结构合法、URL 拼得出来。sha 留空 —— `run_provision` 那道 64 位
+/// 十六进制校验会拒绝安装，用户看到的是「校验信息缺失」，而不是装完一个
+/// 来路不明的包。**带着一个真 sha 的兜底一旦和发布仓不同步，校验照样通过，
+/// 装进来的却可能是旧包。**
 fn fallback_blob(variant: &str) -> Value {
     let (label, version, size, sha, name, channel) = match variant {
         "cpu" => (
             "CPU".to_string(),
-            "2026.07.21",
+            "2026.10.31",
             0u64,
             "",
-            "runtime-cpu-2026.07.21.tar",
+            "runtime-cpu-2026.10.31.tar.gz",
             "release",
         ),
         _ => (
             "NVIDIA CUDA".to_string(),
-            "2026.07.21",
+            "2026.10.31",
             0u64,
             "",
-            "runtime-nvidia-2026.07.21.tar",
+            "runtime-nvidia-2026.10.31.tar.gz",
             "release",
         ),
     };
@@ -128,7 +121,7 @@ fn fallback_blob(variant: &str) -> Value {
         "variant": variant,
         "label": label,
         "version": version,
-        "format": "tar",
+        "format": "tar.gz",
         "size_bytes": size,
         "channel": channel,
         "release_tag": DEFAULT_RELEASE_TAG,

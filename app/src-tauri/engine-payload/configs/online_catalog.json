@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 3,
   "app": {
     "version": "0.1.0",
     "channel": "stable"
@@ -10,7 +10,7 @@
     "sharepoint_full": "",
     "note": "GPT-SoVITS Fabric 发布仓（CNB）。Runtime 挂 GSV-runtime 标签；底模组挂 base-models 标签；角色包与封面随后发布。"
   },
-  "cnb_repo": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases",
+  "cnb_repo": "Turing-Mirror/GPT-SoVITS-Fabric-Releases",
   "runtime_release_tag": "GSV-runtime",
   "manifest_urls": [
     "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/index.json",
@@ -19,27 +19,568 @@
   "runtimes": {
     "nvidia": {
       "variant": "nvidia",
-      "label": "NVIDIA CUDA",
-      "version": "",
-      "format": "tar",
-      "size_bytes": 0,
+      "label": "NVIDIA CUDA 12.8",
+      "version": "2026.10.31",
+      "format": "tar.gz",
+      "size_bytes": 3956611802,
       "extract_root": "Runtime",
       "channel": "release",
       "release_tag": "GSV-runtime",
-      "parts": []
+      "parts": [
+        {
+          "index": 0,
+          "name": "runtime-nvidia-2026.10.31.tar.gz",
+          "size_bytes": 3956611802,
+          "sha256": "cf923a03d80ea3abc8371e375c0c10ed663543c3c519b9241c5ae9a52eb34fd2",
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-runtime/runtime-nvidia-2026.10.31.tar.gz"
+          ],
+          "sha256_urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/assets/runtime/runtime-nvidia-2026.10.31.tar.gz.sha256"
+          ]
+        }
+      ]
     },
     "cpu": {
       "variant": "cpu",
       "label": "CPU",
-      "version": "",
-      "format": "tar",
-      "size_bytes": 0,
+      "version": "2026.10.31",
+      "format": "tar.gz",
+      "size_bytes": 594573268,
       "extract_root": "Runtime",
       "channel": "release",
       "release_tag": "GSV-runtime",
-      "parts": []
+      "parts": [
+        {
+          "index": 0,
+          "name": "runtime-cpu-2026.10.31.tar.gz",
+          "size_bytes": 594573268,
+          "sha256": "30910118ba208dc6ef599dca060d99bea44f55fc32665b0ed9f53ac816cc989f",
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-runtime/runtime-cpu-2026.10.31.tar.gz"
+          ],
+          "sha256_urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/assets/runtime/runtime-cpu-2026.10.31.tar.gz.sha256"
+          ]
+        }
+      ]
     }
   },
   "voices": [],
-  "thirdparty_voices": []
+  "thirdparty_voices": [],
+  "format": "gsv_fabric_index",
+  "roles": [],
+  "extras": {
+    "gsv-v5": {
+      "key": "gsv-v5",
+      "label": "V5 底模",
+      "dest": "GPT_SoVITS/pretrained_models/gsv-v5-pretrained",
+      "notes": "V5 角色与零样本合成需要。",
+      "group": "other",
+      "recommended": false,
+      "order": 50,
+      "release_tag": "GSV-engine-core",
+      "size_bytes": 1590552824,
+      "files": [
+        {
+          "name": "s2Gv5turbo.pth",
+          "sha256": "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022",
+          "size_bytes": 766406144,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/s2Gv5turbo.pth"
+          ]
+        },
+        {
+          "name": "s2Gv5dev.pth",
+          "sha256": "16c11fc588a9229a479316a11fc0f518087e79773f5271666a90b39d50460407",
+          "size_bytes": 766385517,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/s2Gv5dev.pth"
+          ]
+        },
+        {
+          "name": "vocoder.pth",
+          "sha256": "b7543c83222aa2105bb4efb56845086bc5f2eeba61243d723ffa062052b3221f",
+          "size_bytes": 57761163,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/vocoder.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-bve": {
+      "key": "pymss-bve",
+      "label": "人声分离 · 背景和声（进阶）",
+      "dest": "assets/pymss",
+      "notes": "分离背景和声轨。一般训练素材用不到。",
+      "group": "separate",
+      "recommended": false,
+      "order": 80,
+      "release_tag": "pymss",
+      "size_bytes": 223650277,
+      "files": [
+        {
+          "name": "legacy_vr/vr_backing_vocal/UVR-BVE-4B_SN-44100-1.pth",
+          "sha256": "56165bdfa0dd5df7930ff76652200dc287e1bfef622bba5c812c736dc22067fe",
+          "size_bytes": 223650277,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-BVE-4B_SN-44100-1.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-deecho": {
+      "key": "pymss-deecho",
+      "label": "人声分离 · 去回声",
+      "dest": "assets/pymss",
+      "notes": "去掉房间回声/延迟尾巴。录音环境空旷时有用。对应 UVR De-Echo。",
+      "group": "separate",
+      "recommended": true,
+      "order": 30,
+      "release_tag": "pymss",
+      "size_bytes": 477929007,
+      "files": [
+        {
+          "name": "legacy_vr/vr_deecho/UVR-De-Echo-Normal.pth",
+          "sha256": "b849dd575643b075c257fb7a96c2ef5a79d7a5e7df74a2b319ad47118f1ee769",
+          "size_bytes": 127139365,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-De-Echo-Normal.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_deecho/UVR-De-Echo-Aggressive.pth",
+          "sha256": "1bd1d79d9c5d1b17d20f96f8a9f8aff1b55a83014f70712446bf420c0188e0a0",
+          "size_bytes": 127139365,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-De-Echo-Aggressive.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_deecho_dereverb/UVR-DeEcho-DeReverb.pth",
+          "sha256": "e644028ec82865dc0fe082bc6fea85a43f7c71cfe375caee2da2d154aa661ee7",
+          "size_bytes": 223650277,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-DeEcho-DeReverb.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-denoise": {
+      "key": "pymss-denoise",
+      "label": "人声分离 · 降噪",
+      "dest": "assets/pymss",
+      "notes": "去掉环境底噪、电流声。干声素材偏脏时再下。对应 UVR DeNoise。",
+      "group": "separate",
+      "recommended": true,
+      "order": 20,
+      "release_tag": "pymss",
+      "size_bytes": 145061642,
+      "files": [
+        {
+          "name": "legacy_vr/vr_denoise/UVR-DeNoise.pth",
+          "sha256": "5addf43ece5bddd18da9f575a02d7ffdb32342414e6ad7ac8d1dd7a04138a628",
+          "size_bytes": 127139365,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-DeNoise.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_denoise/UVR-DeNoise-Lite.pth",
+          "sha256": "0023492fe98c406817b5253965de19ede65d1c147db015a3a428f07602e99571",
+          "size_bytes": 17922277,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-DeNoise-Lite.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-dereverb": {
+      "key": "pymss-dereverb",
+      "label": "人声分离 · 去混响",
+      "dest": "assets/pymss",
+      "notes": "压掉混响感，让人声更干。对应 UVR DeReverb。",
+      "group": "separate",
+      "recommended": false,
+      "order": 40,
+      "release_tag": "pymss",
+      "size_bytes": 58928133,
+      "files": [
+        {
+          "name": "legacy_vr/vr_dereverb/UVR-DeReverb-aufr33-jarredou_4band_v4_ms_fullband.pth",
+          "sha256": "fff726b0adf09f2eadc2151645557db81e1a01fe15d91f9bbbfa9b50a007f1fd",
+          "size_bytes": 58928133,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/UVR-DeReverb-aufr33-jarredou_4band_v4_ms_fullband.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-harmonic": {
+      "key": "pymss-harmonic",
+      "label": "人声分离 · 和声/噪声（进阶）",
+      "dest": "assets/pymss",
+      "notes": "谐波与噪声分离。进阶用途。",
+      "group": "separate",
+      "recommended": false,
+      "order": 90,
+      "release_tag": "pymss",
+      "size_bytes": 59320122,
+      "files": [
+        {
+          "name": "legacy_vr/vr_harmonic_noise/Harmonic_Noise_Separation_yxlllc.pth",
+          "sha256": "d4dd9f8259692f9ceb5b05d86fd53553ef582a1c65184f4cfff2e00cdfe33dd2",
+          "size_bytes": 59320122,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/Harmonic_Noise_Separation_yxlllc.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-hp2": {
+      "key": "pymss-hp2",
+      "label": "人声分离 · HP2 高质量（进阶）",
+      "dest": "assets/pymss",
+      "notes": "更大更重的 HP2 系列，质量更高、体积也大（约 1.5GB）。日常用「人声提取」即可。",
+      "group": "separate",
+      "recommended": false,
+      "order": 70,
+      "release_tag": "pymss",
+      "size_bytes": 1650382281,
+      "files": [
+        {
+          "name": "legacy_vr/vr_hp2/7_HP2-UVR.pth",
+          "sha256": "545ee733b704a263bf6f75328c5ed14f0fb439dcda7a6e8f53c8cecb92877afe",
+          "size_bytes": 550120123,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/7_HP2-UVR.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_hp2/8_HP2-UVR.pth",
+          "sha256": "e072299a87cf3fcdd36da6adc6d2837bed0c07a208775a7678c3d5deeea58f79",
+          "size_bytes": 550131079,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/8_HP2-UVR.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_hp2/9_HP2-UVR.pth",
+          "sha256": "a99d032ed8c9d59077a8a41f0ceccb279d59ec10c87102167a283151d25ad9a2",
+          "size_bytes": 550131079,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/9_HP2-UVR.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-inst": {
+      "key": "pymss-inst",
+      "label": "人声分离 · 伴奏提取",
+      "dest": "assets/pymss",
+      "notes": "抽出伴奏轨道（与人声提取相反用途）。对应 UVR HP1/HP2 伴奏。",
+      "group": "separate",
+      "recommended": false,
+      "order": 50,
+      "release_tag": "pymss",
+      "size_bytes": 253575346,
+      "files": [
+        {
+          "name": "legacy_vr/vr_instrumental_extraction/1_HP-UVR.pth",
+          "sha256": "d9c654305888fe09668078ade76962b32d3782848f158192da7403a650e935a6",
+          "size_bytes": 126792647,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/1_HP-UVR.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_instrumental_extraction/2_HP-UVR.pth",
+          "sha256": "26d6400d2d2e90811ba2381828c8c3519196097375af524c3d0edd969acf5356",
+          "size_bytes": 126782699,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/2_HP-UVR.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-karaoke": {
+      "key": "pymss-karaoke",
+      "label": "人声分离 · 卡拉OK 消人声",
+      "dest": "assets/pymss",
+      "notes": "尽量去掉主唱保留伴奏，做伴奏轨用。对应 UVR HP5/HP6 Karaoke。",
+      "group": "separate",
+      "recommended": false,
+      "order": 60,
+      "release_tag": "pymss",
+      "size_bytes": 253565398,
+      "files": [
+        {
+          "name": "legacy_vr/vr_karaoke/5_HP-Karaoke-UVR.pth",
+          "sha256": "fe00891defbb61f4261500af22f7624f1a3df8dc75fa3998d1aece02e6be4537",
+          "size_bytes": 126782699,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/5_HP-Karaoke-UVR.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_karaoke/6_HP-Karaoke-UVR.pth",
+          "sha256": "4ce7eaaa9e56f09366b788aebf6d3a72aec8145692c56f1e090e4e7e2d7ce65f",
+          "size_bytes": 126782699,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/6_HP-Karaoke-UVR.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-mgm": {
+      "key": "pymss-mgm",
+      "label": "人声分离 · MGM 融合（进阶）",
+      "dest": "assets/pymss",
+      "notes": "MGM v4 多频段融合模型。进阶用途。",
+      "group": "separate",
+      "recommended": false,
+      "order": 100,
+      "release_tag": "pymss",
+      "size_bytes": 127678382,
+      "files": [
+        {
+          "name": "legacy_vr/vr_mgm/MGM_MAIN_v4.pth",
+          "sha256": "0e6f0c0592333a3b215f61ac1e01f6c24c059f903f0789cf634e92daffae1dce",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/MGM_MAIN_v4.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_mgm/MGM_HIGHEND_v4.pth",
+          "sha256": "67bf5241072ae938ae0e6bec44d2d8307d9db81a5299382a5cfe12188131f9ce",
+          "size_bytes": 31861529,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/MGM_HIGHEND_v4.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_mgm/MGM_LOWEND_A_v4.pth",
+          "sha256": "c5def7a35afecde33a77db214b3e9eeff0e47e8329ff5522d33332bc02b4b0e3",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/MGM_LOWEND_A_v4.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_mgm/MGM_LOWEND_B_v4.pth",
+          "sha256": "93d6a08abf6357e5f37d4eb6892267520f5bb9e90f45486b08a0857d5fcb2ec8",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/MGM_LOWEND_B_v4.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-sp": {
+      "key": "pymss-sp",
+      "label": "人声分离 · SP 频谱系列（进阶）",
+      "dest": "assets/pymss",
+      "notes": "UVR 10~16_SP 频谱系列。体积不小，仅特殊场景需要。",
+      "group": "separate",
+      "recommended": false,
+      "order": 110,
+      "release_tag": "pymss",
+      "size_bytes": 223572657,
+      "files": [
+        {
+          "name": "legacy_vr/vr_sp/10_SP-UVR-2B-32000-1.pth",
+          "sha256": "a178d8a8bc2c992bc5e5a045ef5ab8706d55c375d1bfe34700c1946d6c2d28b6",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/10_SP-UVR-2B-32000-1.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_sp/11_SP-UVR-2B-32000-2.pth",
+          "sha256": "9e80e69ecd2244496710fa77e7d2c785bad93e2a87a7def65c38272cc9fd1613",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/11_SP-UVR-2B-32000-2.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_sp/12_SP-UVR-3B-44100.pth",
+          "sha256": "5b826e6a44dbe007bde36c720bb2afeed008348cef1b61e35898fee5282d3918",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/12_SP-UVR-3B-44100.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_sp/13_SP-UVR-4B-44100-1.pth",
+          "sha256": "afb84b3d1da4a7e24033e5a0e85dbde2ac5f5e4b1e839788748735ac3bcc5046",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/13_SP-UVR-4B-44100-1.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_sp/14_SP-UVR-4B-44100-2.pth",
+          "sha256": "78404d85d6e4e11a3d2362f6577fc398f77406b7881fbac402e0c6191d6efca1",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/14_SP-UVR-4B-44100-2.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_sp/15_SP-UVR-MID-44100-1.pth",
+          "sha256": "bd03d4061ce34569e8df9e0a13a235af7ff0d3c0c3def491db4439f9ff344dd0",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/15_SP-UVR-MID-44100-1.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_sp/16_SP-UVR-MID-44100-2.pth",
+          "sha256": "f0e5025987670f963a339db861b078d8526bf912f0ce2e00f732a7f0a3e846cc",
+          "size_bytes": 31938951,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/16_SP-UVR-MID-44100-2.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-vocal": {
+      "key": "pymss-vocal",
+      "label": "人声分离 · 人声提取（推荐）",
+      "dest": "assets/pymss",
+      "notes": "训练前清理素材的首选：从歌曲里抽出人声干声。对应 RVC/UVR 官方 HP3/HP4 Vocal。",
+      "group": "separate",
+      "recommended": true,
+      "order": 10,
+      "release_tag": "pymss",
+      "size_bytes": 253585294,
+      "files": [
+        {
+          "name": "legacy_vr/vr_vocal_extraction/3_HP-Vocal-UVR.pth",
+          "sha256": "7d3f9be265b2f2c3d684f23a9905674627c2552e0f6b5f36325cef8dc1f0ff6b",
+          "size_bytes": 126792647,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/3_HP-Vocal-UVR.pth"
+          ]
+        },
+        {
+          "name": "legacy_vr/vr_vocal_extraction/4_HP-Vocal-UVR.pth",
+          "sha256": "295d1e1e3a52c17a040a4a6fe390214ad8ca0797f091b7c6d8db97d247a27271",
+          "size_bytes": 126792647,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/4_HP-Vocal-UVR.pth"
+          ]
+        }
+      ]
+    },
+    "pymss-wind": {
+      "key": "pymss-wind",
+      "label": "人声分离 · 管弦伴奏（进阶）",
+      "dest": "assets/pymss",
+      "notes": "管弦/吹管类伴奏分离。一般用不到。",
+      "group": "separate",
+      "recommended": false,
+      "order": 120,
+      "release_tag": "pymss",
+      "size_bytes": 223661285,
+      "files": [
+        {
+          "name": "legacy_vr/vr_wind_instrumental/17_HP-Wind_Inst-UVR.pth",
+          "sha256": "acc6d472b4b478da9c9ab5af45b167749e05a7f65b30c7d5988b3700a513aeee",
+          "size_bytes": 223661285,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/pymss/17_HP-Wind_Inst-UVR.pth"
+          ]
+        }
+      ]
+    }
+  },
+  "engine_core": {
+    "base-hubert-bert": {
+      "name": "base-hubert-bert.zip",
+      "version": "2026.10.31",
+      "channel": "release",
+      "size_bytes": 840309330,
+      "sha256": "6b68a21a344931460fc12288382eecfe751f67ddfb97eecf440ce6625eee63c5",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/base-hubert-bert.zip"
+      ]
+    },
+    "base-gpt-s1v3": {
+      "name": "base-gpt-s1v3.zip",
+      "version": "2026.10.31",
+      "channel": "release",
+      "size_bytes": 155285008,
+      "sha256": "a0bdc3d323b3cdcd0b728f32c46c8d017c1f01b71d36c3357c0f6cfa15329ea8",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/base-gpt-s1v3.zip"
+      ]
+    },
+    "base-v2proplus": {
+      "name": "base-v2proplus.zip",
+      "version": "2026.10.31",
+      "channel": "release",
+      "size_bytes": 434087597,
+      "sha256": "4b1a31ec85c75333a3e5c0dc5f66885cd599b867c7b5feb8a470648540065e68",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/base-v2proplus.zip"
+      ]
+    },
+    "base-g2pw": {
+      "name": "base-g2pw.zip",
+      "version": "2026.10.31",
+      "channel": "release",
+      "size_bytes": 637296041,
+      "sha256": "c74963eba422412f0e86c3623d7ef24251579fcef236f971f68c5c34516fade5",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/base-g2pw.zip"
+      ]
+    },
+    "base-langdetect": {
+      "name": "base-langdetect.zip",
+      "version": "2026.10.31",
+      "channel": "release",
+      "size_bytes": 131266386,
+      "sha256": "a0fe2fbfb0decf18bd03b599e6ed3fb59060a2eca9fe2225d482cf768f164543",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/base-langdetect.zip"
+      ]
+    }
+  }
 }

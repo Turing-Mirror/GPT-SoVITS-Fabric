@@ -30,10 +30,10 @@ index.json 有 7000 行，其中相当一部分现在没有任何代码在读：
 
     {
       "app":         {"name","version","sha256","size_bytes"},
-      "engine_core": {"name","version","sha256","size_bytes"},
+      "engine_core": {"version","packs":[{name,sha256,size_bytes}]},  # 旧形：{"name",...} 单包
       "runtimes":    {"nvidia": {"label","version","parts":[{name,sha256,size_bytes}]}},
       "roles":       [{"id","name","author","version","pack","sha256","cover"}],
-      "extras":      {"<key>": {"label","dest","group","files":[{name,sha256,size_bytes}]}}
+      "extras":      {"<key>": {"label","dest","group","tag","repo"?,"files":[{name,sha256,size_bytes}]}}
     }
 
 ## 用法
@@ -72,8 +72,9 @@ TAG_COVERS = "GSV-covers"
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def asset_url(tag: str, name: str) -> str:
-    return f"{CNB_BASE}/-/releases/download/{tag}/{name}"
+def asset_url(tag: str, name: str, base: str = CNB_BASE) -> str:
+    # Release 附件是平铺的：带子目录的 name（落盘位置）只取文件名部分。
+    return f"{base}/-/releases/download/{tag}/{name.rsplit('/', 1)[-1]}"
 
 
 def raw_url(rel: str) -> str:
@@ -150,7 +151,7 @@ def build_runtimes(src: dict, rep: Report) -> dict:
             "variant": variant,
             "label": rt.get("label") or variant,
             "version": str(rt.get("version", "")),
-            "format": "tar",
+            "format": "tar.gz" if parts[0]["name"].endswith(".tar.gz") else "tar",
             "size_bytes": sum(p["size_bytes"] for p in parts),
             "extract_root": rt.get("extract_root", "Runtime"),
             "channel": "release",
@@ -226,7 +227,9 @@ def build_extras(src: dict, rep: Report) -> dict:
                 "sha256": need_sha(rep, fw, f),
                 "size_bytes": need_size(rep, fw, f),
                 "channel": "release",
-                "urls": [asset_url(ex.get("tag") or TAG_CORE, name)],
+                # `repo`：附件挂在别的发布仓时填它的地址（人声分离模型与 RVC
+                # Fabric 共用同一批 Release 附件，不重复上传）。
+                "urls": [asset_url(ex.get("tag") or TAG_CORE, name, ex.get("repo") or CNB_BASE)],
             })
         if not files:
             rep.error(f"{who}: 一个文件都没有")
@@ -284,7 +287,26 @@ def build(src: dict, rep: Report) -> dict:
     else:
         rep.warn("没有 app 段：客户端的「检查更新」会永远回答「已是最新」")
 
-    if core:
+    if core.get("packs"):
+        # 底模拆成多个包（scripts/build_engine_core.py 的 manifest.json）：按包名
+        # 去掉 .zip 做键。客户端只按 name 查大小，sha 以壳内 BASE_MODEL_PACKS 为准。
+        packs: dict[str, Any] = {}
+        for p in core["packs"]:
+            name = str(p.get("name", "")).strip()
+            who = f"engine_core.{name or '?'}"
+            if not name:
+                rep.error(f"{who}: 缺 name")
+                continue
+            packs[name.removesuffix(".zip")] = {
+                "name": name,
+                "version": str(core.get("version", "")),
+                "channel": "release",
+                "size_bytes": need_size(rep, who, p),
+                "sha256": need_sha(rep, who, p),
+                "urls": [asset_url(TAG_CORE, name)],
+            }
+        out["engine_core"] = packs
+    elif core:
         name = str(core.get("name", "")).strip()
         out["engine_core"] = {
             "name": name,
@@ -314,10 +336,10 @@ def loopback(doc: dict, rep: Report) -> None:
     二进制没构建就跳过（`cargo build --bin catalog-check` 一次即可），
     不为一个校验步骤强制所有人装 Rust 工具链。
     """
-    exe = REPO / "app" / "src-tauri" / "target" / "debug" / "catalog-check"
-    if not exe.is_file():
-        exe = REPO / "app" / "src-tauri" / "target" / "release" / "catalog-check"
-    if not exe.is_file():
+    name = "catalog-check.exe" if sys.platform == "win32" else "catalog-check"
+    target = REPO / "app" / "src-tauri" / "target"
+    exe = next((p for p in (target / "debug" / name, target / "release" / name) if p.is_file()), None)
+    if exe is None:
         rep.warn(
             "没有 catalog-check 二进制，跳过客户端回环校验；"
             "跑一次 `cargo build --bin catalog-check` 就有了"
@@ -356,6 +378,7 @@ def main() -> int:
     ap.add_argument("--sources", required=True, help="catalog/sources.json")
     ap.add_argument("--out", help="写到哪（缺省打到 stdout）")
     ap.add_argument("--check", action="store_true", help="只校验，不输出清单")
+    ap.add_argument("--bundle", help="同时把编译结果并进随包内置清单（engine-payload/configs/online_catalog.json）")
     args = ap.parse_args()
 
     path = Path(args.sources)
@@ -387,6 +410,17 @@ def main() -> int:
     if args.check:
         print("[catalog] 校验通过", file=sys.stderr)
         return 0
+
+    if args.bundle:
+        # 内置清单是离线兜底，另有 community 等本脚本不管的段：只覆盖编译出的那几段。
+        bp = Path(args.bundle)
+        bundled = json.loads(bp.read_text(encoding="utf-8")) if bp.is_file() else {}
+        for k in ("schema", "format", "cnb_repo", "runtime_release_tag", "manifest_urls",
+                  "app", "engine_core", "runtimes", "roles", "extras"):
+            if k in doc:
+                bundled[k] = doc[k]
+        bp.write_text(json.dumps(bundled, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"[catalog] 内置清单已更新 → {bp}", file=sys.stderr)
 
     text = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
     if args.out:
