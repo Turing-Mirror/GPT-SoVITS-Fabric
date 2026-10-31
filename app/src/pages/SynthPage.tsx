@@ -769,7 +769,7 @@ export function SynthPage() {
     ) : null;
 
   const runBar = (count: string, start: () => void, canStart: boolean) => (
-    <div className="flex items-center gap-3 pt-2.5 mt-2.5 border-t border-[var(--hairline)] flex-wrap">
+    <div className="flex items-center gap-3 mt-3 flex-wrap">
       <span className="text-[12px] text-[var(--meta)] tabular-nums">{count}</span>
       <Toggle
         checked={streaming}
@@ -1020,7 +1020,7 @@ export function SynthPage() {
             {mode === "single"
               ? textArea(text, setText, t("synth.textPlaceholder"))
               : textArea(batchText, setBatchText, t("synth.batchPlaceholder"))}
-            <div className="flex items-center gap-2 pt-2.5 mt-2 border-t border-[var(--hairline)] flex-wrap">
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
               <span className="text-[12px] text-[var(--meta)]">{t("synth.textLang")}</span>
               <Select
                 width={150}
@@ -1064,7 +1064,7 @@ export function SynthPage() {
                   <div
                     key={i}
                     title={it.err}
-                    className={["flex items-center gap-2.5 px-3 py-1.5 text-[12.5px]", i > 0 ? "border-t border-[var(--hairline)]" : ""].join(" ")}
+                    className="flex items-center gap-2.5 px-3 py-1.5 text-[12.5px]"
                   >
                     <span className="w-[22px] shrink-0 text-[11.5px] text-[var(--meta)] tabular-nums">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate">{it.text}</span>

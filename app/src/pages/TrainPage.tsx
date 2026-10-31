@@ -628,7 +628,7 @@ export function TrainPage() {
               </div>
             ))}
             {st.busy ? (
-              <div className="pt-2.5 border-t border-[var(--hairline)]">
+              <div className="pt-1">
                 <div className="flex items-center justify-between text-[12px] mb-1.5">
                   <span className="text-[var(--accent)]">{stage ? t(STAGE_KEYS[stage]) : t("train.start")}</span>
                   <span className="tabular-nums">{progress}%</span>
@@ -638,7 +638,7 @@ export function TrainPage() {
                 </div>
               </div>
             ) : (
-              <div className="pt-2.5 border-t border-[var(--hairline)] text-[12px] leading-relaxed text-[var(--help)]">
+              <div className="pt-1 text-[12px] leading-relaxed text-[var(--help)]">
                 {blocked || t("train.statusReady")}
               </div>
             )}
