@@ -234,6 +234,88 @@ def write_meta(up: Path, commit: str) -> None:
     print(f"[payload] setup_package.json ← upstream {commit or '(非 git)'}")
 
 
+#: 版本表落点。壳（train.rs）和 train_worker 都读它，不各自写一份版本清单。
+VERSION_TABLE = PAYLOAD / "configs" / "upstream_versions.json"
+
+
+def _literal(tree, name: str):
+    """模块顶层 `name = <字面量>` 的值（允许 `a = b = <字面量>` 连写）。"""
+    import ast
+
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == name for t in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    fail(f"上游里找不到 {name}，版本表的来源变了，需要重新核对")
+
+
+def _train_choices(tree) -> list[str]:
+    """webui 训练页的版本单选（label 为「训练模型的版本」的那个 Radio）。"""
+    import ast
+
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "Radio"):
+            continue
+        kw = {k.arg: k.value for k in node.keywords}
+        label = kw.get("label")
+        if (
+            isinstance(label, ast.Call)
+            and label.args
+            and isinstance(label.args[0], ast.Constant)
+            and label.args[0].value == "训练模型的版本"
+            and "choices" in kw
+        ):
+            return list(ast.literal_eval(kw["choices"]))
+    fail("webui.py 里找不到训练版本的单选，版本表的来源变了，需要重新核对")
+
+
+def write_version_table() -> None:
+    """从随包的上游源码抽出版本事实，写成 configs/upstream_versions.json。
+
+    全部取自上游，不手写：可训练版本取 webui 训练页的选项，LoRA 版本取
+    `v3v4set`，底模路径取 config.py 的两张表。判据也照抄上游：
+    s2 配置模板是 `s2<版本>.json`（存在时）否则 `s2.json`（webui 的 open1Ba），
+    非 LoRA 版本的判别器底模是把 s2G 换成 s2D，带 Pro 的版本格式化时要多跑
+    说话人验证（prepare_datasets/2-get-sv.py），v1 用 s1longer.yaml。
+    """
+    import ast
+
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)  # 上游正则字符串里的 "\d"
+        cfg = ast.parse((PAYLOAD / "config.py").read_text(encoding="utf-8"))
+        web = ast.parse((PAYLOAD / "webui.py").read_text(encoding="utf-8"))
+    s2g = _literal(cfg, "pretrained_sovits_name")
+    s1 = _literal(cfg, "pretrained_gpt_name")
+    lora = set(_literal(web, "v3v4set"))
+    train = _train_choices(web)
+    configs = PAYLOAD / "GPT_SoVITS" / "configs"
+
+    versions = {}
+    for v, g in s2g.items():
+        own = f"s2{v}.json"
+        versions[v] = {
+            "trainable": v in train,
+            "lora": v in lora,
+            "s2G": g,
+            "s2D": None if v in lora else g.replace("s2G", "s2D"),
+            "s1": s1.get(v),
+            "s2_config": f"GPT_SoVITS/configs/{own if (configs / own).is_file() else 's2.json'}",
+            "s1_config": "GPT_SoVITS/configs/" + ("s1longer.yaml" if v == "v1" else "s1longer-v2.yaml"),
+            "needs_sv": "Pro" in v,
+        }
+    doc = {
+        "_note": "由 scripts/prepare_engine_payload.py 从随包上游源码生成，勿手改",
+        "upstream_pin": UPSTREAM_PIN,
+        "train_order": train,
+        "versions": versions,
+    }
+    VERSION_TABLE.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"[payload] 版本表 ← 可训练 {', '.join(train)}；LoRA {', '.join(sorted(lora))}")
+
+
 #: 日语用户词典。上游第一次处理日语文本时才把 13 万行的 csv 编成 user.dict，
 #: 要两三分钟，用户看到的是「第一次合成卡住」。打包前用 Runtime 先编好，
 #: 连同上游用来判断是否要重编的 md5 一起放进负载。
@@ -262,6 +344,7 @@ def main() -> int:
     ap.add_argument("--upstream", help="上游 GPT-SoVITS 源码树")
     ap.add_argument("--check", action="store_true", help="只校验，不改文件")
     ap.add_argument("--runtime", help="Runtime 目录；给了就预编译日语用户词典")
+    ap.add_argument("--versions", action="store_true", help="只按随包上游源码重写版本表")
     ap.add_argument(
         "--allow-pin-drift",
         action="store_true",
@@ -271,6 +354,9 @@ def main() -> int:
 
     if args.runtime:
         compile_ja_userdict(Path(args.runtime))
+    if args.versions:
+        write_version_table()
+        return 0
 
     if args.check:
         problems = check_resources()
@@ -300,6 +386,7 @@ def main() -> int:
     if n:
         print(f"[payload] 清掉 {n} 个缓存/字节码条目")
     write_meta(up, commit)
+    write_version_table()
 
     problems = check_resources()
     for p in problems:

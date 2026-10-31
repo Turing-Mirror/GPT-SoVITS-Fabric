@@ -19,9 +19,10 @@ import { t } from "../i18n/t";
  * 日志打出「训练完成」，一个字节都没算过。现在接的是真的：`train_start`
  * 起 worker，`train-progress` 事件逐行回传，阶段与轮数都来自它。
  *
- * 版本列表直接取 `train_status().versions`（即 Rust 的 `TRAIN_VERSIONS`）。
- * 以前这里写死了五个，含后端根本不认的 v4 / v1 —— 用户选得到，一按就被拒。
- * 契约只该有一处，那处在 Rust。
+ * 版本列表、每个版本缺哪些底模、默认参数，都取自 `train_status()`：Rust 读
+ * 随包的上游版本表（`configs/upstream_versions.json`）与默认值
+ * （`configs/train_defaults.json`）。这一页不写死任何版本或数值。
+ * SoVITS 与 GPT 两段的轮数、批大小、保存间隔分开设，换版本时回到该版本的默认值。
  */
 
 type Stage = "prepare" | "format" | "sovits" | "gpt";
@@ -33,15 +34,42 @@ const STAGE_KEYS: Record<Stage, string> = {
   gpt: "train.stageGpt",
 };
 
+type PartDefaults = {
+  epochs: number;
+  min_epochs?: number;
+  max_epochs: number;
+  save_every: number;
+  batch: number;
+  max_batch: number;
+};
+
+type VersionInfo = {
+  id: string;
+  lora?: boolean;
+  base_missing?: string[];
+  defaults?: {
+    sovits?: PartDefaults & { learning_rate?: number; lora_rank?: number; lora_ranks?: number[] };
+    gpt?: PartDefaults;
+  };
+};
+
+type Part = { epochs: number; batch: number; saveEvery: number };
+
+const FALLBACK_PART: Part = { epochs: 8, batch: 4, saveEvery: 4 };
+
+function partOf(d?: PartDefaults): Part {
+  return d ? { epochs: d.epochs, batch: d.batch, saveEvery: d.save_every } : FALLBACK_PART;
+}
+
 type Status = {
   runtime_ready?: boolean;
   worker_present?: boolean;
   engine_core_ready?: boolean;
   engine_core_missing?: string[];
   nvidia?: boolean;
-  versions?: string[];
+  versions?: VersionInfo[];
+  default_version?: string;
   experiments?: { name?: string }[];
-  suggested_batch?: number;
   disk_free_bytes?: number | null;
   busy?: boolean;
   interrupted?: { exp?: string; epoch?: number; total?: number } | null;
@@ -93,10 +121,10 @@ export function TrainPage() {
   const [scan, setScan] = useState<Scan | null>(null);
   const [inspect, setInspect] = useState<Inspect | null>(null);
 
-  const [epochs, setEpochs] = useState(24);
-  const [batchSize, setBatchSize] = useState(8);
+  const [sovits, setSovits] = useState<Part>(FALLBACK_PART);
+  const [gpt, setGpt] = useState<Part>(FALLBACK_PART);
   const [lr, setLr] = useState(0.0001);
-  const [saveEvery, setSaveEvery] = useState(4);
+  const [loraRank, setLoraRank] = useState(32);
   const [resume, setResume] = useState(true);
 
   const [stage, setStage] = useState<Stage | null>(null);
@@ -114,8 +142,7 @@ export function TrainPage() {
     try {
       const s = await invoke<Status>("train_status");
       setSt(s ?? {});
-      setVersion((v) => v || (s?.versions ?? [])[0] || "");
-      if (s?.suggested_batch) setBatchSize((b) => (b === 8 ? s.suggested_batch! : b));
+      setVersion((v) => v || s?.default_version || s?.versions?.[0]?.id || "");
     } catch {
       /* 状态问不到就维持上一次的，别把界面清空 */
     }
@@ -125,6 +152,25 @@ export function TrainPage() {
     void refresh();
     void invoke<string>("train_output_dir").then(setOutDir).catch(() => {});
   }, [refresh]);
+
+  const info = (st.versions ?? []).find((v) => v.id === version);
+  const sd = info?.defaults?.sovits;
+  const gd = info?.defaults?.gpt;
+
+  const applyDefaults = useCallback(() => {
+    setSovits(partOf(sd));
+    setGpt(partOf(gd));
+    setLr(sd?.learning_rate ?? 0.0001);
+    setLoraRank(sd?.lora_rank ?? 32);
+  }, [sd, gd]);
+
+  // 换版本（含首次拿到状态）时回到该版本的默认值；全参与 LoRA 的合理轮数差一个量级。
+  const appliedFor = useRef("");
+  useEffect(() => {
+    if (!info || appliedFor.current === info.id) return;
+    appliedFor.current = info.id;
+    applyDefaults();
+  }, [info, applyDefaults]);
 
   // 不跑的时候慢轮询（底模刚下完、运行时刚补齐，这一页得自己看见）；
   // 跑起来之后状态由事件推，轮询只用来确认 busy 何时落回 false。
@@ -190,7 +236,9 @@ export function TrainPage() {
     if (p) setOutDir(p);
   }, []);
 
-  // 拦住的四种情况分开报，别糊成一句「不能训练」—— 用户得知道去补哪一样。
+  const versionMissing = info?.base_missing ?? [];
+
+  // 拦住的几种情况分开报，别糊成一句「不能训练」—— 用户得知道去补哪一样。
   const blocked =
     !st.runtime_ready
       ? t("train.blockRuntime")
@@ -198,7 +246,9 @@ export function TrainPage() {
         ? t("train.blockWorker")
         : !st.engine_core_ready
           ? t("train.blockCore", { v0: String((st.engine_core_missing ?? []).length) })
-          : !st.nvidia
+          : versionMissing.length
+            ? t("s.trainBaseMissing", { a0: version })
+            : !st.nvidia
             ? t("train.blockNvidia")
             : !dataset
               ? t("train.blockDataset")
@@ -218,10 +268,14 @@ export function TrainPage() {
           exp: exp.trim(),
           dataset,
           version,
-          total_epoch: epochs,
-          batch_size: batchSize,
+          sovits_epoch: sovits.epochs,
+          sovits_batch: sovits.batch,
+          sovits_save_every: sovits.saveEvery,
+          gpt_epoch: gpt.epochs,
+          gpt_batch: gpt.batch,
+          gpt_save_every: gpt.saveEvery,
           learning_rate: lr,
-          save_every: saveEvery,
+          lora_rank: loraRank,
           resume,
           output_dir: outDir,
         },
@@ -232,10 +286,11 @@ export function TrainPage() {
       setStarting(false);
       void refresh();
     }
-  }, [exp, dataset, version, epochs, batchSize, lr, saveEvery, resume, outDir, refresh]);
+  }, [exp, dataset, version, sovits, gpt, lr, loraRank, resume, outDir, refresh]);
 
   const versions = st.versions ?? [];
-  const missing = st.engine_core_missing ?? [];
+  const missing = [...(st.engine_core_missing ?? []), ...versionMissing];
+  const baseReady = !!st.engine_core_ready && versionMissing.length === 0;
 
   return (
     <PagePad>
@@ -270,15 +325,14 @@ export function TrainPage() {
               <Select
                 full
                 value={version}
-                options={versions.map((v) => ({ id: v, label: v }))}
+                options={versions.map((v) => ({ id: v.id, label: v.lora ? `${v.id} · LoRA` : v.id }))}
                 onChange={setVersion}
               />
             }
           />
-          {/* 打勾以「这台机器上真的有这份权重」为准，判据是 engine_core_missing。
-              以前这里五个标记恒为灰 —— 灰得没有信息量；现在缺哪几个直接列出来。 */}
+          {/* 判据是「这台机器上真的有这份权重」：引擎资源加上所选版本自己的底模。 */}
           <div className="text-[12.5px]">
-            {st.engine_core_ready ? (
+            {baseReady ? (
               <span className="text-[var(--accent)]">{t("train.baseReady")}</span>
             ) : (
               <span className="text-[var(--notify)]">
@@ -377,42 +431,65 @@ export function TrainPage() {
         </div>
       </Block>
 
-      <Block title={t("train.hyperTitle")}>
-        <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-          <Field
-            label={t("train.epochs")}
-            control={<Slider value={epochs} min={1} max={200} step={1} onChange={setEpochs} />}
-          />
-          <Field
-            label={t("train.batch")}
-            control={<Slider value={batchSize} min={1} max={64} step={1} onChange={setBatchSize} />}
-          />
-          <Field
-            label={t("train.saveEvery")}
-            tip={t("train.saveEveryTip")}
-            control={<Slider value={saveEvery} min={1} max={50} step={1} onChange={setSaveEvery} />}
-          />
-          <Field
-            label={t("train.lr")}
-            control={
-              <Slider
-                value={Math.round(lr * 100000) / 100000}
-                min={0.00001}
-                max={0.001}
-                step={0.00001}
-                defaultValue={0.0001}
-                onChange={(v) => setLr(v)}
-                format={(v) => v.toExponential(1)}
+      <Block
+        title={t("train.hyperTitle")}
+        action={<Btn onClick={applyDefaults}>{t("train.resetDefaults")}</Btn>}
+      >
+        <div className="flex flex-col gap-[10px]">
+          <div className="text-[12.5px] text-[var(--meta)] px-1">{t("train.sovitsTitle")}</div>
+          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
+            <PartFields
+              part={sovits}
+              defaults={sd}
+              minEpochs={1}
+              onChange={setSovits}
+            />
+            <Field
+              label={t("train.lr")}
+              control={
+                <Slider
+                  value={Math.round(lr * 100000) / 100000}
+                  min={0.00001}
+                  max={0.001}
+                  step={0.00001}
+                  defaultValue={sd?.learning_rate ?? 0.0001}
+                  onChange={(v) => setLr(v)}
+                  format={(v) => v.toExponential(1)}
+                />
+              }
+            />
+            {info?.lora ? (
+              <Field
+                label={t("train.loraRank")}
+                tip={t("train.loraRankTip")}
+                control={
+                  <Select
+                    value={String(loraRank)}
+                    options={(sd?.lora_ranks ?? [16, 32, 64, 128]).map((r) => ({
+                      id: String(r),
+                      label: String(r),
+                    }))}
+                    onChange={(v) => setLoraRank(Number(v))}
+                  />
+                }
               />
-            }
-          />
-          {/* Toggle 自带 label/tip，不套 Field —— 套了会出现两个标题。 */}
-          <Toggle
-            checked={resume}
-            onChange={setResume}
-            label={t("train.resume")}
-            tip={t("train.resumeTip")}
-          />
+            ) : null}
+          </div>
+
+          <div className="text-[12.5px] text-[var(--meta)] px-1 mt-2">{t("train.gptTitle")}</div>
+          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
+            <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
+          </div>
+
+          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2">
+            {/* Toggle 自带 label/tip，不套 Field —— 套了会出现两个标题。 */}
+            <Toggle
+              checked={resume}
+              onChange={setResume}
+              label={t("train.resume")}
+              tip={t("train.resumeTip")}
+            />
+          </div>
         </div>
       </Block>
 
@@ -477,5 +554,65 @@ export function TrainPage() {
         </pre>
       </Block>
     </PagePad>
+  );
+}
+
+/** 一段微调的三个参数。范围与默认值来自所选版本，滑杆上标出默认值。 */
+function PartFields({
+  part,
+  defaults,
+  minEpochs,
+  onChange,
+}: {
+  part: Part;
+  defaults?: PartDefaults;
+  minEpochs: number;
+  onChange: (p: Part) => void;
+}) {
+  const maxEpochs = Math.max(defaults?.max_epochs ?? 50, part.epochs);
+  const maxBatch = Math.max(defaults?.max_batch ?? 16, part.batch);
+  return (
+    <>
+      <Field
+        label={t("train.epochs")}
+        control={
+          <Slider
+            value={part.epochs}
+            min={minEpochs}
+            max={maxEpochs}
+            step={1}
+            defaultValue={defaults?.epochs}
+            onChange={(v) => onChange({ ...part, epochs: v })}
+          />
+        }
+      />
+      <Field
+        label={t("train.batch")}
+        control={
+          <Slider
+            value={part.batch}
+            min={1}
+            max={maxBatch}
+            step={1}
+            defaultValue={defaults?.batch}
+            onChange={(v) => onChange({ ...part, batch: v })}
+          />
+        }
+      />
+      <Field
+        label={t("train.saveEvery")}
+        tip={t("train.saveEveryTip")}
+        control={
+          <Slider
+            value={part.saveEvery}
+            min={1}
+            max={maxEpochs}
+            step={1}
+            defaultValue={defaults?.save_every}
+            onChange={(v) => onChange({ ...part, saveEvery: v })}
+          />
+        }
+      />
+    </>
   );
 }

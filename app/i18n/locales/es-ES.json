@@ -894,7 +894,9 @@
     "trainEpochRange": "El número de épocas está fuera del rango admitido: {a0}",
     "trainBatchRange": "El tamaño de lote está fuera del rango admitido: {a0}",
     "trainLrRange": "La tasa de aprendizaje está fuera del rango admitido: {a0}",
-    "trainEngineCoreMissing": "Faltan los recursos del motor (modelos base). Complételos primero en Plaza → Descargar modelos."
+    "trainEngineCoreMissing": "Faltan los recursos del motor (modelos base). Complételos primero en Plaza → Descargar modelos.",
+    "trainBaseMissing": "Falta el modelo base de {a0}. Descárguelo primero en Plaza → Descargar modelos.",
+    "trainLoraRange": "El rango de LoRA está fuera del rango admitido: {a0}"
   },
   "extras": {
     "engineTitle": "Recursos del motor",
@@ -967,10 +969,10 @@
     "title": "Entrenamiento",
     "subtitle": "Desde material de voz bruto hasta un personaje listo",
     "modelTitle": "Versión y modelos base",
-    "modelNote": "Si falta un modelo base se te guiará a las descargas de la Plaza",
+    "modelNote": "Los parámetros predeterminados dependen de la versión y de la memoria de la GPU",
     "version": "Versión objetivo",
-    "versionTip": "v2ProPlus es la corriente principal actual. Los modelos base no son intercambiables entre versiones.",
-    "baseHint": "Recursos preentrenados requeridos por la versión elegida; se descargan al primer uso.",
+    "versionTip": "Los modelos base y los resultados no son intercambiables entre versiones. v4 y V5 usan ajuste fino LoRA.",
+    "baseHint": "Los modelos base que faltan pueden descargarse en Plaza → Descargar modelos.",
     "datasetTitle": "Conjunto de datos",
     "datasetNote": "Acepta anotaciones .list estándar de la comunidad",
     "listFile": "Archivo de anotación (.list)",
@@ -1017,7 +1019,12 @@
     "diskFree": "{v0} libres en esta unidad",
     "sepEntry": "Quite primero el acompañamiento",
     "sepEntryDesc": "La música de fondo o las armonías que queden en el material acaban aprendidas por la voz entrenada.",
-    "sepOpen": "Abrir separación de voz"
+    "sepOpen": "Abrir separación de voz",
+    "sovitsTitle": "Entrenamiento de SoVITS",
+    "gptTitle": "Entrenamiento de GPT",
+    "loraRank": "Rango de LoRA",
+    "loraRankTip": "Un rango mayor aprende más detalle y usa más memoria de GPU.",
+    "resetDefaults": "Restaurar valores predeterminados"
   },
   "help": {
     "title": "Ayuda",
@@ -1063,7 +1070,7 @@
     "faqQ1": "¿Funciona sin GPU NVIDIA?",
     "faqA1": "Sí. Cae a CPU: más lento pero completo. 8 GB+ de RAM recomendados; para entrenar, GPU NVIDIA.",
     "faqQ2": "¿Se pueden mezclar versiones?",
-    "faqA2": "No. v1 / v2 / v2Pro / v2ProPlus / v4 difieren en base y arquitectura; la app valida y avisa al cargar.",
+    "faqA2": "No. v1 / v2 / v2Pro / v2ProPlus / v4 / V5 difieren en base y arquitectura; la app valida y avisa al cargar.",
     "faqQ3": "¿Y si falta VRAM?",
     "faqA3": "La página gestiona los modelos cargados con expulsión LRU. Si aún falta: desactiva streaming, reduce lotes o usa una versión ligera.",
     "faqQ4": "¿Cómo comparto un personaje?",

@@ -40,9 +40,10 @@ MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
 REQUIRED = ["config.json", "models/sovits.pth", "models/gpt.ckpt"]
 #: 参考音频的语种码，和 `TTS_Config.v2_languages` 对齐（去掉 auto*）。
 LANGS = {"zh", "en", "ja", "ko", "yue", "all_zh", "all_ja", "all_yue", "all_ko"}
-#: 训练台开放的版本，和 `train.rs` 的 TRAIN_VERSIONS 一致；
-#: 推理还能加载 v1/v3/v4，所以这里只警告不报错。
-TRAIN_VERSIONS = {"v2ProPlus", "v2Pro", "v2"}
+#: 上游认得的版本，取自随包版本表（prepare_engine_payload.py 生成）。
+VERSION_TABLE = (Path(__file__).resolve().parent.parent / "app" / "src-tauri"
+                 / "engine-payload" / "configs" / "upstream_versions.json")
+KNOWN_VERSIONS = set(json.loads(VERSION_TABLE.read_text(encoding="utf-8"))["versions"])
 
 SKIP_NAMES = {"__pycache__", ".DS_Store", ".git", "Thumbs.db"}
 
@@ -88,10 +89,9 @@ def check(root: Path, files: list[Path]) -> list[str]:
         if not str(cfg.get("name", "")).strip():
             problems.append("config.json 缺 name —— 导入侧以此判定整包无效")
         ver = str(cfg.get("version", "")).strip()
-        if ver and ver not in TRAIN_VERSIONS:
+        if ver and ver not in KNOWN_VERSIONS:
             problems.append(
-                f"[警告] version={ver} 不在训练台开放的三个版本里"
-                f"（{sorted(TRAIN_VERSIONS)}）；推理仍可加载"
+                f"[警告] version={ver} 不在上游版本表里（{sorted(KNOWN_VERSIONS)}）"
             )
         # lists 里点名的标注文件必须真的在包里，否则合成台挑参考音频时是空的。
         for i, item in enumerate(cfg.get("lists") or []):

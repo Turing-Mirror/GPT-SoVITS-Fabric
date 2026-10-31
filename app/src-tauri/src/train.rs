@@ -79,11 +79,110 @@ static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 /// 训练子进程本身会再 fork 出 worker 进程，光靠 cancel 标志杀不干净，得留句柄。
 static CHILD: Mutex<Option<u32>> = Mutex::new(None);
 
-/// 可训练的版本。与 `TrainPage` 的 `VERSIONS` 一致，顺序也一致（第一个是默认）。
-///
-/// v3/v4 走的是 LoRA 路径（上游 `s2_train_v3_lora.py`），和这里的全参微调不是
-/// 一条线；`docs/DECISIONS.md` D5 把它标成待定，所以先不开。
-pub const TRAIN_VERSIONS: [&str; 3] = ["v2ProPlus", "v2Pro", "v2"];
+/// 上游版本表：`configs/upstream_versions.json`，打包时由
+/// `scripts/prepare_engine_payload.py` 从随包上游源码生成。可训练哪些版本、
+/// 哪些走 LoRA、底模在哪，全以它为准，这里不另写一份清单。
+fn version_table(root: &Path) -> Value {
+    read_json(&root.join("configs").join("upstream_versions.json"))
+}
+
+/// 训练台的默认值（`configs/train_defaults.json`）。只是起点，用户可改。
+fn train_defaults(root: &Path) -> Value {
+    read_json(&root.join("configs").join("train_defaults.json"))
+}
+
+fn read_json(p: &Path) -> Value {
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}))
+}
+
+/// 可训练的版本，按上游训练页的顺序。
+pub fn train_versions(root: &Path) -> Vec<String> {
+    let table = version_table(root);
+    table["train_order"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .filter(|v| table["versions"][*v]["trainable"].as_bool() == Some(true))
+        .map(str::to_string)
+        .collect()
+}
+
+/// 这个版本训练要用到、但盘上没有的底模（相对安装根）。
+fn base_missing(root: &Path, info: &Value) -> Vec<String> {
+    ["s2G", "s2D", "s1"]
+        .iter()
+        .filter_map(|k| info[*k].as_str())
+        .filter(|rel| !root.join(rel).is_file())
+        .map(str::to_string)
+        .collect()
+}
+
+/// 某个版本的默认参数。批大小按显存算，规则与上游 webui 的 `set_default` 相同：
+/// 显存 GB 除以每批所需 GB，LoRA 版本占得多。
+fn version_defaults(root: &Path, lora: bool) -> Value {
+    let d = train_defaults(root);
+    let s = &d["sovits"][if lora { "lora" } else { "full" }];
+    let g = &d["gpt"];
+    let u = |v: &Value, fb: u64| v.as_u64().unwrap_or(fb) as u32;
+    let vram = vram_gb().unwrap_or(u(&d["fallback_vram_gb"], 8));
+    let per = |v: &Value| (vram / u(v, 2).max(1)).clamp(BATCH_RANGE.0, BATCH_RANGE.1);
+    let s_batch = per(&s["vram_gb_per_batch"]);
+    let g_max = u(&g["max_batch"], 40).min(BATCH_RANGE.1);
+    json!({
+        "lora": lora,
+        "sovits": {
+            "epochs": u(&s["epochs"], 8),
+            "max_epochs": u(&s["max_epochs"], 25).min(EPOCH_RANGE.1),
+            "save_every": u(&s["save_every"], 4),
+            "batch": s_batch,
+            "max_batch": (s_batch * u(&d["sovits"]["max_batch_factor"], 3)).min(BATCH_RANGE.1),
+            "learning_rate": s["learning_rate"].as_f64().unwrap_or(1e-4),
+            "lora_rank": u(&s["lora_rank"], 32),
+            "lora_ranks": s["lora_ranks"].clone(),
+        },
+        "gpt": {
+            "epochs": u(&g["epochs"], 15),
+            "min_epochs": u(&g["min_epochs"], 1),
+            "max_epochs": u(&g["max_epochs"], 50).min(EPOCH_RANGE.1),
+            "save_every": u(&g["save_every"], 5),
+            "batch": per(&g["vram_gb_per_batch"]).min(g_max),
+            "max_batch": g_max,
+        },
+    })
+}
+
+/// 每个可训练版本：是否 LoRA、缺哪些底模、默认参数。界面直接用。
+fn versions_status(root: &Path) -> Vec<Value> {
+    let table = version_table(root);
+    train_versions(root)
+        .into_iter()
+        .map(|v| {
+            let info = &table["versions"][&v];
+            let lora = info["lora"].as_bool().unwrap_or(false);
+            json!({
+                "id": v,
+                "lora": lora,
+                "base_missing": base_missing(root, info),
+                "defaults": version_defaults(root, lora),
+            })
+        })
+        .collect()
+}
+
+/// 默认版本：`train_defaults.json` 指定的；不可训练时退到上游顺序的第一个。
+fn default_version(root: &Path) -> String {
+    let list = train_versions(root);
+    train_defaults(root)["default_version"]
+        .as_str()
+        .filter(|v| list.iter().any(|x| x == v))
+        .map(str::to_string)
+        .or_else(|| list.first().cloned())
+        .unwrap_or_default()
+}
 
 /// 轮数 / 批大小 / 学习率的可接受范围。
 ///
@@ -741,9 +840,9 @@ pub fn status(root: &Path) -> Value {
         "engine_core_ready": crate::engine_assets::engine_core_ready(root),
         "engine_core_missing": crate::engine_assets::engine_core_missing(root),
         "nvidia": nvidia,
-        "versions": TRAIN_VERSIONS,
+        "versions": versions_status(root),
+        "default_version": default_version(root),
         "experiments": experiments(root),
-        "suggested_batch": suggested_batch(),
         // 产品所在盘还剩多少。训练要在 logs/<实验>/ 下写切片、音高、特征，
         // 写到一半盘满了是「跑了四十分钟然后失败」，值得在开始之前就拦。
         "disk_free_bytes": paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null),
@@ -870,13 +969,20 @@ fn emit(app: &AppHandle, mut payload: Value) {
 pub struct TrainReq {
     pub exp: String,
     pub dataset: String,
-    /// 见 `TRAIN_VERSIONS`。决定用哪一组底模、走哪条微调路径。
+    /// 见 `train_versions`。决定用哪一组底模、走哪条微调路径。
     pub version: String,
-    pub total_epoch: u32,
-    pub batch_size: u32,
-    /// 学习率。上游 s1/s2 的默认量级都在 1e-4 附近。
+    /// SoVITS 与 GPT 两段微调各自的轮数、批大小、保存间隔。
+    pub sovits_epoch: u32,
+    pub sovits_batch: u32,
+    pub sovits_save_every: u32,
+    pub gpt_epoch: u32,
+    pub gpt_batch: u32,
+    pub gpt_save_every: u32,
+    /// SoVITS 学习率。上游 s2 配置的默认值是 1e-4。
     pub learning_rate: f64,
-    pub save_every: u32,
+    /// LoRA 版本的秩，全参版本忽略。
+    #[serde(default = "default_lora_rank")]
+    pub lora_rank: u32,
     pub resume: bool,
     /// 训好的音色放哪。空 = `User_Data/models`（老行为）。
     ///
@@ -887,9 +993,15 @@ pub struct TrainReq {
     pub output_dir: String,
 }
 
-/// 原版 `default_batch_size = VRAM_GB // 2`。查不到就给 4（6GB 卡的稳妥值）。
-fn suggested_batch() -> u32 {
-    static CACHED: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+fn default_lora_rank() -> u32 {
+    32
+}
+
+pub const LORA_RANK_RANGE: (u32, u32) = (1, 256);
+
+/// 显存最小那块卡的 GB 数（整数，向下取整）。查不到就是 None。
+fn vram_gb() -> Option<u32> {
+    static CACHED: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
     *CACHED.get_or_init(|| {
         let mut cmd = Command::new("nvidia-smi");
         cmd.args([
@@ -904,12 +1016,7 @@ fn suggested_batch() -> u32 {
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000);
         }
-        let Ok(out) = cmd.output() else {
-            return 4;
-        };
-        if !out.status.success() {
-            return 4;
-        }
+        let out = cmd.output().ok().filter(|o| o.status.success())?;
         let mut min_mb = u32::MAX;
         for line in String::from_utf8_lossy(&out.stdout).lines() {
             if let Ok(n) = line.trim().parse::<u32>() {
@@ -917,10 +1024,10 @@ fn suggested_batch() -> u32 {
             }
         }
         if min_mb == u32::MAX {
-            return 4;
+            return None;
         }
-        let gb = (min_mb / 1024).max(1);
-        (gb / 2).clamp(1, 16)
+        // 与上游 config.py 的取整一致：GB 数加 0.4 再截断（6 GB 卡报 5.99 也算 6）。
+        Some(((min_mb as f64 / 1024.0 + 0.4) as u32).max(1))
     })
 }
 
@@ -953,17 +1060,24 @@ fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
     if !worker_script(root).is_file() {
         return Err(crate::i18n::t("s.5164f3e0db").into());
     }
-    if !TRAIN_VERSIONS.contains(&req.version.as_str()) {
+    if !train_versions(root).contains(&req.version) {
         return Err(crate::i18n::te("s.trainVersionUnsupported", &(req.version)));
     }
     // 范围校验放在预检里，不只放在界面的滑杆上：命令是能直接 invoke 的，而一个
     // 0 的批大小或者 1e9 的学习率不会报错，只会安静地训出一个废模型 ——
     // 几个小时之后才知道。
-    if req.total_epoch < EPOCH_RANGE.0 || req.total_epoch > EPOCH_RANGE.1 {
-        return Err(crate::i18n::te("s.trainEpochRange", &req.total_epoch.to_string()));
+    for epoch in [req.sovits_epoch, req.gpt_epoch, req.sovits_save_every, req.gpt_save_every] {
+        if epoch < EPOCH_RANGE.0 || epoch > EPOCH_RANGE.1 {
+            return Err(crate::i18n::te("s.trainEpochRange", &epoch.to_string()));
+        }
     }
-    if req.batch_size < BATCH_RANGE.0 || req.batch_size > BATCH_RANGE.1 {
-        return Err(crate::i18n::te("s.trainBatchRange", &req.batch_size.to_string()));
+    for batch in [req.sovits_batch, req.gpt_batch] {
+        if batch < BATCH_RANGE.0 || batch > BATCH_RANGE.1 {
+            return Err(crate::i18n::te("s.trainBatchRange", &batch.to_string()));
+        }
+    }
+    if req.lora_rank < LORA_RANK_RANGE.0 || req.lora_rank > LORA_RANK_RANGE.1 {
+        return Err(crate::i18n::te("s.trainLoraRange", &req.lora_rank.to_string()));
     }
     if !(req.learning_rate.is_finite()
         && req.learning_rate >= LR_RANGE.0
@@ -979,6 +1093,10 @@ fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
     // 交给 engine_assets，缺哪一组它自己报得出来。
     if !crate::engine_assets::engine_core_ready(root) {
         return Err(crate::i18n::t("s.trainEngineCoreMissing").into());
+    }
+    // 这个版本自己的底模（V5、v4 等不在 engine-core 里，是可选下载）。
+    if !base_missing(root, &version_table(root)["versions"][&req.version]).is_empty() {
+        return Err(crate::i18n::te("s.trainBaseMissing", &(req.version)));
     }
     // resume 的时候数据集可以不在了 —— 切片/格式化产物已经在实验目录里，
     // 原始素材删掉也无妨。切片目录非空就算有产物（`sliced` 是 prepare 的
@@ -1234,10 +1352,14 @@ pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, Str
             "exp": req.exp,
             "dataset": req.dataset,
             "version": req.version,
-            "total_epoch": req.total_epoch,
-            "batch_size": req.batch_size,
+            "sovits_epoch": req.sovits_epoch,
+            "sovits_batch": req.sovits_batch,
+            "sovits_save_every": req.sovits_save_every,
+            "gpt_epoch": req.gpt_epoch,
+            "gpt_batch": req.gpt_batch,
+            "gpt_save_every": req.gpt_save_every,
             "learning_rate": req.learning_rate,
-            "save_every": req.save_every,
+            "lora_rank": req.lora_rank,
             "resume": req.resume,
             "output_dir": req.output_dir,
             "device": device,
@@ -1289,10 +1411,14 @@ fn run_inner(
         "exp": req.exp.trim(),
         "dataset": req.dataset,
         "version": req.version,
-        "total_epoch": req.total_epoch,
-        "batch_size": req.batch_size,
+        "sovits_epoch": req.sovits_epoch,
+        "sovits_batch": req.sovits_batch,
+        "sovits_save_every": req.sovits_save_every,
+        "gpt_epoch": req.gpt_epoch,
+        "gpt_batch": req.gpt_batch,
+        "gpt_save_every": req.gpt_save_every,
         "learning_rate": req.learning_rate,
-        "save_every": req.save_every,
+        "lora_rank": req.lora_rank,
         "device": device,
         "is_half": device == "cuda",
         "resume": req.resume,
@@ -1719,10 +1845,14 @@ mod tests {
             exp: "x".into(),
             dataset: base.to_string_lossy().into(),
             version: "v2ProPlus".into(),
-            total_epoch: 10,
-            batch_size: 8,
+            sovits_epoch: 8,
+            sovits_batch: 4,
+            sovits_save_every: 4,
+            gpt_epoch: 15,
+            gpt_batch: 4,
+            gpt_save_every: 5,
             learning_rate: 1e-4,
-            save_every: 5,
+            lora_rank: 32,
             resume: false,
             output_dir: String::new(),
         };
@@ -1734,10 +1864,11 @@ mod tests {
         // 训出一个废模型。
         for bad in [
             TrainReq { version: "v3".into(), ..ok() },
-            TrainReq { total_epoch: 0, ..ok() },
-            TrainReq { total_epoch: EPOCH_RANGE.1 + 1, ..ok() },
-            TrainReq { batch_size: 0, ..ok() },
-            TrainReq { batch_size: BATCH_RANGE.1 + 1, ..ok() },
+            TrainReq { sovits_epoch: 0, ..ok() },
+            TrainReq { gpt_epoch: EPOCH_RANGE.1 + 1, ..ok() },
+            TrainReq { sovits_batch: 0, ..ok() },
+            TrainReq { gpt_batch: BATCH_RANGE.1 + 1, ..ok() },
+            TrainReq { lora_rank: 0, ..ok() },
             TrainReq { learning_rate: 0.0, ..ok() },
             TrainReq { learning_rate: 1.0, ..ok() },
             TrainReq { learning_rate: f64::NAN, ..ok() },
@@ -1960,15 +2091,27 @@ mod tests {
         assert!(stale.is_empty(), "worker 不发这些，删掉：{stale:?}");
     }
 
+    /// 随包的版本表与默认值：默认版本可训练，每个版本的默认参数都落在
+    /// 预检认的范围里 —— 否则用户什么都不改、直接开始就会被预检拦下。
     #[test]
-    fn the_parameter_ranges_match_what_the_ui_offers() {
-        // TrainPage 上那三个滑杆的默认值必须落在预检认的范围里，否则用户什么
-        // 都不改、直接点「开始训练」就会被自己的预检拦下来。
-        assert!((EPOCH_RANGE.0..=EPOCH_RANGE.1).contains(&24));
-        assert!((BATCH_RANGE.0..=BATCH_RANGE.1).contains(&8));
-        assert!(LR_RANGE.0 <= 0.0001 && 0.0001 <= LR_RANGE.1);
-        // 版本表的第一项是界面的默认选择。
-        assert_eq!(TRAIN_VERSIONS[0], "v2ProPlus");
+    fn the_bundled_defaults_pass_preflight_ranges() {
+        let payload = Path::new(env!("CARGO_MANIFEST_DIR")).join("engine-payload");
+        let list = train_versions(&payload);
+        assert!(!list.is_empty(), "版本表为空：先跑 prepare_engine_payload.py --versions");
+        assert!(list.contains(&default_version(&payload)));
+        for v in versions_status(&payload) {
+            let d = &v["defaults"];
+            for (part, keys) in [("sovits", ["epochs", "save_every"]), ("gpt", ["epochs", "save_every"])] {
+                for k in keys {
+                    let n = d[part][k].as_u64().unwrap() as u32;
+                    assert!((EPOCH_RANGE.0..=EPOCH_RANGE.1).contains(&n), "{v} {part}.{k}");
+                }
+                let b = d[part]["batch"].as_u64().unwrap() as u32;
+                assert!((BATCH_RANGE.0..=BATCH_RANGE.1).contains(&b), "{v} {part}.batch");
+            }
+            let lr = d["sovits"]["learning_rate"].as_f64().unwrap();
+            assert!(LR_RANGE.0 <= lr && lr <= LR_RANGE.1);
+        }
     }
 
     #[test]

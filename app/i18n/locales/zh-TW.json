@@ -894,7 +894,9 @@
     "trainEpochRange": "輪數超出可接受範圍：{a0}",
     "trainBatchRange": "批次大小超出可接受範圍：{a0}",
     "trainLrRange": "學習率超出可接受範圍：{a0}",
-    "trainEngineCoreMissing": "缺少引擎資源（底模組），請先在「廣場 → 下載模型」補齊"
+    "trainEngineCoreMissing": "缺少引擎資源（底模組），請先在「廣場 → 下載模型」補齊",
+    "trainBaseMissing": "缺少 {a0} 的底模，請先在「廣場 → 下載模型」中下載。",
+    "trainLoraRange": "LoRA 秩超出可接受範圍：{a0}"
   },
   "extras": {
     "engineTitle": "引擎資源",
@@ -967,10 +969,10 @@
     "title": "訓練",
     "subtitle": "從原始語音素材到可用角色的完整流水線",
     "modelTitle": "模型版本與底模",
-    "modelNote": "底模缺失時將引導前往廣場下載對應資源組",
+    "modelNote": "預設參數依所選版本與顯存給出",
     "version": "目標版本",
-    "versionTip": "v2ProPlus 為目前社群主流版本；不同版本的底模與產出互不相通。",
-    "baseHint": "以上為所選版本必需的預訓練資源，首次使用時自動下載。",
+    "versionTip": "不同版本的底模與產出互不通用。v4 與 V5 採用 LoRA 微調。",
+    "baseHint": "缺少的底模可在「廣場 → 下載模型」中下載。",
     "datasetTitle": "訓練集",
     "datasetNote": "支援 .list 標註檔直接匯入",
     "listFile": "標註檔（.list）",
@@ -1017,7 +1019,12 @@
     "diskFree": "所在磁碟剩餘 {v0}",
     "sepEntry": "先把伴奏摳掉",
     "sepEntryDesc": "素材裡如果有背景音樂或和聲，訓出來的音色會把它們一起學進去。",
-    "sepOpen": "開啟人聲分離"
+    "sepOpen": "開啟人聲分離",
+    "sovitsTitle": "SoVITS 訓練",
+    "gptTitle": "GPT 訓練",
+    "loraRank": "LoRA 秩",
+    "loraRankTip": "數值越大，可學習的細節越多，顯存佔用也越高。",
+    "resetDefaults": "恢復預設"
   },
   "help": {
     "title": "說明",
@@ -1063,7 +1070,7 @@
     "faqQ1": "沒有 NVIDIA 顯示卡可以用嗎？",
     "faqA1": "可以。程式會回退到 CPU 推理，速度較慢但功能完整。合成類任務建議 8GB 以上記憶體；訓練強烈建議使用 NVIDIA 顯示卡。",
     "faqQ2": "不同版本的模型可以混用嗎？",
-    "faqA2": "不可以。v1 / v2 / v2Pro / v2ProPlus / v4 的底模與網路結構不同，載入時會校驗版本一致性並在不匹配時明確提示。",
+    "faqA2": "不可以。v1 / v2 / v2Pro / v2ProPlus / v4 / V5 的底模與網路結構不同，載入時會校驗版本一致性並在不匹配時明確提示。",
     "faqQ3": "顯示記憶體不足如何處理？",
     "faqA3": "「合成」會自動管理已載入模型：記憶體吃緊時最久未用的角色會被卸載。仍不足時可關閉串流、減小批量長度，或改用更小參數量的角色版本。",
     "faqQ4": "如何把角色分享給別人？",

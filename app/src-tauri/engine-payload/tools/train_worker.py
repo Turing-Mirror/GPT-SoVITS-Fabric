@@ -31,8 +31,12 @@
    funasr）不随引擎发，缺了就明确报「去标注窗口自己打标」，不是静默跳过。
 2. ``format`` 训练集格式化。上游 ``GPT_SoVITS/prepare_datasets`` 的三步，
    env 驱动、逐个子进程跑。产物落 ``logs/<exp>/``。
-3. ``sovits`` s2 微调（``GPT_SoVITS/s2_train.py``）。
+3. ``sovits`` s2 微调。全参版本走 ``GPT_SoVITS/s2_train.py``，LoRA 版本
+   （v3/v4/V5，上游 ``v3v4set``）走 ``GPT_SoVITS/s2_train_v3_lora.py``。
 4. ``gpt`` s1 微调（``GPT_SoVITS/s1_train.py``）。
+
+版本清单、底模路径、配置模板来自 ``configs/upstream_versions.json``（由
+``scripts/prepare_engine_payload.py`` 从随包上游源码生成），这里不写死版本。
 
 # 为什么是子进程而不是 import
 
@@ -70,31 +74,16 @@ if str(ROOT) not in sys.path:
 #: 的 `engine_core_files` 是同一套约定 —— 不然「预检说齐了、训练说缺」。
 PRETRAINED = "GPT_SoVITS/pretrained_models"
 
-#: 各版本的 s2 底模。目录名照上游 `TTS_Config.default_configs`：两个 Pro 版本
-#: 的底模都在 `v2Pro/` 下（上游没有单独的 v2ProPlus 目录）。
-S2_PRETRAINED = {
-    "v2ProPlus": (f"{PRETRAINED}/v2Pro/s2Gv2ProPlus.pth",
-                  f"{PRETRAINED}/v2Pro/s2Dv2ProPlus.pth"),
-    "v2Pro": (f"{PRETRAINED}/v2Pro/s2Gv2Pro.pth",
-              f"{PRETRAINED}/v2Pro/s2Dv2Pro.pth"),
-    "v2": (f"{PRETRAINED}/gsv-v2final-pretrained/s2G2333k.pth",
-           f"{PRETRAINED}/gsv-v2final-pretrained/s2D2333k.pth"),
-}
-
-def s2_config_name(version: str) -> str:
-    """这个版本该用哪份 s2 配置模板。
-
-    上游 `webui.py` 的 `open1Ba`：Pro 系列各有自己的一份，其余用 s2.json。
-    差的不是训练超参而是**网络结构** —— s2.json 与 s2v2ProPlus.json 之间
-    `gin_channels` 512↔1024、`upsample_initial_channel` 512↔768、
-    `upsample_kernel_sizes` 也不同。拿 s2.json 去训 v2ProPlus，建出来的网络
-    和 `s2Gv2ProPlus.pth` 对不上，加载底模那一步就崩。
-    """
-    return f"s2{version}.json" if version in ("v2Pro", "v2ProPlus") else "s2.json"
+def _load_versions() -> dict:
+    """上游版本表。缺了就是负载不完整，训练无从谈起。"""
+    try:
+        doc = json.loads((ROOT / "configs" / "upstream_versions.json").read_text(encoding="utf-8"))
+        return doc.get("versions") or {}
+    except (OSError, ValueError):
+        return {}
 
 
-#: GPT 底模。v3/v4/v2Pro/v2ProPlus 共用 s1v3。
-S1_PRETRAINED = f"{PRETRAINED}/s1v3.ckpt"
+VERSIONS = _load_versions()
 
 CNHUBERT_DIR = f"{PRETRAINED}/chinese-hubert-base"
 BERT_DIR = f"{PRETRAINED}/chinese-roberta-wwm-ext-large"
@@ -180,17 +169,27 @@ def normalize(raw: dict) -> dict:
     exp = str(raw.get("exp") or "").strip()
     if not exp:
         raise Fail("name_invalid", "experiment name is empty")
-    version = str(raw.get("version") or "v2ProPlus")
-    if version not in S2_PRETRAINED:
+    version = str(raw.get("version") or "")
+    info = VERSIONS.get(version)
+    if not info or not info.get("trainable"):
         raise Fail("bad_version", f"unsupported version: {version}", version=version)
+
+    def num(key: str, default: int, hi: int) -> int:
+        return max(1, min(hi, int(raw.get(key) or default)))
+
     return {
         "exp": exp,
         "dataset": str(raw.get("dataset") or ""),
         "version": version,
-        "total_epoch": max(1, min(200, int(raw.get("total_epoch") or 24))),
-        "batch_size": max(1, min(64, int(raw.get("batch_size") or 8))),
+        "info": info,
+        "sovits_epoch": num("sovits_epoch", 8, 200),
+        "sovits_batch": num("sovits_batch", 4, 64),
+        "sovits_save_every": num("sovits_save_every", 4, 200),
+        "gpt_epoch": num("gpt_epoch", 15, 200),
+        "gpt_batch": num("gpt_batch", 4, 64),
+        "gpt_save_every": num("gpt_save_every", 5, 200),
+        "lora_rank": num("lora_rank", 32, 256),
         "learning_rate": float(raw.get("learning_rate") or 1e-4),
-        "save_every": max(1, int(raw.get("save_every") or 5)),
         "device": str(raw.get("device") or "cpu"),
         "is_half": bool(raw.get("is_half")),
         "resume": bool(raw.get("resume")),
@@ -511,9 +510,9 @@ def _merge_parts(opt_dir: Path, artifact: str) -> None:
     (opt_dir / artifact).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def format_steps(version: str) -> tuple[tuple[str, str], ...]:
-    """这个版本要跑哪几步格式化。判据与上游一致：版本名里带 Pro 就要 sv。"""
-    if "Pro" in version:
+def format_steps(info: dict) -> tuple[tuple[str, str], ...]:
+    """这个版本要跑哪几步格式化。判据见版本表的 needs_sv（上游：版本名带 Pro）。"""
+    if info.get("needs_sv"):
         return (_STEP_TEXT, _STEP_HUBERT, _STEP_SV, _STEP_SEMANTIC)
     return (_STEP_TEXT, _STEP_HUBERT, _STEP_SEMANTIC)
 
@@ -555,17 +554,16 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
         BERT_DIR, "bert_missing", "the BERT base model is missing"))
     env["cnhubert_base_dir"] = str(need(
         CNHUBERT_DIR, "hubert_missing", "the cnhubert base model is missing"))
-    g_rel, _ = S2_PRETRAINED[req["version"]]
+    info = req["info"]
     env["pretrained_s2G"] = str(need(
-        g_rel, "pretrained_missing",
+        info["s2G"], "pretrained_missing",
         f"the {req['version']} base model is missing", version=req["version"]))
-    s2cfg = s2_config_name(req["version"])
+    s2cfg = info["s2_config"]
     env["s2config_path"] = str(need(
-        f"GPT_SoVITS/configs/{s2cfg}", "config_missing",
-        f"GPT_SoVITS/configs/{s2cfg} is missing", name=s2cfg))
+        s2cfg, "config_missing", f"{s2cfg} is missing", name=Path(s2cfg).name))
     env["version"] = req["version"]
 
-    steps = format_steps(req["version"])
+    steps = format_steps(info)
     if _STEP_SV in steps:
         # Pro 版本上这是硬依赖，不是「有就用」。缺了要当场停，
         # 否则就滑进上面注释里那个全零嵌入的坑。
@@ -602,70 +600,75 @@ def stage_format(req: dict, list_path: Path, opt_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def stage_sovits(req: dict, opt_dir: Path, weights_dir: Path) -> None:
-    s2cfg = s2_config_name(req["version"])
-    tmpl = need(f"GPT_SoVITS/configs/{s2cfg}", "config_missing",
-                f"GPT_SoVITS/configs/{s2cfg} is missing", name=s2cfg)
+    info = req["info"]
+    version = req["version"]
+    lora = bool(info.get("lora"))
+    s2cfg = info["s2_config"]
+    tmpl = need(s2cfg, "config_missing", f"{s2cfg} is missing", name=Path(s2cfg).name)
     cfg = json.loads(tmpl.read_text(encoding="utf-8"))
-    g_rel, d_rel = S2_PRETRAINED[req["version"]]
+
+    def base(rel: str) -> str:
+        return str(need(rel, "pretrained_missing",
+                        f"the {version} base model is missing", version=version))
 
     # 只改我们关心的那几个键，其余原样从模板带过来 —— 上游换过几次字段名，
-    # 写死一整份 config 迟早对不上。
+    # 写死一整份 config 迟早对不上。键名与上游 webui 的 open1Ba 一致。
+    epochs = req["sovits_epoch"]
     cfg.setdefault("train", {})
     cfg["train"].update({
-        "batch_size": req["batch_size"],
-        "epochs": req["total_epoch"],
+        "batch_size": req["sovits_batch"],
+        "epochs": epochs,
         "learning_rate": req["learning_rate"],
-        "save_every_epoch": req["save_every"],
+        "save_every_epoch": req["sovits_save_every"],
         "if_save_latest": True,
         "if_save_every_weights": True,
-        "pretrained_s2G": str(need(g_rel, "pretrained_missing",
-                                   f"the {req['version']} base model is missing",
-                                   version=req["version"])),
-        "pretrained_s2D": str(need(d_rel, "pretrained_missing",
-                                   f"the {req['version']} base model is missing",
-                                   version=req["version"])),
+        "pretrained_s2G": base(info["s2G"]),
+        # LoRA 版本没有判别器底模，上游 webui 传空串。
+        "pretrained_s2D": "" if lora else base(info["s2D"]),
         "gpu_numbers": "0" if req["device"] == "cuda" else "",
         "fp16_run": req["is_half"],
+        "grad_ckpt": False,
+        "lora_rank": str(req["lora_rank"]),
     })
     cfg.setdefault("data", {})["exp_dir"] = str(opt_dir)
     cfg["s2_ckpt_dir"] = str(opt_dir)
     cfg["save_weight_dir"] = str(weights_dir)
     cfg["name"] = req["exp"]
-    cfg["version"] = req["version"]
-    cfg.setdefault("model", {})["version"] = req["version"]
+    cfg["version"] = version
+    cfg.setdefault("model", {})["version"] = version
 
     tmp = opt_dir / "s2_config.json"
     tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-    # s2_train 往这里存检查点却不自己建目录，上游 webui 起训前替它建好
-    # （webui.py 的 open1Ba）。不建的话第一轮训完存盘时报找不到路径。
-    (opt_dir / f"logs_s2_{req['version']}").mkdir(parents=True, exist_ok=True)
+    # 检查点目录：全参是 `logs_s2_<版本>`（s2_train 不自己建，上游 webui 起训
+    # 前替它建好），LoRA 是 `logs_s2_<版本>_lora_<秩>`（脚本自己建）。
+    ckpt_dir = opt_dir / (f"logs_s2_{version}_lora_{req['lora_rank']}" if lora
+                          else f"logs_s2_{version}")
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    script = need("GPT_SoVITS/s2_train.py", "script_missing",
-                  "GPT_SoVITS/s2_train.py is missing", name="s2_train.py")
-    say("sovits", "sovits_started", "fine-tuning SoVITS", done=0, total=req["total_epoch"])
+    name = "s2_train_v3_lora.py" if lora else "s2_train.py"
+    script = need(f"GPT_SoVITS/{name}", "script_missing",
+                  f"GPT_SoVITS/{name} is missing", name=name)
+    say("sovits", "sovits_started", "fine-tuning SoVITS", done=0, total=epochs)
     run_step([sys.executable, str(script), "--config", str(tmp)],
-             base_env(req), stage="sovits", label="s2_train",
-             total_epoch=req["total_epoch"])
-    # 上游落在 `logs_s2_<version>`（s2_train.py:522），不是 `logs_s2`。
-    # 扫错目录的话训练成功也报 0 个检查点，续训判断跟着一起落空。
-    _report_ckpts("sovits", opt_dir / f"logs_s2_{req['version']}")
-    say("sovits", "sovits_done", "SoVITS fine-tuning finished",
-        done=req["total_epoch"], total=req["total_epoch"])
+             base_env(req), stage="sovits", label=name.removesuffix(".py"),
+             total_epoch=epochs)
+    _report_ckpts("sovits", ckpt_dir)
+    say("sovits", "sovits_done", "SoVITS fine-tuning finished", done=epochs, total=epochs)
 
 
 def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
     import yaml  # 上游自己就依赖 pyyaml；缺了说明 Runtime 不完整
 
-    name = "s1longer-v2.yaml" if req["version"] != "v1" else "s1longer.yaml"
-    tmpl = need(f"GPT_SoVITS/configs/{name}", "config_missing",
-                f"GPT_SoVITS/configs/{name} is missing", name=name)
+    info = req["info"]
+    s1cfg = info["s1_config"]
+    tmpl = need(s1cfg, "config_missing", f"{s1cfg} is missing", name=Path(s1cfg).name)
     cfg = yaml.safe_load(tmpl.read_text(encoding="utf-8")) or {}
 
     cfg.setdefault("train", {})
     cfg["train"].update({
-        "batch_size": req["batch_size"],
-        "epochs": req["total_epoch"],
-        "save_every_n_epoch": req["save_every"],
+        "batch_size": req["gpt_batch"],
+        "epochs": req["gpt_epoch"],
+        "save_every_n_epoch": req["gpt_save_every"],
         "if_save_latest": True,
         "if_save_every_weights": True,
         "exp_name": req["exp"],
@@ -680,9 +683,9 @@ def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
     # 跟上游同名（webui.py 的 open1Bb 用 `logs_s1_<version>`），免得同一个
     # 实验换版本重训时两次的 TensorBoard 日志和 ckpt 混在一个目录里。
     cfg["output_dir"] = str(opt_dir / f"logs_s1_{req['version']}")
-    cfg["pretrained_s1"] = str(need(S1_PRETRAINED, "pretrained_missing",
-                                    "the GPT base model s1v3.ckpt is missing",
-                                    version="s1v3"))
+    cfg["pretrained_s1"] = str(need(info["s1"], "pretrained_missing",
+                                    f"the GPT base model {Path(info['s1']).name} is missing",
+                                    version=req["version"]))
     cfg.setdefault("data", {})["max_eval_sample"] = cfg.get("data", {}).get(
         "max_eval_sample", 8)
 
@@ -698,15 +701,15 @@ def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
 
     script = need("GPT_SoVITS/s1_train.py", "script_missing",
                   "GPT_SoVITS/s1_train.py is missing", name="s1_train.py")
-    say("gpt", "gpt_started", "fine-tuning GPT", done=0, total=req["total_epoch"])
+    say("gpt", "gpt_started", "fine-tuning GPT", done=0, total=req["gpt_epoch"])
     run_step([sys.executable, str(script), "--config_file", str(tmp)],
              env, stage="gpt", label="s1_train",
-             total_epoch=req["total_epoch"])
+             total_epoch=req["gpt_epoch"])
     # s1_train 把 ckpt 落在 `<output_dir>/ckpt/`，半精度权重另落
     # half_weights_save_dir；_report_ckpts 是递归扫的，前者能覆盖到。
     _report_ckpts("gpt", opt_dir / f"logs_s1_{req['version']}")
     say("gpt", "gpt_done", "GPT fine-tuning finished",
-        done=req["total_epoch"], total=req["total_epoch"])
+        done=req["gpt_epoch"], total=req["gpt_epoch"])
 
 
 def _report_ckpts(stage: str, d: Path) -> None:

@@ -1,0 +1,94 @@
+{
+  "_note": "由 scripts/prepare_engine_payload.py 从随包上游源码生成，勿手改",
+  "upstream_pin": "b4570b8",
+  "train_order": [
+    "v2",
+    "v2Pro",
+    "v2ProPlus",
+    "v4",
+    "v5dev",
+    "v5turbo"
+  ],
+  "versions": {
+    "v1": {
+      "trainable": false,
+      "lora": false,
+      "s2G": "GPT_SoVITS/pretrained_models/s2G488k.pth",
+      "s2D": "GPT_SoVITS/pretrained_models/s2D488k.pth",
+      "s1": "GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer.yaml",
+      "needs_sv": false
+    },
+    "v2": {
+      "trainable": true,
+      "lora": false,
+      "s2G": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth",
+      "s2D": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2D2333k.pth",
+      "s1": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": false
+    },
+    "v3": {
+      "trainable": false,
+      "lora": true,
+      "s2G": "GPT_SoVITS/pretrained_models/s2Gv3.pth",
+      "s2D": null,
+      "s1": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": false
+    },
+    "v4": {
+      "trainable": true,
+      "lora": true,
+      "s2G": "GPT_SoVITS/pretrained_models/gsv-v4-pretrained/s2Gv4.pth",
+      "s2D": null,
+      "s1": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": false
+    },
+    "v5dev": {
+      "trainable": true,
+      "lora": true,
+      "s2G": "GPT_SoVITS/pretrained_models/gsv-v5-pretrained/s2Gv5dev.pth",
+      "s2D": null,
+      "s1": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": false
+    },
+    "v5turbo": {
+      "trainable": true,
+      "lora": true,
+      "s2G": "GPT_SoVITS/pretrained_models/gsv-v5-pretrained/s2Gv5turbo.pth",
+      "s2D": null,
+      "s1": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": false
+    },
+    "v2Pro": {
+      "trainable": true,
+      "lora": false,
+      "s2G": "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth",
+      "s2D": "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2Pro.pth",
+      "s1": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2v2Pro.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": true
+    },
+    "v2ProPlus": {
+      "trainable": true,
+      "lora": false,
+      "s2G": "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
+      "s2D": "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2ProPlus.pth",
+      "s1": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "s2_config": "GPT_SoVITS/configs/s2v2ProPlus.json",
+      "s1_config": "GPT_SoVITS/configs/s1longer-v2.yaml",
+      "needs_sv": true
+    }
+  }
+}

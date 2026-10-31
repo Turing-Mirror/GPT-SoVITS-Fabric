@@ -894,7 +894,9 @@
     "trainEpochRange": "Epoch count is out of the accepted range: {a0}",
     "trainBatchRange": "Batch size is out of the accepted range: {a0}",
     "trainLrRange": "Learning rate is out of the accepted range: {a0}",
-    "trainEngineCoreMissing": "The engine assets (base models) are missing. Complete them under Plaza → Download models first."
+    "trainEngineCoreMissing": "The engine assets (base models) are missing. Complete them under Plaza → Download models first.",
+    "trainBaseMissing": "The {a0} base model is missing. Download it under Plaza → Download models first.",
+    "trainLoraRange": "LoRA rank is out of the accepted range: {a0}"
   },
   "extras": {
     "engineTitle": "Engine resources",
@@ -967,10 +969,10 @@
     "title": "Train",
     "subtitle": "From raw character material to a ready-to-use character",
     "modelTitle": "Model version & base models",
-    "modelNote": "Missing base models will guide you to the Plaza downloads",
+    "modelNote": "Default parameters follow the selected version and GPU memory",
     "version": "Target version",
-    "versionTip": "v2ProPlus is the current community mainstream. Base models are not interchangeable across versions.",
-    "baseHint": "Required pretrained assets for the selected version; downloaded automatically on first use.",
+    "versionTip": "Base models and outputs are not interchangeable between versions. v4 and V5 use LoRA fine-tuning.",
+    "baseHint": "Missing base models can be downloaded under Plaza → Download models.",
     "datasetTitle": "Dataset",
     "datasetNote": "Accepts community-standard .list annotation files",
     "listFile": "Annotation file (.list)",
@@ -1017,7 +1019,12 @@
     "diskFree": "{v0} free on this drive",
     "sepEntry": "Strip the accompaniment first",
     "sepEntryDesc": "Background music or harmonies left in the material get learned into the trained voice.",
-    "sepOpen": "Open vocal separation"
+    "sepOpen": "Open vocal separation",
+    "sovitsTitle": "SoVITS training",
+    "gptTitle": "GPT training",
+    "loraRank": "LoRA rank",
+    "loraRankTip": "A higher rank learns more detail and uses more GPU memory.",
+    "resetDefaults": "Restore defaults"
   },
   "help": {
     "title": "Help",
@@ -1063,7 +1070,7 @@
     "faqQ1": "Can I use it without an NVIDIA GPU?",
     "faqA1": "Yes. The app falls back to CPU inference — slower but fully functional. 8GB+ RAM recommended for synthesis; NVIDIA GPUs strongly recommended for training.",
     "faqQ2": "Can models of different versions be mixed?",
-    "faqA2": "No. v1 / v2 / v2Pro / v2ProPlus / v4 differ in base models and architecture. Version mismatches are detected and reported at load time.",
+    "faqA2": "No. v1 / v2 / v2Pro / v2ProPlus / v4 / V5 differ in base models and architecture. Version mismatches are detected and reported at load time.",
     "faqQ3": "What about VRAM shortages?",
     "faqA3": "The synth page manages loaded models with LRU eviction. If still tight, disable streaming, shorten batch length, or use a lighter version.",
     "faqQ4": "How do I share a character?",

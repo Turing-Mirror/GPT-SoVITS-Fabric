@@ -48,22 +48,28 @@
 
 ## D5 版本矩阵 [已定]
 
-- UI 默认 v2ProPlus。
-- **推理**支持加载 v1/v2/v2Pro/v2ProPlus/v3/v4 —— 版本不用我们告诉它：
-  上游 `TTS.init_vits_weights` 从检查点里 `enc_p.text_embedding.weight` 的形状
-  自己认。
-- **V5**（上游 b4570b8 新增 `v5dev` / `v5turbo`，48 kHz 输出）：推理已接通，
-  底模 `gsv-v5-pretrained`（s2Gv5dev / s2Gv5turbo / vocoder）作为可选 extras
-  `gsv-v5`，不进 engine-core。worker 只认上游 `default_configs` 里有的版本名。
-  V5 训练走 LoRA 路径，暂未开放。
+- **版本跟随上游，不写死。** 可训练版本、LoRA 版本、各版本的底模路径与配置
+  模板，由 `scripts/prepare_engine_payload.py` 在同步上游时从随包的 `config.py`
+  （`pretrained_sovits_name` / `pretrained_gpt_name`）和 `webui.py`（训练页版本
+  选项、`v3v4set`）抽出，写成 `engine-payload/configs/upstream_versions.json`。
+  壳、train_worker、`pack_role_pack.py` 都读这一份。上游改了版本，重新同步即可。
+- **默认值单独一份**：`engine-payload/configs/train_defaults.json`，只放默认版本、
+  轮数、保存间隔、按显存算批大小的系数、LoRA 秩。数值取自上游 webui 的
+  `set_default` 与训练页滑杆。界面换版本时回到该版本的默认值，用户可改。
+- **默认版本 v5dev。** v5turbo 推理更快，但上游 #2857（连续推理 CUDA 非法访存）
+  未修，而合成 worker 正是常驻连续推理。
+- **推理**支持上游认得的全部版本，版本由上游 `TTS.init_vits_weights` 从检查点
+  自己认。V5（`v5dev` / `v5turbo`，48 kHz 输出）底模 `gsv-v5-pretrained`
+  作为可选 extras `gsv-v5`，不进 engine-core。
+- **训练**开放上游训练页的全部版本（当前 v2 / v2Pro / v2ProPlus / v4 / v5dev /
+  v5turbo）。`v3v4set` 里的版本走 `s2_train_v3_lora.py`（LoRA，无判别器底模，
+  检查点在 `logs_s2_<版本>_lora_<秩>`），其余走 `s2_train.py`。SoVITS 与 GPT 两段
+  的轮数、批大小、保存间隔分开设。所选版本的底模不在盘上时，预检拦下并提示
+  去「广场 → 下载模型」。
 - **参考音频须 3–10 秒**（上游硬性检查）。合成台读取每条参考的时长，超出范围
   的置灰；worker 把上游的报错转成 `synth.ref_length`。
-- **训练**只开 `v2ProPlus / v2Pro / v2` 三个（`train.rs` 的 `TRAIN_VERSIONS`，
-  前端的下拉直接取它，不再各写一份）。v3/v4 走的是 `s2_train_v3_lora.py`
-  那条 LoRA 路径，与 `s2_train.py` 不是同一套参数与产物，要开得单独做；
-  v1 的底模上游已不再随包发。
 - v2Pro / v2ProPlus 的训练比其余版本**多一步**：`2-get-sv.py` 产出 `7-sv_cn`
-  说话人验证嵌入。判据与上游一致（`if "Pro" in version`）。这一步不是可选的 ——
+  说话人验证嵌入。判据与上游一致（版本名带 Pro，版本表的 `needs_sv`）。这一步不是可选的 ——
   缺了不报错，`module/data_utils.py` 会拿全零张量顶上把训练跑完，交出一个
   说话人嵌入全为零的废模型。
 - v2Pro / v2ProPlus 的 s2 配置模板是 `s2v2Pro(Plus).json`，不是 `s2.json`：

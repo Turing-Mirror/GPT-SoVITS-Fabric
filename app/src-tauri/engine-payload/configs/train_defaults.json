@@ -1,0 +1,32 @@
+{
+  "_note": "训练台的默认值与范围。版本清单、底模路径不在这里，见 upstream_versions.json。数值取自上游 webui.py 的 set_default 与训练页滑杆。",
+  "default_version": "v5dev",
+  "sovits": {
+    "full": {
+      "epochs": 8,
+      "max_epochs": 25,
+      "save_every": 4,
+      "vram_gb_per_batch": 2,
+      "learning_rate": 0.0001
+    },
+    "lora": {
+      "epochs": 2,
+      "max_epochs": 16,
+      "save_every": 1,
+      "vram_gb_per_batch": 8,
+      "learning_rate": 0.0001,
+      "lora_rank": 32,
+      "lora_ranks": [16, 32, 64, 128]
+    },
+    "max_batch_factor": 3
+  },
+  "gpt": {
+    "epochs": 15,
+    "min_epochs": 2,
+    "max_epochs": 50,
+    "save_every": 5,
+    "vram_gb_per_batch": 2,
+    "max_batch": 40
+  },
+  "fallback_vram_gb": 8
+}
