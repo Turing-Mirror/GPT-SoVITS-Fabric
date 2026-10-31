@@ -32,16 +32,21 @@ function levelLabel(level: Finding["level"]): string {
  * 二十一条里找自己那条，跟没指一样；所以带上问题的 key，跳过去直接展开。
  */
 const HELP_TARGET: Record<string, string> = {
+  "engine.killed_by_system": "faq#s.faqAlreadyRunningQ",
   "train.out_of_memory": "faq#s.faqVramQ",
-  // 训练这条的答案在「训练音色」那一段里，不在常见情况。
+  "audio.underrun": "faq#s.ca98fe8db7",
+  "audio.mme_high_delay": "faq#s.faqLatencyQ",
+  // 训练这几条的答案在「训练音色」那一段里，不在常见情况。
+  "model.training_snapshot": "train",
   "train.stage_mismatch": "train",
+  "train.preprocess_failures": "train",
 };
 
 function actionFor(f: Finding): { label: string; run: () => void } | null {
   if (f.code === "assets.pretrained_partial") {
     return {
       label: t("s.errActDownload"),
-      run: () => openDownloadModels({ filter: "all" }),
+      run: () => openDownloadModels({ filter: "train" }),
     };
   }
   const target = HELP_TARGET[f.code];
@@ -65,12 +70,6 @@ export function FindingList({ findings }: { findings: Finding[] }) {
         const action = actionFor(f);
         return (
           <li key={f.code + i} className="relative py-2 first:pt-0">
-            {i > 0 ? (
-              <div
-                aria-hidden
-                className="absolute top-0 left-0 right-0 h-px bg-[var(--hairline)]"
-              />
-            ) : null}
             <div className="flex flex-wrap gap-2 items-baseline">
               {/* 等宽的级别标签，不靠颜色分级 —— 一片红黄看不出该先处理哪个。 */}
               <span className="font-mono text-[11px] text-[var(--meta)] shrink-0">

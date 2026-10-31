@@ -161,7 +161,29 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
 `components/` 下的 ui / controls / SegmentControl / Tooltip / ErrorBoundary 是对
 `../trm/components/*` 的转出；i18n 的语言状态由 TRM 的 `I18nProvider` 持有，产品侧只
 补 Tauri 存储、`tMsg` 与术语表；`index.css` 取 TRM 的令牌，颜色一律走令牌。更新 TRM UI
-时整目录覆盖 `app/src/trm/`。Nudge、ErrorNote、TitleBar、PageHost 仍是产品自有版本。
+时整目录覆盖 `app/src/trm/`。ErrorNote、TitleBar 仍是产品自有版本。
+
+与 RVC Fabric 当前界面对齐的部分（2026-10-31）：
+
+- **窗口**：`window_watch.rs` 与 RVC 相同。Win11 由 DWM 画圆角与阴影；Win10 保持直角，
+  投影由 `DwmExtendFrameIntoClientArea` 找回。不再用 `SetWindowRgn` 裁圆角。
+- **焦点环**：TRM 的 `trackInputModality` 在 `<html data-input>` 上记录最近一次输入来自
+  指针还是键盘，鼠标操作后不画焦点环。
+- **动效**：弹窗共用 `components/Modal.tsx`（进出场动画），条件渲染的弹窗与底部提示
+  包在 `Presence.tsx` 的 `Leave` 里，关掉时放完退场再卸下；`PageHost` 用 RVC 版本；
+  列表与卡片用 TRM 的 `Swap`（翻页、筛选）与 `stagger`（依次浮现）。
+- **分页**：角色卡、参考音频、标注行、角色标注列表都用 TRM 的 `usePaged` + `Pager`，
+  条目多时可搜索（`SearchBox`）。
+- **新手引导**：`components/SetupGuide.tsx` 基于 TRM 的 `Wizard`，四步（运行环境、
+  角色、第一次合成、自己的角色），完成与否按 `onboarding_status` 每两秒读一次。
+  第一次打开时先显示反馈须知（QQ 群二维码、GitHub Issue、诊断包），看过写
+  `feedback_notice_done`；走完或关掉写 `setup_guide_done`。说明页「首次运行」有入口。
+- **页面联动**：`lib/intent.ts` 负责跨页交接。模型页「用于合成」「编辑标注」，合成页
+  「编辑标注」，标注页「用于训练」，训练完成后「在模型页查看」。
+- **模型页**：改名称与作者、换封面、导出角色包、打开文件夹、删除（`role_update` /
+  `role_set_cover` / `role_export` / `role_delete`，见 `characters.rs`）。
+- **说明页与其他页**：说明页标题行「联系社区」、常见问题搜索；「其他 → 仓库与社媒」
+  第一行是诊断包入口，跳到「维护」。
 
 以下从 RVC-Fabric 沿用（只读复制后改造，不回写）：
 
@@ -174,5 +196,5 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
   FAQ、功能分指南（合成/训练/角色包安装）、术语表 glossary、动态个性化内容
   （RVC 版检测用户声卡画接线图；GSV 版对应=按显存/显卡推荐版本与默认参数）、
   DonateNote。内容全部按 GPT-SoVITS 重写。
-- **引导体系**：OnboardingBar 新手进度、Nudge 提醒、FindingList 自检发现、
+- **引导体系**：SetupGuide 新手引导、Nudge 提醒、FindingList 自检发现、
   TuningWizard 调校向导思想 → 改造为合成/训练调优向导。

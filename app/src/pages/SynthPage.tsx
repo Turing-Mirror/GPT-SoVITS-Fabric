@@ -6,6 +6,10 @@ import { Field, Slider, Toggle } from "../components/controls";
 import { ErrorNote } from "../components/ErrorNote";
 import { useConfig } from "../hooks/useConfig";
 import { t } from "../i18n/t";
+import { onHandoff, openInAnnot, take } from "../lib/intent";
+import { artOf } from "../lib/art";
+import { Pager, SearchBox, usePaged } from "../trm";
+import { Swap, stagger } from "../components/Motion";
 
 /**
  * 合成台 —— GPT-SoVITS Fabric 的核心页面。
@@ -120,12 +124,9 @@ function langBadge(lang: string): string {
   return LANG_BADGE[k] ?? (k ? k.slice(0, 2).toUpperCase() : "?");
 }
 
-/** 没有封面图时按 id 取一个稳定的色相 —— 同一个角色每次打开都是同一种颜色。 */
-function hueOf(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) % 360;
-  return h;
-}
+/** 角色卡与参考音频每页几条。 */
+const ROLE_PAGE = 12;
+const REF_PAGE = 10;
 
 function recommendedOf(role: Role | null): Params {
   const p = role?.params ?? {};
@@ -251,6 +252,20 @@ export function SynthPage() {
   );
   const recommended = useMemo(() => recommendedOf(role), [role]);
   const refs = useMemo(() => refsOf(role), [role]);
+  // 角色与参考音频都可能有上千条：可搜索、分页显示。
+  const [roleQuery, setRoleQuery] = useState("");
+  const [refQuery, setRefQuery] = useState("");
+  const shownRoles = useMemo(() => {
+    const q = roleQuery.trim().toLowerCase();
+    const all = roles ?? [];
+    return q ? all.filter((r) => `${r.name} ${r.author} ${r.id}`.toLowerCase().includes(q)) : all;
+  }, [roles, roleQuery]);
+  const shownRefs = useMemo(() => {
+    const q = refQuery.trim().toLowerCase();
+    return q ? refs.filter((r) => `${r.text} ${r.wav}`.toLowerCase().includes(q)) : refs;
+  }, [refs, refQuery]);
+  const rolePaged = usePaged(shownRoles, ROLE_PAGE, roleQuery);
+  const refPaged = usePaged(shownRefs, REF_PAGE, `${role?.id ?? ""}|${refQuery}`);
   const [durs, setDurs] = useState<Record<string, number>>({});
   const usable = useCallback((r: RefRow) => r.exists && refFits(durs[r.abs]), [durs]);
   const ref = useMemo(() => {
@@ -324,6 +339,21 @@ export function SynthPage() {
     },
     [c],
   );
+
+  // 别的页面点了「用于合成」：选中那个角色。
+  useEffect(() => {
+    if (!roles) return;
+    const apply = () => {
+      const id = take("synthRole");
+      const r = id ? roles.find((x) => x.id === id) : undefined;
+      if (r) {
+        seeded.current = true;
+        pickRole(r);
+      }
+    };
+    apply();
+    return onHandoff(apply);
+  }, [roles, pickRole]);
 
   // —— 引擎事件 ——
   useEffect(() => {
@@ -467,6 +497,7 @@ export function SynthPage() {
       <Block
         title={t("synth.roleTitle")}
         note={t("synth.roleNote")}
+        extra={(roles ?? []).length > ROLE_PAGE ? <SearchBox value={roleQuery} onChange={setRoleQuery} /> : undefined}
         action={<Btn onClick={() => setReloadTick((n) => n + 1)}>{t("synth.roleRefresh")}</Btn>}
       >
         {empty ? (
@@ -474,18 +505,20 @@ export function SynthPage() {
             {t("synth.roleEmpty")}
           </div>
         ) : (
+          <>
+          <Swap k={`${rolePaged.page}|${roleQuery}`}>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-[10px]">
-            {(roles ?? []).map((r) => {
+            {rolePaged.slice.map((r, i) => {
               const on = r.id === role?.id;
-              const hue = hueOf(r.id);
               const cover = r.cover_exists && isTauri() ? convertFileSrc(`${r.dir}/${r.cover}`) : "";
               return (
                 <button
                   key={r.id}
                   type="button"
                   onClick={() => pickRole(r)}
+                  style={stagger(i)}
                   className={[
-                    "text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 transition-all duration-200 ease-[var(--ease)]",
+                    "rise text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 transition-all duration-200 ease-[var(--ease)]",
                     "active:scale-[0.97]",
                     on
                       ? "shadow-[inset_0_0_0_2px_var(--accent)] bg-[var(--accent-soft)]"
@@ -497,9 +530,7 @@ export function SynthPage() {
                     style={
                       cover
                         ? { backgroundImage: `url("${cover}")` }
-                        : {
-                            background: `linear-gradient(135deg, hsl(${hue} 62% 72%), hsl(${hue + 30} 55% 58%))`,
-                          }
+                        : { background: artOf(r.id) }
                     }
                   >
                     <span className="absolute bottom-1 right-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-black/35 text-white">
@@ -514,10 +545,23 @@ export function SynthPage() {
               );
             })}
           </div>
+          </Swap>
+          <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
+          </>
         )}
       </Block>
 
-      <Block title={t("synth.refTitle")} titleTip={t("synth.refTip")} note={t("synth.refNote")}>
+      <Block
+        title={t("synth.refTitle")}
+        titleTip={t("synth.refTip")}
+        note={refQuery ? `${shownRefs.length} / ${refs.length}` : t("synth.refCount", { v0: refs.length })}
+        extra={refs.length > REF_PAGE ? <SearchBox value={refQuery} onChange={setRefQuery} /> : undefined}
+        action={
+          role && role.lists.length ? (
+            <Btn onClick={() => openInAnnot(`${role.dir}/${(ref?.from ?? role.lists[0].file)}`)}>{t("synth.refEdit")}</Btn>
+          ) : undefined
+        }
+      >
         {refs.length === 0 ? (
           // 角色还没选（或库里根本没有角色）时不能说「这个角色包里没有」——
           // 没有「这个角色包」。两句话分开讲。
@@ -525,8 +569,10 @@ export function SynthPage() {
             {role ? t("synth.refEmpty") : t("synth.refNoRole")}
           </div>
         ) : (
+          <>
+          <Swap k={`${role?.id ?? ""}|${refPaged.page}|${refQuery}`}>
           <div className="rounded-[var(--r)] overflow-hidden bg-[var(--group)]">
-            {refs.map((row, i) => {
+            {refPaged.slice.map((row, i) => {
               const key = `${row.from}#${row.line}`;
               const on = ref != null && key === `${ref.from}#${ref.line}`;
               const sec = durs[row.abs];
@@ -579,6 +625,9 @@ export function SynthPage() {
               );
             })}
           </div>
+          </Swap>
+          <Pager page={refPaged.page} pages={refPaged.pages} onChange={refPaged.setPage} />
+          </>
         )}
       </Block>
 

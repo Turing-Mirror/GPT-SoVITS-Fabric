@@ -2,12 +2,16 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { logToHost } from "./trm/lib/host";
+import { trackInputModality } from "./trm/lib/inputModality";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToolWindow, toolFromHash } from "./components/ToolWindow";
 import { I18nProvider } from "./i18n";
 import { applyAppearance } from "./lib/appearance";
 import "./index.css";
 import { invoke } from "@tauri-apps/api/core";
+
+// 焦点环只在键盘操作时出现（TRM UI）。
+trackInputModality();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");

@@ -1,3 +1,4 @@
+import { Modal } from "./Modal";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -211,7 +212,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
     return "";
   }, [variants, variant, info.recommended_variant, info.recommended_size_label]);
 
-  if (!open) return null;
+  if (!open) return <Modal open={false} />;
 
   const finishCancel = () => {
     setBusy(false);
@@ -348,7 +349,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   const elapsedMs = startedAt.current ? now - startedAt.current : 0;
 
   return (
-    <div className="absolute inset-0 z-[50] flex items-center justify-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
+    <Modal z={50} contained>
       <div className="w-full max-w-[520px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-7">
         <h2 className="text-[22px] font-semibold m-0 mb-2">{t("s.405125fb37")}</h2>
         <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">
@@ -571,6 +572,6 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
         </div>
         <p className="text-[11.5px] text-[var(--meta)] m-0 mt-4 leading-relaxed">{t("s.9a79ee8bcd")}</p>
       </div>
-    </div>
+    </Modal>
   );
 }

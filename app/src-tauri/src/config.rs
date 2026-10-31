@@ -52,11 +52,14 @@ pub fn defaults() -> Map<String, Value> {
     // 首页横幅自定义：文案留空 = 默认标题；不透明度最低由前端滑杆限在 20。
     m.insert("home_banner_text".into(), json!(""));
     m.insert("home_banner_opacity".into(), json!(100));
-    // 新手进度的历史事件（首次成功合成）与永久关闭标记。前两步
+    // 新手引导的历史事件（首次成功合成）与永久关闭标记。前两步
     // （运行时/角色）每次实时推导，不需要存。不进任何设置分组：
     // 这不是用户该在设置页里看到的东西。
     m.insert("onboard_convert".into(), json!(false));
     m.insert("onboard_dismiss".into(), json!(false));
+    // 新手引导走完或关掉；引导开头的反馈须知看过。
+    m.insert("setup_guide_done".into(), json!(false));
+    m.insert("feedback_notice_done".into(), json!(false));
     m.insert("hotkeys_enabled".into(), json!(false));
     // 快捷键组合。键名要和 `shell_extras::HOTKEYS` 对上。
     //
@@ -79,9 +82,6 @@ pub fn defaults() -> Map<String, Value> {
     // 问过之后 follow_prompt_done 置 true，这辈子不再问第二次。
     m.insert("vc_run_count".into(), json!(0));
     m.insert("follow_prompt_done".into(), json!(false));
-    // 第一次开跑合成时问一句要不要先看说明页。点「转到说明页」或
-    // 「不了」都置 true，只出这一次 —— 已经上手的人再被拦一道就是骚扰。
-    m.insert("guide_prompt_done".into(), json!(false));
     // 第三方 Hugging Face 下载镜像根。空 = 走 `mirrors::hf_endpoints` 解出来
     // 的顺序（清单下发 → 编译进来的兜底 → 规范域）。不进 worker / inuse。
     m.insert("hf_endpoint".into(), json!(""));

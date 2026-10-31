@@ -12,6 +12,8 @@ import { t } from "../i18n/t";
 import { askConfirm } from "../lib/webDialog";
 import { DiagnosticsDialog, type DiagReport } from "../components/DiagnosticsDialog";
 import { FindingList, type Finding } from "../components/FindingList";
+import { scrollPaneToId } from "../lib/scrollPane";
+import { Leave } from "../components/Presence";
 
 /** 「申请专业优化」的开关。服务还没开放，先藏起来；后端命令仍然在。 */
 const SHOW_CONSULT = false;
@@ -369,7 +371,7 @@ export function MorePage({
           />
         </Group>
       </Block>
-      <Block title={t("s.72527e2f0e")}>
+      <Block id="more-maint" title={t("s.72527e2f0e")}>
         <Group>
           <ListItem
             title={t("s.sumCopyTitle")}
@@ -506,6 +508,11 @@ export function MorePage({
 
       <Block id="more-community" title={t("s.2bd28fc9c2")}>
         <Group>
+          {/* 反馈之前先把诊断包备好：说清问题最省事的办法。 */}
+          <ListItem
+            title={t("s.feedbackDiagTitle")}
+            right={<Btn onClick={() => scrollPaneToId("more-maint")}>{t("s.feedbackDiagGo")}</Btn>}
+          />
           {allLinks().map((l) => (
             <ListItem
               key={l.url}
@@ -524,9 +531,9 @@ export function MorePage({
           ))}
         </Group>
       </Block>
-      {qr ? (
+      <Leave>{qr ? (
         <QrDialog src={qr.src} label={qr.label} onClose={() => setQr(null)} />
-      ) : null}
+      ) : null}</Leave>
       <DiagnosticsDialog
         open={diagOpen}
         onCancel={() => setDiagOpen(false)}

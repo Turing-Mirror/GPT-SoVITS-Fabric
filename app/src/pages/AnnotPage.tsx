@@ -7,6 +7,9 @@ import { ErrorNote } from "../components/ErrorNote";
 import { openTool } from "../components/ToolWindow";
 import { pickPath } from "../lib/nativeDialog";
 import { askConfirm, askPrompt } from "../lib/webDialog";
+import { onHandoff, take, trainWith } from "../lib/intent";
+import { Pager, SearchBox, usePaged } from "../trm";
+import { Swap, stagger } from "../components/Motion";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 
@@ -54,6 +57,17 @@ type Loaded = {
 const LANGS = ["zh", "ja", "en", "ko", "yue", "all_zh", "all_ja", "all_ko", "auto"];
 
 const PAGE_SIZE = 60;
+/** 未打开文件时，角色标注列表每页几条。 */
+const ROLE_LIST_SIZE = 8;
+
+/** 角色包里的一份标注。 */
+type RoleList = { key: string; role: string; file: string; path: string; rows: number };
+
+/** 文件所在的目录。 */
+function dirOf(path: string): string {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return i > 0 ? path.slice(0, i) : path;
+}
 
 function issueText(id: string): string {
   return t(`s.annot.issue.${id}`);
@@ -84,7 +98,6 @@ function AnnotPageImpl() {
   const [msg, setMsg] = useState("");
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState<"all" | "bad">("all");
-  const [page, setPage] = useState(0);
   const [playing, setPlaying] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -109,20 +122,13 @@ function AnnotPageImpl() {
     setRows(r.rows || []);
     setSpeakers(r.speakers || []);
     setDirty(false);
-    setPage(0);
   }, []);
 
-  const open = useCallback(async () => {
+  const openPath = useCallback(async (p: string) => {
     if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
     setErr("");
+    setBusy(true);
     try {
-      const p = await pickPath<string | null>(
-        "annot_pick",
-        undefined,
-        t("s.annot.pickHint"),
-      );
-      if (!p) return;
-      setBusy(true);
       const r = await invoke<Loaded>("annot_load", { path: p });
       apply(r);
       setMsg(t("s.annot.opened", { v0: r.total, v1: r.bad }));
@@ -132,6 +138,48 @@ function AnnotPageImpl() {
       setBusy(false);
     }
   }, [apply, dirty]);
+
+  const open = useCallback(async () => {
+    const p = await pickPath<string | null>(
+      "annot_pick",
+      undefined,
+      t("s.annot.pickHint"),
+    ).catch(() => null);
+    if (p) await openPath(p);
+  }, [openPath]);
+
+  // 模型页、合成页点了「编辑标注」：打开那一份。
+  useEffect(() => {
+    const run = () => {
+      const p = take("annotList");
+      if (p) void openPath(p);
+    };
+    run();
+    return onHandoff(run);
+  }, [openPath]);
+
+  // 各角色自带的标注文件，未打开文件时列出来，点一下即可打开。
+  const [roleLists, setRoleLists] = useState<RoleList[]>([]);
+  const loadRoleLists = useCallback(() => {
+    if (!isTauri()) return;
+    void invoke<{ roles?: { id: string; name: string; dir: string; lists?: { file: string; rows?: unknown[] }[] }[] }>("synth_characters")
+      .then((r) =>
+        setRoleLists(
+          (r?.roles ?? []).flatMap((role) =>
+            (role.lists ?? []).map((l) => ({
+              key: `${role.id}/${l.file}`,
+              role: role.name || role.id,
+              file: l.file,
+              path: `${role.dir}/${l.file}`,
+              rows: l.rows?.length ?? 0,
+            })),
+          ),
+        ),
+      )
+      .catch(() => setRoleLists([]));
+  }, []);
+  useEffect(loadRoleLists, [loadRoleLists]);
+  const rolePaged = usePaged(roleLists, ROLE_LIST_SIZE);
 
   const reload = useCallback(async () => {
     if (!path) return;
@@ -159,6 +207,7 @@ function AnnotPageImpl() {
       });
       // 存完立刻重读：文件在不在、有没有重复，都可能因为这次保存变了。
       apply(await invoke<Loaded>("annot_load", { path }));
+      loadRoleLists();
       setMsg(
         r.backup
           ? t("s.annot.savedWithBackup", { v0: r.written })
@@ -169,7 +218,7 @@ function AnnotPageImpl() {
     } finally {
       setBusy(false);
     }
-  }, [apply, busy, path, rows]);
+  }, [apply, busy, path, rows, loadRoleLists]);
 
   /** 改一行的某一格。行号是主键 —— 过滤/翻页之后下标早就不是行号了。 */
   const edit = useCallback((line: number, patch: Partial<Row>) => {
@@ -219,12 +268,8 @@ function AnnotPageImpl() {
     });
   }, [rows, query, only]);
 
-  const totalPages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
-  const pageClamped = Math.min(page, totalPages - 1);
-  const pageRows = view.slice(
-    pageClamped * PAGE_SIZE,
-    pageClamped * PAGE_SIZE + PAGE_SIZE,
-  );
+  const paged = usePaged(view, PAGE_SIZE, `${path}|${query}|${only}`);
+  const pageRows = paged.slice;
 
   const bad = useMemo(() => rows.filter((r) => r.issues.length > 0).length, [rows]);
   const missing = useMemo(
@@ -294,6 +339,9 @@ function AnnotPageImpl() {
                   >
                     {t("s.annot.reveal")}
                   </Btn>
+                  <Btn onClick={() => trainWith(dirOf(path))} disabled={dirty}>
+                    {t("s.annot.toTrain")}
+                  </Btn>
                   <Btn primary onClick={() => void save()} busy={busy} disabled={!dirty}>
                     {dirty ? t("s.annot.saveDirty") : t("s.annot.saved0")}
                   </Btn>
@@ -306,6 +354,27 @@ function AnnotPageImpl() {
         {err ? <ErrorNote text={err} /> : null}
         {msg ? (
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
+        ) : null}
+
+        {!path && roleLists.length ? (
+          <Block title={t("s.annot.roleListsTitle")} note={String(roleLists.length)}>
+            <Swap k={String(rolePaged.page)}>
+              <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-1">
+                {rolePaged.slice.map((l, i) => (
+                  <div key={l.key} className="rise flex items-center gap-3 py-3 border-t border-[var(--hairline)] first:border-t-0" style={stagger(i)}>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13.5px] text-[var(--ink)] truncate">{l.role}</div>
+                      <div className="text-[12px] text-[var(--meta)] truncate">
+                        {l.file} · {t("s.annot.rowCount", { v0: l.rows })}
+                      </div>
+                    </div>
+                    <Btn onClick={() => void openPath(l.path)}>{t("s.annot.openThis")}</Btn>
+                  </div>
+                ))}
+              </div>
+            </Swap>
+            <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
+          </Block>
         ) : null}
 
         {!path ? (
@@ -332,21 +401,10 @@ function AnnotPageImpl() {
               }
             >
               <div className="flex items-center gap-3 flex-wrap mb-4">
-                <input
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setPage(0);
-                  }}
-                  placeholder={t("s.annot.search")}
-                  className="inline-flex min-w-[230px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
-                />
+                <SearchBox value={query} onChange={setQuery} />
                 <SegmentControl<"all" | "bad">
                   value={only}
-                  onChange={(v) => {
-                    setOnly(v);
-                    setPage(0);
-                  }}
+                  onChange={setOnly}
                   options={[
                     { id: "all", label: t("s.annot.filterAll") },
                     { id: "bad", label: t("s.annot.filterBad") },
@@ -374,6 +432,7 @@ function AnnotPageImpl() {
                 </span>
               </div>
 
+              <Swap k={String(paged.page)}>
               <div className="overflow-x-auto bg-[var(--group)] rounded-[var(--r)]">
                 <table className="w-full border-collapse text-[12.5px]">
                   <thead>
@@ -505,35 +564,14 @@ function AnnotPageImpl() {
                   </tbody>
                 </table>
               </div>
+              </Swap>
               <datalist id="annot-langs">
                 {LANGS.map((l) => (
                   <option key={l} value={l} />
                 ))}
               </datalist>
 
-              {view.length > PAGE_SIZE ? (
-                <div className="flex items-center justify-center gap-3 mt-[22px] text-[12.5px] text-[var(--meta)]">
-                  <Btn
-                    disabled={pageClamped <= 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  >
-                    {t("s.annot.prevPage")}
-                  </Btn>
-                  <span>
-                    {t("s.annot.pageOf", {
-                      v0: pageClamped + 1,
-                      v1: totalPages,
-                      v2: view.length,
-                    })}
-                  </span>
-                  <Btn
-                    disabled={pageClamped >= totalPages - 1}
-                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  >
-                    {t("s.annot.nextPage")}
-                  </Btn>
-                </div>
-              ) : null}
+              <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />
             </Block>
           </>
         )}

@@ -48,7 +48,7 @@ export function TitleBar({
 
   return (
     <header
-      className="flex-none h-[54px] flex items-center pl-[22px] pr-2"
+      className="flex-none h-[60px] flex items-center pl-[22px] pr-2"
       data-tauri-drag-region
     >
       <img

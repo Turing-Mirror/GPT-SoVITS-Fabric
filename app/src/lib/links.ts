@@ -73,6 +73,20 @@ export function socialLinks(): LinkEntry[] {
   ];
 }
 
+/** 提交问题的地方：GitHub 仓库的 Issue 页。 */
+export function issueLink(): LinkEntry {
+  return {
+    title: "GitHub Issue",
+    short: "GitHub Issue",
+    url: `${repoLinks()[0].url}/issues`,
+  };
+}
+
+/** QQ 群那一条（带二维码）。 */
+export function qqGroupLink(): LinkEntry | undefined {
+  return socialLinks().find((l) => l.qr);
+}
+
 /** 「其他」页那张列表的顺序：先仓库后社媒。 */
 export function allLinks(): LinkEntry[] {
   return [...repoLinks(), ...socialLinks()];

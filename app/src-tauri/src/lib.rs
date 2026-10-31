@@ -914,6 +914,51 @@ async fn role_import_pack(
 }
 
 #[tauri::command]
+fn role_update(state: State<'_, Mutex<AppState>>, id: String, name: String, author: String) -> Result<Value, String> {
+    characters::update_meta(&root_clone(&state)?, &id, &name, &author)
+}
+
+#[tauri::command]
+fn role_delete(state: State<'_, Mutex<AppState>>, id: String) -> Result<(), String> {
+    characters::delete(&root_clone(&state)?, &id)
+}
+
+/// 换封面。不给路径时弹选图对话框；取消返回 null。
+#[tauri::command]
+async fn role_set_cover(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+    id: String,
+    path: Option<String>,
+) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    let src = match path.filter(|p| !p.trim().is_empty()) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => match characters::pick_cover(Some(&window)) {
+            Some(p) => p,
+            None => return Ok(Value::Null),
+        },
+    };
+    characters::set_cover(&root, &id, &src)
+}
+
+/// 导出角色包。弹保存对话框；取消返回 null。打包可能要几秒，放到后台线程。
+#[tauri::command]
+async fn role_export(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+    id: String,
+) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    let Some(dest) = characters::pick_export(Some(&window), &id) else {
+        return Ok(Value::Null);
+    };
+    tauri::async_runtime::spawn_blocking(move || characters::export_zip(&root, &id, &dest))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn annot_reveal(path: String) -> Result<(), String> {
     shell_extras::reveal_path(&path)
 }
@@ -1374,6 +1419,10 @@ pub fn run() {
             annot_load,
             annot_save,
             role_import_pack,
+            role_update,
+            role_delete,
+            role_set_cover,
+            role_export,
             annot_reveal,
         ])
         .setup(move |app| {

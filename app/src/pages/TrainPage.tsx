@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openTool } from "../components/ToolWindow";
 import { ErrorNote } from "../components/ErrorNote";
 import { t } from "../i18n/t";
+import { goTo, onHandoff, take } from "../lib/intent";
 
 /**
  * 训练台 —— 数据集准备与微调的统一入口。
@@ -222,14 +223,30 @@ export function TrainPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [log]);
 
-  const pickDataset = useCallback(async () => {
-    const p = await invoke<string | null>("train_pick_dataset").catch(() => null);
-    if (!p) return;
+  const applyDataset = useCallback(async (p: string) => {
     setDataset(p);
-    setExp((e) => e || p.split(/[\\/]/).filter(Boolean).pop() || "");
+    // 角色包的数据集在 <角色>/dataset 下：实验名取角色目录名，不取「dataset」。
+    const parts = p.split(/[\\/]/).filter(Boolean);
+    const last = parts.pop() || "";
+    setExp((e) => e || (last.toLowerCase() === "dataset" ? parts.pop() || last : last));
     setScan(await invoke<Scan>("train_scan_dataset", { path: p }).catch(() => null));
     setInspect(await invoke<Inspect>("train_inspect_dataset", { path: p }).catch(() => null));
   }, []);
+
+  const pickDataset = useCallback(async () => {
+    const p = await invoke<string | null>("train_pick_dataset").catch(() => null);
+    if (p) await applyDataset(p);
+  }, [applyDataset]);
+
+  // 标注页点了「用于训练」：把那份标注所在的目录设为数据集。
+  useEffect(() => {
+    const apply = () => {
+      const p = take("trainDataset");
+      if (p) void applyDataset(p);
+    };
+    apply();
+    return onHandoff(apply);
+  }, [applyDataset]);
 
   const pickOutput = useCallback(async () => {
     const p = await invoke<string | null>("train_pick_output_dir").catch(() => null);
@@ -536,6 +553,9 @@ export function TrainPage() {
             <span className="text-[12px] text-[var(--meta)]">
               {blocked || t("train.diskFree", { v0: gb(st.disk_free_bytes) })}
             </span>
+            {!st.busy && doneStages.length === STAGES.length ? (
+              <Btn onClick={() => goTo("models")}>{t("train.viewRole")}</Btn>
+            ) : null}
           </div>
           {err ? (
             <div className="mt-3">

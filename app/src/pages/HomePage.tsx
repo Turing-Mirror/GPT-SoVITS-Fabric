@@ -4,6 +4,9 @@ import { PagePad, Block, Btn } from "../components/ui";
 import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
 import type { PageId } from "../lib/nav";
+import { synthWithRole } from "../lib/intent";
+import { artOf } from "../lib/art";
+import { stagger } from "../components/Motion";
 
 /**
  * 首页。
@@ -34,17 +37,8 @@ const DEMO_ROLES: Role[] = [
   { id: "mutsuki", name: "浅黄睦月", version: "v2ProPlus" },
 ];
 
-const DEMO_HUES = [205, 45, 300, 160];
-
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
-/** 没有封面图时按 id 散一个稳定的浅色块，占位但不假装是封面。 */
-function hueOf(id: string): number {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return h;
 }
 
 function fmtAgo(mtime: number): string {
@@ -76,9 +70,9 @@ export function HomePage({ onNavigate }: Props) {
       if (isTauri()) {
         void invoke("config_set", { patch: { synth_role: r.id } }).catch(() => {});
       }
-      onNavigate("synth");
+      synthWithRole(r.id);
     },
-    [onNavigate],
+    [],
   );
 
   return (
@@ -130,13 +124,13 @@ export function HomePage({ onNavigate }: Props) {
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-[10px]">
             {roles.map((r, i) => {
-              const hue = DEMO_HUES[i % DEMO_HUES.length] ?? hueOf(r.id);
               return (
                 <button
                   key={r.id}
                   type="button"
                   onClick={() => pickRole(r)}
-                  className="text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] active:scale-[0.97] transition-all duration-200 ease-[var(--ease)]"
+                  style={stagger(i)}
+                  className="rise text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] active:scale-[0.97] transition-all duration-200 ease-[var(--ease)]"
                 >
                   {r.cover_exists && r.cover && r.dir && isTauri() ? (
                     <img
@@ -148,9 +142,7 @@ export function HomePage({ onNavigate }: Props) {
                   ) : (
                     <div
                       className="w-full aspect-[5/3] rounded-[calc(var(--r)-4px)] mb-2"
-                      style={{
-                        background: `linear-gradient(135deg, hsl(${hue} 62% 72%), hsl(${hue + 30} 55% 58%))`,
-                      }}
+                      style={{ background: artOf(r.id) }}
                     />
                   )}
                   <div className="text-[13px] font-medium leading-tight">{r.name || r.id}</div>

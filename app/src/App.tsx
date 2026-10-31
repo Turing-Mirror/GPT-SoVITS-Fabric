@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { OnboardingBar } from "./components/OnboardingBar";
+import { useCallback, useEffect, useState } from "react";
+import { GuidePill, SetupGuide, type GuideStep } from "./components/SetupGuide";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { Nudge } from "./components/Nudge";
+import { Leave } from "./components/Presence";
+import { Modal } from "./components/Modal";
 import { Btn } from "./components/ui";
 import { followLinks } from "./lib/links";
 import { QrDialog } from "./components/QrDialog";
@@ -30,6 +32,7 @@ import { SynthPage } from "./pages/SynthPage";
 import { TrainPage } from "./pages/TrainPage";
 import { registerDownloadModelsOpener } from "./lib/downloadModels";
 import { registerHelpOpener } from "./lib/helpNav";
+import { registerNavigator } from "./lib/intent";
 import { useI18n } from "./i18n";
 import { t } from "./i18n/t";
 
@@ -256,8 +259,6 @@ export default function App() {
    * 「一段文本合成完」才是用户真正拿到东西的那一刻。
    */
   const [synthDone, setSynthDone] = useState(0);
-  /** 用户主动开跑过几次（不论成败）。首次引导挂这个。 */
-  const [synthStarts, setSynthStarts] = useState(0);
   useEffect(() => {
     let disposed = false;
     const offs: Array<() => void> = [];
@@ -266,7 +267,6 @@ export default function App() {
       if (disposed) un();
       else offs.push(un);
     };
-    void add("synth-chunk", () => setSynthStarts((n) => (n === 0 ? 1 : n)));
     void add("synth-done", () => setSynthDone((n) => n + 1));
     return () => {
       disposed = true;
@@ -371,10 +371,9 @@ export default function App() {
     void (async () => {
       try {
         const cfg = await invoke<Record<string, unknown>>("config_get");
-        // 新手三步的第三步：合成成功过一次。落盘后刷新进度条。
+        // 新手引导的「第一次合成」：合成成功过一次。
         if (cfg.onboard_convert !== true) {
           await invoke("config_set", { patch: { onboard_convert: true } });
-          setOnboardTick((n) => n + 1);
         }
         if (cfg.follow_prompt_done === true) return;
         const n = Number(cfg.vc_run_count ?? 0) + 1;
@@ -386,37 +385,22 @@ export default function App() {
     })();
   }, [synthDone]);
 
-  // 第一次开跑合成时问一句要不要先看说明。
-  //
-  // 挑「刚出第一段声音」而不是「全部跑完」：合成要等一会儿，那段时间用户
-  // 本来就在等，是唯一不打扰人的空档；跑完他正要去听结果，这时候拦一下最讨嫌。
-  //
-  // 判据是引擎发出的 synth-chunk，也就是活真的起来了 —— 不是按钮被按了。
-  // 按下去到起来之间还有一道模型/运行时检查，卡在那儿的人不该收到
-  // 一句「要不要看说明」。
-  const [askGuide, setAskGuide] = useState(false);
-  const guideAsked = useRef(false);
+  // 新手引导：运行环境装好后自动打开；中途可收成右下角的小按钮，走完或关掉后不再出现。
+  // 已经合成过的老用户不主动打扰，从说明页随时可以再打开。
+  const [guide, setGuide] = useState<{ open: boolean; step: GuideStep; pill: boolean }>({ open: false, step: "runtime", pill: false });
+  const openGuide = useCallback((step?: GuideStep) => setGuide((g) => ({ open: true, pill: false, step: step ?? g.step })), []);
+  const finishGuide = useCallback(() => {
+    setGuide((g) => ({ ...g, open: false, pill: false }));
+    void invoke("config_set", { patch: { setup_guide_done: true, onboard_dismiss: true } }).catch(() => {});
+  }, []);
   useEffect(() => {
-    if (synthStarts === 0 || guideAsked.current) return;
-    guideAsked.current = true;
-    void (async () => {
-      try {
-        const cfg = await invoke<Record<string, unknown>>("config_get");
-        if (cfg.guide_prompt_done !== true) setAskGuide(true);
-      } catch {
-        /* 配置读不到就算了，这不是要紧事 */
-      }
-    })();
-  }, [synthStarts]);
-
-  // 「转到说明页」和「不了」都算表过态，都不再问第二次。
-  const closeGuide = (toHelp: boolean) => {
-    setAskGuide(false);
-    if (toHelp) setPage("help");
-    void invoke("config_set", { patch: { guide_prompt_done: true } }).catch(
-      () => {},
-    );
-  };
+    void invoke<Record<string, unknown>>("config_get")
+      .then((cfg) => {
+        const fresh = cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true;
+        if (fresh) setGuide((g) => ({ ...g, pill: true }));
+      })
+      .catch(() => {});
+  }, []);
 
   // 不管点的是哪个社媒还是「以后再说」，都不再问第二次。反复问一件用户
   // 已经表过态的事，比不问更让人反感。
@@ -583,6 +567,11 @@ export default function App() {
   }, [openHelp]);
 
   useEffect(() => {
+    registerNavigator(setPage);
+    return () => registerNavigator(null);
+  }, []);
+
+  useEffect(() => {
     let un: (() => void) | undefined;
     void listen<{ section?: string }>("open-help", (e) => {
       openHelp(e.payload?.section || "");
@@ -600,7 +589,6 @@ export default function App() {
   const { reload: plazaReload } = plaza;
   const reloadPlaza = useCallback(() => void plazaReload(), [plazaReload]);
 
-  const [onboardTick, setOnboardTick] = useState(0);
   useEffect(() => {
     let disposed = false;
     const offs: Array<() => void> = [];
@@ -646,6 +634,9 @@ export default function App() {
         onDone={async () => {
           setShowProvision(false);
           setProvisionDismissed(false);
+          void invoke<Record<string, unknown>>("config_get")
+            .then((cfg) => { if (cfg.setup_guide_done !== true) openGuide("role"); })
+            .catch(() => {});
           // 这里以前调的是 getProvisionStatus()，**结果直接扔掉** —— 问了等于
           // 没问，engine.provision 还是补全之前那份 runtime_ready: false。
           // 于是运行时装好了，「开启变声」照样被 toggleRun 开头那道闸拦下来
@@ -708,6 +699,7 @@ export default function App() {
                   focus={helpFocus}
                   focusNonce={helpFocusNonce}
                   onOpenCommunity={openCommunity}
+                  onStartGuide={() => openGuide("runtime")}
                 />
               );
             case "more":
@@ -728,8 +720,7 @@ export default function App() {
         }}
       </PageHost>
 
-      {killAsk ? (
-        <div className="absolute inset-0 z-[60] grid place-items-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
+      <Modal open={Boolean(killAsk)} z={60} contained>
           <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
             <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">{t("s.killStsAskBody")}</p>
@@ -746,11 +737,9 @@ export default function App() {
               >{t("s.killStsAskGo")}</button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </Modal>
 
-      {closeAsk ? (
-        <div className="absolute inset-0 z-[60] grid place-items-center bg-[color-mix(in_srgb,var(--ink)_28%,transparent)] p-6">
+      <Modal open={Boolean(closeAsk)} z={60} contained>
           <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
             <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-4 leading-relaxed">{t("s.bc19958103")}</p>
@@ -774,8 +763,7 @@ export default function App() {
               >{t("s.aea56dcdfe")}</button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </Modal>
 
       {/* Nudge 全部收进这层浮层：absolute 叠在页面之上、不占布局，
           否则每条提示都会在底部顶出一条跟背景同色的带子，看着像伪 dock。
@@ -784,7 +772,7 @@ export default function App() {
       {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么
           用不了）。一个会话里关掉就不再出现 —— 不落配置，因为坑没填之前
           下次启动本来就该再说一次。 */}
-      {knownIssue ? (
+      <Leave>{knownIssue ? (
         <Nudge
           title={knownIssue.title}
           actions={
@@ -807,7 +795,7 @@ export default function App() {
           {knownIssue.body}
           {kiNote ? <span className="block mt-1">{kiNote}</span> : null}
         </Nudge>
-      ) : null}
+      ) : null}</Leave>
 
       {/* 同时最多出现一条。更新排最前 —— 它是开机 4 秒就出来的，那会儿另外
           两条的触发条件（用满 60 秒 / 合成十次）都还远没到。
@@ -818,7 +806,7 @@ export default function App() {
       {/* 首次引导排在最前：更新提示是开机 4 秒就出来的，统计和关注更靠后，
           而这条只在用户第一次开始合成的那几秒里有意义，错过就没了。
           它关掉之后被它压住的那条会自己顶上来。 */}
-      {engine.provision.need_provision && provisionDismissed && !runtimeNudgeDismissed ? (
+      <Leave>{engine.provision.need_provision && provisionDismissed && !runtimeNudgeDismissed ? (
         <Nudge
           title={t("statusbar.needRuntimeTitle")}
           actions={
@@ -841,18 +829,6 @@ export default function App() {
         >
           {t("statusbar.needRuntimeSub")}
         </Nudge>
-      ) : askGuide ? (
-        <Nudge
-          title={t("s.guideFirstTitle")}
-          actions={
-            <>
-              <Btn onClick={() => closeGuide(false)}>{t("s.guideFirstSkip")}</Btn>
-              <Btn primary onClick={() => closeGuide(true)}>
-                {t("s.guideFirstGo")}
-              </Btn>
-            </>
-          }
-        >{t("s.guideFirstBody")}</Nudge>
       ) : updateOffer ? (
         <Nudge
           title={
@@ -919,23 +895,29 @@ export default function App() {
             </>
           }
         >{t("s.7f3ebfb67b")}</Nudge>
-      ) : null}
+      ) : null}</Leave>
       </div>
 
-      {qr ? (
+      <Leave>{qr ? (
         <QrDialog src={qr.src} label={qr.label} onClose={() => setQr(null)} />
-      ) : null}
+      ) : null}</Leave>
 
       <WebDialogHost />
       <NativeDialogHint />
 
-      {page === "home" ? (
-        <OnboardingBar
-          tick={onboardTick}
-          onDismissed={() => setOnboardTick((n) => n + 1)}
-          onNavigate={setPage}
-        />
-      ) : null}
+      <SetupGuide
+        open={guide.open}
+        step={guide.step}
+        onStep={(step) => setGuide((g) => ({ ...g, step }))}
+        onMinimize={() => setGuide((g) => ({ ...g, open: false, pill: true }))}
+        onFinish={finishGuide}
+        onNavigate={setPage}
+        onOpenProvision={() => {
+          setProvisionDismissed(false);
+          setShowProvision(true);
+        }}
+      />
+      <Leave>{guide.pill && !guide.open ? <GuidePill step={guide.step} onOpen={() => openGuide()} onClose={finishGuide} /> : null}</Leave>
     </div>
   );
 }

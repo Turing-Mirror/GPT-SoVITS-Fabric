@@ -242,6 +242,128 @@ pub fn pick_pack(win: Option<&tauri::WebviewWindow>) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
+// --- 角色管理：改名、删除、导出、换封面 ------------------------------------
+
+/// 封面接受的图片格式。
+const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+/// 已装角色的目录。id 必须原样就是清洗过的目录名，不能借它指到别处。
+fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
+    if id.is_empty() || safe_id(id) != id {
+        return Err(crate::i18n::t("s.roleErrNotFound"));
+    }
+    let dir = paths::user_data(root).join("characters").join(id);
+    if !dir.join("config.json").is_file() {
+        return Err(crate::i18n::t("s.roleErrNotFound"));
+    }
+    Ok(dir)
+}
+
+fn read_cfg(dir: &Path) -> Result<Value, String> {
+    let raw = std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))
+}
+
+fn write_cfg(dir: &Path, cfg: &Value) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("config.json"), text).map_err(|e| e.to_string())
+}
+
+/// 改名称与作者。只动这两项，其余字段原样保留。
+pub fn update_meta(root: &Path, id: &str, name: &str, author: &str) -> Result<Value, String> {
+    let dir = role_dir(root, id)?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(crate::i18n::t("s.roleErrNoName"));
+    }
+    let mut cfg = read_cfg(&dir)?;
+    let obj = cfg.as_object_mut().ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    obj.insert("name".into(), json!(name));
+    obj.insert("author".into(), json!(author.trim()));
+    write_cfg(&dir, &cfg)?;
+    Ok(json!({ "id": id, "name": name, "author": author.trim() }))
+}
+
+/// 删除整个角色目录。
+pub fn delete(root: &Path, id: &str) -> Result<(), String> {
+    let dir = role_dir(root, id)?;
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))
+}
+
+/// 换封面：复制成 `cover.<扩展名>`，旧封面文件一并去掉。
+pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
+    let dir = role_dir(root, id)?;
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .filter(|e| COVER_EXTS.contains(&e.as_str()))
+        .ok_or_else(|| crate::i18n::t("s.roleErrCoverType"))?;
+    let mut cfg = read_cfg(&dir)?;
+    let old = str_field(&cfg, "cover");
+    let name = format!("cover.{ext}");
+    std::fs::copy(src, dir.join(&name)).map_err(|e| e.to_string())?;
+    if !old.is_empty() && old != name && check_entry_path(&old).is_ok() {
+        let _ = std::fs::remove_file(dir.join(&old));
+    }
+    if let Some(obj) = cfg.as_object_mut() {
+        obj.insert("cover".into(), json!(name));
+    }
+    write_cfg(&dir, &cfg)?;
+    Ok(json!({ "id": id, "cover": name }))
+}
+
+/// 把角色目录打成角色包，格式与导入时一致（无包装目录）。
+pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
+    use std::io::Write;
+    let dir = role_dir(root, id)?;
+    let file = std::fs::File::create(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let mut zw = zip::ZipWriter::new(file);
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .large_file(true);
+    let mut stack = vec![dir.clone()];
+    let mut count = 0usize;
+    while let Some(d) = stack.pop() {
+        let rd = std::fs::read_dir(&d).map_err(|e| e.to_string())?;
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            let rel = p
+                .strip_prefix(&dir)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+            zw.start_file(rel, opts).map_err(|e| e.to_string())?;
+            let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+            zw.write_all(&bytes).map_err(|e| e.to_string())?;
+            count += 1;
+        }
+    }
+    zw.finish().map_err(|e| e.to_string())?;
+    Ok(json!({ "path": dest.to_string_lossy(), "files": count }))
+}
+
+/// 选封面图片。
+pub fn pick_cover(win: Option<&tauri::WebviewWindow>) -> Option<PathBuf> {
+    crate::shell_extras::dialog_on(win)
+        .add_filter(&crate::i18n::t("s.roleCoverFilter"), COVER_EXTS)
+        .set_title(&crate::i18n::t("s.roleCoverPickTitle"))
+        .pick_file()
+}
+
+/// 选导出位置，默认文件名 `<id>_voice.zip`。
+pub fn pick_export(win: Option<&tauri::WebviewWindow>, id: &str) -> Option<PathBuf> {
+    crate::shell_extras::dialog_on(win)
+        .add_filter(&crate::i18n::t("s.rolePackFilter"), &["zip"])
+        .set_title(&crate::i18n::t("s.roleExportTitle"))
+        .set_file_name(format!("{id}_voice.zip"))
+        .save_file()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,6 +498,38 @@ mod tests {
             Ok(_) => panic!("炸弹包应当被拒收"),
         };
         assert!(err.contains("too large"), "got {err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_role_can_be_renamed_exported_and_deleted() {
+        let root = crate::testutil::scratch("roles-manage");
+        std::fs::create_dir_all(&root).unwrap();
+        let zip_path = root.join("alice_voice.zip");
+        make_pack(&zip_path, "", r#"{"id":"alice","name":"Alice"}"#);
+        install_zip(&root, &zip_path).unwrap();
+
+        update_meta(&root, "alice", "Alice B", "me").unwrap();
+        let cfg = read_cfg(&role_dir(&root, "alice").unwrap()).unwrap();
+        assert_eq!(cfg["name"], "Alice B");
+        assert_eq!(cfg["author"], "me");
+
+        let out = root.join("out.zip");
+        export_zip(&root, "alice", &out).unwrap();
+        std::fs::remove_dir_all(role_dir(&root, "alice").unwrap()).unwrap();
+        let back = install_zip(&root, &out).unwrap();
+        assert_eq!(back["name"], "Alice B");
+
+        delete(&root, "alice").unwrap();
+        assert!(role_dir(&root, "alice").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_id_cannot_point_outside_the_characters_dir() {
+        let root = crate::testutil::scratch("roles-escape");
+        for id in ["..", "../x", "a/b", "C:", ""] {
+            assert!(role_dir(&root, id).is_err(), "{id}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -212,6 +212,12 @@ option {
  * 位移，看上去就是「左边也冒出一根上下滚动条」。
  *
  * 键盘、滚轮、触控板、拖动全部不受影响；被隐藏的只有那根指示条。 */
+/* 焦点环只给键盘操作（lib/inputModality.ts）：最近一次输入来自鼠标或触控时不画。
+ * 窗口切回来、弹窗关闭把焦点还给按钮时，WebView2 会给点过的按钮误画焦点环。 */
+html[data-input="pointer"] :focus-visible {
+  outline: none !important;
+}
+
 * {
   scrollbar-width: none; /* Firefox / 新版 Chromium */
   -ms-overflow-style: none; /* 老 Edge */
@@ -990,4 +996,57 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .step-now, .eq-bar { animation: none; }
   .eq-bar { height: 8px; }
+}
+
+/* ---- 产品层：弹窗外壳与展开区（与 RVC Fabric 一致） ---- */
+/* 弹窗。底色淡入，面板从略低、略小的位置浮上来；关闭时反过来。
+   面板是 .modal-scrim 的直接子元素，样式由各弹窗自己定。 */
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+}
+@keyframes panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+.modal-scrim {
+  animation: scrim-in 0.26s var(--ease-soft) both;
+}
+.modal-scrim > * {
+  animation: panel-in 0.44s var(--spring-gentle) both;
+}
+.modal-scrim[data-leaving] {
+  animation: scrim-out 0.18s var(--ease) forwards;
+  pointer-events: none;
+}
+.modal-scrim[data-leaving] > * {
+  animation: panel-out 0.18s var(--ease) forwards;
+}
+
+/* 展开区：行高在 0 与内容高度之间过渡。 */
+.collapse-area {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.28s var(--ease),
+    opacity 0.2s var(--ease);
+}
+.collapse-area[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
 }

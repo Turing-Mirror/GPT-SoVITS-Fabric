@@ -9,6 +9,7 @@ import {
   prepareShot,
   type Shot,
 } from "../lib/shots";
+import { Modal } from "./Modal";
 
 /** 出包之前的文件清单。bytes 为 null 表示这份是出包时现生成的。 */
 type DiagPreview = {
@@ -20,6 +21,7 @@ export type DiagReport = {
   nickname: string;
   qq: string;
   description: string;
+  withPerf: boolean;
   /** 用户粘进来或选中的截图，出包时写进 shots/。 */
   shots: { ext: string; data: string }[];
 };
@@ -45,6 +47,7 @@ export function DiagnosticsDialog({
   const [nickname, setNickname] = useState("");
   const [qq, setQq] = useState("");
   const [description, setDescription] = useState("");
+  const [withPerf, setWithPerf] = useState(false);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [preview, setPreview] = useState<DiagPreview | null>(null);
   const [shots, setShots] = useState<Shot[]>([]);
@@ -58,6 +61,7 @@ export function DiagnosticsDialog({
     setNickname("");
     setQq("");
     setDescription("");
+    setWithPerf(false);
     setShots([]);
     setShotMsg("");
     setDragging(false);
@@ -145,7 +149,7 @@ export function DiagnosticsDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onCancel]);
 
-  if (!open) return null;
+  if (!open) return <Modal open={false} />;
 
   const field =
     "w-full px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] bg-transparent " +
@@ -153,16 +157,13 @@ export function DiagnosticsDialog({
     "focus:shadow-[inset_0_0_0_1px_var(--accent)]";
 
   return (
-    <div
-      className="fixed inset-0 z-[100] grid place-items-center p-6 bg-[color-mix(in_srgb,var(--ink)_28%,transparent)]"
-      onClick={onCancel}
-    >
+    <Modal z={100} onBackdrop={onCancel}>
       <div
         role="dialog"
         aria-modal="true"
         className={
           "relative w-full max-w-[460px] max-h-[88vh] overflow-y-auto rounded-[var(--r)] " +
-          "bg-[var(--surface)] p-6 shadow-[0_22px_56px_-18px_var(--scrim)] " +
+          "bg-[var(--surface)] p-6 shadow-[0_22px_56px_-18px_rgba(20,26,33,.34)] " +
           (dragging ? "outline outline-1 outline-[var(--accent)]" : "")
         }
         onClick={(e) => e.stopPropagation()}
@@ -289,6 +290,18 @@ export function DiagnosticsDialog({
           ) : null}
         </div>
 
+        <label className="flex items-start gap-2.5 mb-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={withPerf}
+            onChange={(e) => setWithPerf(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span className="text-[12.5px] text-[var(--ink-muted)] leading-relaxed">
+            {t("s.diagPerf")}
+          </span>
+        </label>
+
         {/* 包里已经能看出来的问题。用户当场就能改掉一部分（选错模型、盘满），
             剩下的支援也省一轮问答。没有结论时只留一行，不占地方。 */}
         <div className="mb-4">
@@ -359,6 +372,7 @@ export function DiagnosticsDialog({
                 nickname,
                 qq,
                 description,
+                withPerf,
                 shots: shots.map((sh) => ({ ext: sh.ext, data: sh.data })),
               })
             }
@@ -367,7 +381,7 @@ export function DiagnosticsDialog({
           </Btn>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

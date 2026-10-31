@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, memo } from "react";
 import {
   AccordionGroup,
   Block,
+  Btn,
   PageHead,
   PagePad,
   type AccordionItem,
 } from "../components/ui";
+import { SearchBox } from "../trm";
 import { useGlossary, useGlossarySectionTitle } from "../lib/glossary";
 import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
@@ -112,10 +114,15 @@ function useHelpFocus(focus: string, focusNonce: number) {
 function HelpPageImpl({
   focus,
   focusNonce,
+  onOpenCommunity,
+  onStartGuide,
 }: {
   focus: string;
   focusNonce: number;
+  /** 跳到「其他」页的仓库与社媒。说明页答不上来的，只能找人问。 */
   onOpenCommunity?: () => void;
+  /** 打开新手引导。 */
+  onStartGuide?: () => void;
 }) {
   // 订阅语言：问答与词条都随界面语言切换重算。
   const { locale } = useI18n();
@@ -126,6 +133,9 @@ function HelpPageImpl({
   // 问答区和词条区各自最多展开一条，互不干扰。
   const [open, setOpen] = useState("");
   const [openTerm, setOpenTerm] = useState("");
+  // 常见问题的筛选词：问题、摘要、答案里出现就算命中。
+  const [faqFilter, setFaqFilter] = useState("");
+  const needle = faqFilter.trim().toLowerCase();
 
   const sections = useMemo(
     () =>
@@ -186,12 +196,31 @@ function HelpPageImpl({
 
   return (
     <PagePad>
-      <PageHead title={t("help.title")} sub={t("help.subtitle")} />
+      <PageHead
+        title={t("help.title")}
+        sub={t("help.subtitle")}
+        actions={onOpenCommunity ? <Btn onClick={() => onOpenCommunity()}>{t("s.contactCommunity")}</Btn> : undefined}
+      />
 
-      {sections.map((s) => (
-        <Block key={s.anchor} id={`help-${s.anchor}`} title={s.title} note={String(s.items.length)}>
+      {sections.map((s) => {
+        const faq = s.anchor === "faq";
+        const items = faq && needle
+          ? s.items.filter((e) => [e.title, e.desc, e.content].some((v) => String(v ?? "").toLowerCase().includes(needle)))
+          : s.items;
+        return (
+        <Block
+          key={s.anchor}
+          id={`help-${s.anchor}`}
+          title={s.title}
+          note={faq && needle ? `${items.length} / ${s.items.length}` : String(s.items.length)}
+          extra={faq ? <SearchBox value={faqFilter} onChange={setFaqFilter} /> : undefined}
+          action={s.anchor === "firstrun" && onStartGuide ? <Btn primary onClick={() => onStartGuide()}>{t("help.guideStart")}</Btn> : undefined}
+        >
+          {items.length === 0 ? (
+            <p className="text-[13px] text-[var(--ink-muted)] m-0">{t("help.faqNoHit")}</p>
+          ) : null}
           <AccordionGroup
-            items={s.items}
+            items={items}
             openId={open}
             onToggle={(id) => setOpen((c) => (c === id ? "" : id))}
             openLabel={t("s.5d5815647c")}
@@ -199,7 +228,8 @@ function HelpPageImpl({
             highlight={hit.startsWith(`${s.anchor}#`) ? hit.split("#")[1] : undefined}
           />
         </Block>
-      ))}
+        );
+      })}
 
       {glossaryItems.length ? (
         <Block id="help-glossary" title={glossaryTitle} note={String(glossaryItems.length)}>
