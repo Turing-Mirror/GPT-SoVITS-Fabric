@@ -187,7 +187,7 @@
       "no_request": "Paramètre de fichier de requête manquant",
       "bad_request": "Impossible de lire le fichier de requête : {error}",
       "empty_fields": "Le modèle, le chemin d'entrée et le chemin de sortie ne peuvent pas être vides",
-      "failed": "Échec de la séparation — voir le journal"
+      "failed": "Échec de la séparation. Voir le journal"
     },
     "train": {
       "name_invalid": "Le nom de la voix ne peut pas être vide.",
@@ -451,7 +451,7 @@
     "9249d39bac": "Enregistré. Prendra effet à la prochaine synthèse.",
     "950d0895e7": "Le nom de la voix dépasse la limite de longueur",
     "95344bde41": "Télécharger les voix de Turing Mirror et des sources tierces",
-    "9546e0b7e2": "La vérification quotidienne des mises à jour envoie un ID anonyme aléatoire, la version du logiciel et le type d'accélération GPU. Pas de comptes, de voix, d'enregistrements ni de géolocalisation. Ces données servent surtout à prouver l'activité aux sponsors — l'un des moyens de Turing Mirror pour financer le développement. Désactivable à tout moment dans Paramètres → Général.",
+    "9546e0b7e2": "La vérification quotidienne des mises à jour envoie un ID anonyme aléatoire, la version du logiciel et le type d'accélération GPU. Pas de comptes, de voix, d'enregistrements ni de géolocalisation. Ces données servent surtout à prouver l'activité aux sponsors, ce qui est l'un des moyens de Turing Mirror pour financer le développement. Désactivable à tout moment dans Paramètres → Général.",
     "9a79ee8bcd": "La reprise de téléchargement est prise en charge ; une nouvelle tentative reprendra à partir des données déjà reçues.",
     "9a9349a407": "Consignes d'utilisation des voix\n\n",
     "9f44b201ee": "Échec de l'ouverture de tar : {e}",
@@ -688,7 +688,7 @@
     "diagNickname": "Pseudo dans le groupe",
     "diagNicknameHint": "Le support vous retrouvera dans le groupe grâce à ce pseudonyme",
     "diagQq": "Numéro QQ",
-    "diagQqHint": "Facultatif — permet de vous répondre en privé",
+    "diagQqHint": "Facultatif. L'assistance peut ainsi vous répondre en privé.",
     "diagDesc": "Description du problème",
     "diagDescHint": "Décrivez ce que vous avez fait, le résultat attendu et le résultat réel. Ces informations ne figurent pas dans les journaux.",
     "diagPrivacy": "Le paquet contient les journaux, les réglages et les informations sur l’appareil. Il ne contient ni audio, ni modèles de voix, ni mots de passe. Les noms d’utilisateur Windows des chemins sont masqués.",
@@ -1146,7 +1146,7 @@
     "faqA3": "La page Synthèse gère automatiquement les modèles chargés. Si la mémoire GPU reste insuffisante, raccourcissez le texte, fermez les autres programmes qui utilisent la GPU ou désactivez la synthèse en continu.",
     "faqQ4": "Comment partager un personnage ?",
     "faqA4": "Ouvrez le menu de la voix dans Modèles et choisissez Exporter le pack. Envoyez le fichier zip obtenu ; le destinataire pourra l’utiliser après l’avoir importé dans Modèles.",
-    "frH1": "Le GPU est détecté et l'environnement d'exécution s'installe — une fois.",
+    "frH1": "Le GPU est détecté et l'environnement d'exécution s'installe automatiquement, une seule fois.",
     "frH2": "Proposées au premier lancement ou dans Place → Télécharger des modèles",
     "frH3": "Importez le .zip dans Modèles",
     "packH1": "Modèles timbre/prosodie, références, couverture et réglages.",
