@@ -133,9 +133,13 @@ function HelpPageImpl({
   // 问答区和词条区各自最多展开一条，互不干扰。
   const [open, setOpen] = useState("");
   const [openTerm, setOpenTerm] = useState("");
-  // 常见问题的筛选词：问题、摘要、答案里出现就算命中。
-  const [faqFilter, setFaqFilter] = useState("");
-  const needle = faqFilter.trim().toLowerCase();
+  // 页头的搜索框：在全部问答与词条里找，问题、摘要、答案里出现就算命中。
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const pick = (items: AccordionItem[]) =>
+    needle
+      ? items.filter((e) => [e.title, e.desc, e.content].some((v) => String(v ?? "").toLowerCase().includes(needle)))
+      : items;
 
   const sections = useMemo(
     () =>
@@ -168,6 +172,12 @@ function HelpPageImpl({
     [glossary],
   );
 
+  const shownSections = sections.map((s) => ({ ...s, shown: pick(s.items) }));
+  const shownGlossary = pick(glossaryItems);
+  const hits = shownSections.reduce((n, s) => n + s.shown.length, shownGlossary.length);
+  const note = (shown: AccordionItem[], all: AccordionItem[]) =>
+    needle ? `${shown.length} / ${all.length}` : String(all.length);
+
   // 跳转落地：focus 形如「synth」或「synth#synth2」。带条目 id 时
   // 直接把那条展开 —— 指到一整块等于没指。
   useEffect(() => {
@@ -199,28 +209,32 @@ function HelpPageImpl({
       <PageHead
         title={t("help.title")}
         sub={t("help.subtitle")}
-        actions={onOpenCommunity ? <Btn onClick={() => onOpenCommunity()}>{t("s.contactCommunity")}</Btn> : undefined}
+        actions={
+          <>
+            <div className="w-[240px] flex">
+              <SearchBox value={query} onChange={setQuery} />
+            </div>
+            {onOpenCommunity ? <Btn onClick={() => onOpenCommunity()}>{t("s.contactCommunity")}</Btn> : null}
+          </>
+        }
       />
 
-      {sections.map((s) => {
-        const faq = s.anchor === "faq";
-        const items = faq && needle
-          ? s.items.filter((e) => [e.title, e.desc, e.content].some((v) => String(v ?? "").toLowerCase().includes(needle)))
-          : s.items;
+      {needle && hits === 0 ? (
+        <p className="text-[13px] text-[var(--ink-muted)] m-0 mb-4">{t("help.faqNoHit")}</p>
+      ) : null}
+
+      {shownSections.map((s) => {
+        if (!s.shown.length) return null;
         return (
         <Block
           key={s.anchor}
           id={`help-${s.anchor}`}
           title={s.title}
-          note={faq && needle ? `${items.length} / ${s.items.length}` : String(s.items.length)}
-          extra={faq ? <SearchBox value={faqFilter} onChange={setFaqFilter} /> : undefined}
+          note={note(s.shown, s.items)}
           action={s.anchor === "firstrun" && onStartGuide ? <Btn primary onClick={() => onStartGuide()}>{t("help.guideStart")}</Btn> : undefined}
         >
-          {items.length === 0 ? (
-            <p className="text-[13px] text-[var(--ink-muted)] m-0">{t("help.faqNoHit")}</p>
-          ) : null}
           <AccordionGroup
-            items={items}
+            items={s.shown}
             openId={open}
             onToggle={(id) => setOpen((c) => (c === id ? "" : id))}
             openLabel={t("s.5d5815647c")}
@@ -231,10 +245,10 @@ function HelpPageImpl({
         );
       })}
 
-      {glossaryItems.length ? (
-        <Block id="help-glossary" title={glossaryTitle} note={String(glossaryItems.length)}>
+      {shownGlossary.length ? (
+        <Block id="help-glossary" title={glossaryTitle} note={note(shownGlossary, glossaryItems)}>
           <AccordionGroup
-            items={glossaryItems}
+            items={shownGlossary}
             openId={openTerm}
             onToggle={(id) => setOpenTerm((c) => (c === id ? "" : id))}
             openLabel={t("s.5d5815647c")}
