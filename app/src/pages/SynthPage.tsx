@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
-import { Field, Slider, Toggle } from "../components/controls";
+import { Field, Select, Slider, Toggle } from "../components/controls";
 import { ErrorNote } from "../components/ErrorNote";
 import { useConfig } from "../hooks/useConfig";
 import { t } from "../i18n/t";
-import { onHandoff, openInAnnot, take } from "../lib/intent";
+import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
 import { artOf } from "../lib/art";
 import { Pager, SearchBox, usePaged } from "../trm";
-import { Swap, stagger } from "../components/Motion";
+import { Swap } from "../components/Motion";
 
 /**
  * 合成台 —— GPT-SoVITS Fabric 的核心页面。
@@ -124,8 +124,7 @@ function langBadge(lang: string): string {
   return LANG_BADGE[k] ?? (k ? k.slice(0, 2).toUpperCase() : "?");
 }
 
-/** 角色卡与参考音频每页几条。 */
-const ROLE_PAGE = 12;
+/** 参考音频每页几条。 */
 const REF_PAGE = 10;
 
 function recommendedOf(role: Role | null): Params {
@@ -252,19 +251,12 @@ export function SynthPage() {
   );
   const recommended = useMemo(() => recommendedOf(role), [role]);
   const refs = useMemo(() => refsOf(role), [role]);
-  // 角色与参考音频都可能有上千条：可搜索、分页显示。
-  const [roleQuery, setRoleQuery] = useState("");
+  // 参考音频可能有上千条：可搜索、分页显示。
   const [refQuery, setRefQuery] = useState("");
-  const shownRoles = useMemo(() => {
-    const q = roleQuery.trim().toLowerCase();
-    const all = roles ?? [];
-    return q ? all.filter((r) => `${r.name} ${r.author} ${r.id}`.toLowerCase().includes(q)) : all;
-  }, [roles, roleQuery]);
   const shownRefs = useMemo(() => {
     const q = refQuery.trim().toLowerCase();
     return q ? refs.filter((r) => `${r.text} ${r.wav}`.toLowerCase().includes(q)) : refs;
   }, [refs, refQuery]);
-  const rolePaged = usePaged(shownRoles, ROLE_PAGE, roleQuery);
   const refPaged = usePaged(shownRefs, REF_PAGE, `${role?.id ?? ""}|${refQuery}`);
   const [durs, setDurs] = useState<Record<string, number>>({});
   const usable = useCallback((r: RefRow) => r.exists && refFits(durs[r.abs]), [durs]);
@@ -497,57 +489,43 @@ export function SynthPage() {
       <Block
         title={t("synth.roleTitle")}
         note={t("synth.roleNote")}
-        extra={(roles ?? []).length > ROLE_PAGE ? <SearchBox value={roleQuery} onChange={setRoleQuery} /> : undefined}
-        action={<Btn onClick={() => setReloadTick((n) => n + 1)}>{t("synth.roleRefresh")}</Btn>}
+        action={
+          <>
+            <Btn onClick={() => setReloadTick((n) => n + 1)}>{t("synth.roleRefresh")}</Btn>
+            <Btn onClick={() => goTo("models")}>{t("synth.roleManage")}</Btn>
+          </>
+        }
       >
-        {empty ? (
+        {empty || !role ? (
           <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center text-[12.5px] text-[var(--help)]">
             {t("synth.roleEmpty")}
           </div>
         ) : (
-          <>
-          <Swap k={`${rolePaged.page}|${roleQuery}`}>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-[10px]">
-            {rolePaged.slice.map((r, i) => {
-              const on = r.id === role?.id;
-              const cover = r.cover_exists && isTauri() ? convertFileSrc(`${r.dir}/${r.cover}`) : "";
-              return (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => pickRole(r)}
-                  style={stagger(i)}
-                  className={[
-                    "rise text-left rounded-[var(--r)] p-2.5 cursor-pointer border-0 transition-all duration-200 ease-[var(--ease)]",
-                    "active:scale-[0.97]",
-                    on
-                      ? "shadow-[inset_0_0_0_2px_var(--accent)] bg-[var(--accent-soft)]"
-                      : "bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]",
-                  ].join(" ")}
-                >
-                  <div
-                    className="w-full aspect-[5/3] rounded-[calc(var(--r)-4px)] mb-2 relative overflow-hidden bg-center bg-cover"
-                    style={
-                      cover
-                        ? { backgroundImage: `url("${cover}")` }
-                        : { background: artOf(r.id) }
-                    }
-                  >
-                    <span className="absolute bottom-1 right-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-black/35 text-white">
-                      {r.version}
-                    </span>
-                  </div>
-                  <div className="text-[13.5px] font-medium leading-tight">{r.name}</div>
-                  <div className="text-[11.5px] text-[var(--meta)] mt-0.5">
-                    {t("home.author", { author: r.author })}
-                  </div>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-3.5 rounded-[var(--r)] bg-[var(--group)] p-2.5 pr-3.5">
+            <div
+              className="w-[88px] aspect-[5/3] shrink-0 rounded-[calc(var(--r)-4px)] bg-center bg-cover"
+              style={
+                role.cover_exists && isTauri()
+                  ? { backgroundImage: `url("${convertFileSrc(`${role.dir}/${role.cover}`)}")` }
+                  : { background: artOf(role.id) }
+              }
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-[14px] font-medium leading-tight truncate">{role.name}</div>
+              <div className="text-[12px] text-[var(--meta)] mt-1 truncate">
+                {role.version} · {role.author ? t("home.author", { author: role.author }) : t("library.noAuthor")}
+              </div>
+            </div>
+            <Select
+              width={220}
+              value={role.id}
+              options={(roles ?? []).map((r) => ({ id: r.id, label: r.name }))}
+              onChange={(id) => {
+                const r = (roles ?? []).find((x) => x.id === id);
+                if (r) pickRole(r);
+              }}
+            />
           </div>
-          </Swap>
-          <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
-          </>
         )}
       </Block>
 

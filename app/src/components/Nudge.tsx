@@ -43,7 +43,7 @@ export function Nudge({
       <div className={leaving ? "min-h-0 overflow-hidden" : "min-h-0"}>
         <div
           className={[
-            "rounded-[var(--r)] bg-[var(--surface)] px-4 py-3",
+            "pointer-events-auto rounded-[var(--r)] bg-[var(--surface)] px-4 py-3",
             "shadow-[0_6px_20px_-10px_rgba(0,0,0,.3),inset_0_0_0_1px_var(--hairline)]",
             "flex items-start gap-3 flex-wrap",
           ].join(" ")}
