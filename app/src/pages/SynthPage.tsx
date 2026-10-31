@@ -23,8 +23,8 @@ import { Swap } from "../components/Motion";
  * 三处和「看起来更漂亮」相反的取舍：
  *
  * 1. **进度条是不定向的。** 上游 `tts.run()` 是个生成器，只知道又出了一段，
- *    不知道总共几段 —— 报一个百分比就是在编。所以这里只报确定知道的：
- *    首包多少毫秒、已出几段、已用多少秒。
+ *    不知道总共几段，报百分比就是在编。所以这里只报确定知道的：
+ *    已生成几段、第一段和全部各用了多少秒。
  * 2. **文件不在的参考行不能选。** `.list` 里指向的 wav 缺失是常事（数据集
  *    搬过目录）。让它可选，用户点下去只会拿到一句引擎的报错。
  * 3. **换角色就回到该角色包的推荐参数。** 参数是作者随包给的，跨角色沿用
@@ -514,19 +514,14 @@ export function SynthPage() {
         if (!alive) return;
         const seq = ev.payload?.seq ?? 0;
         setChunks(seq + 1);
-        // 第一段落地的那一刻就是首包延迟，用引擎自己报的秒数，不用界面猜。
-        if (seq === 0 && typeof ev.payload?.sec === "number") {
-          setTFirst(Math.round(ev.payload.sec * 1000));
-        }
+        // 进度里的时间都从点下「开始合成」算起，含首次加载模型，和界面上走的秒数一致。
+        if (seq === 0) setTFirst(Math.round(performance.now() - startedAt.current));
       }),
     );
     keep(
-      listen<{ t_first_ms?: number; t_total_ms?: number }>("synth-done", (ev) => {
+      listen("synth-done", () => {
         if (!alive) return;
-        if (typeof ev.payload?.t_first_ms === "number" && ev.payload.t_first_ms > 0) {
-          setTFirst(ev.payload.t_first_ms);
-        }
-        if (typeof ev.payload?.t_total_ms === "number") setTTotal(ev.payload.t_total_ms);
+        setTTotal(Math.round(performance.now() - startedAt.current));
       }),
     );
     return () => {
@@ -741,6 +736,7 @@ export function SynthPage() {
   const failed = items.map((it, i) => (it.state === "fail" ? i : -1)).filter((i) => i >= 0);
   const doneCount = items.filter((it) => it.state === "done").length;
 
+  const secs = ((tTotal != null && !busy ? tTotal / 1000 : elapsed) || 0).toFixed(1);
   const progress =
     busy || tTotal != null ? (
       <div className="mt-3">
@@ -753,13 +749,13 @@ export function SynthPage() {
             ].join(" ")}
           />
         </div>
-        <div className="flex items-center gap-4 mt-2 text-[12px] text-[var(--help)] tabular-nums flex-wrap">
-          {tFirst != null ? <span>{t("synth.tFirst", { n: tFirst })}</span> : null}
-          {chunks > 0 ? <span>{t("synth.chunks", { n: chunks })}</span> : null}
-          <span>
-            {t("synth.elapsed", { n: ((tTotal != null && !busy ? tTotal / 1000 : elapsed) || 0).toFixed(1) })}
-          </span>
-        </div>
+        <p className="m-0 mt-2 text-[12px] text-[var(--help)] tabular-nums leading-relaxed">
+          {chunks === 0
+            ? t("synth.progressWait", { s: secs })
+            : tFirst != null
+              ? t("synth.progressFull", { n: chunks, s: secs, f: (tFirst / 1000).toFixed(1) })
+              : t("synth.progress", { n: chunks, s: secs })}
+        </p>
       </div>
     ) : null;
 

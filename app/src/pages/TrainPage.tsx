@@ -341,6 +341,11 @@ export function TrainPage() {
     { label: t("train.datasetTitle"), value: scan ? t("train.itemsN", { v0: String(scan.files ?? 0) }) : t("train.unset"), ok: !!scan?.files },
   ];
 
+  // 当前步骤里已经写着同一句话时，状态栏不再重复：底模缺失写在第一步，
+  // 拦住的原因写在第四步的开始按钮旁边。
+  const baseBlocked = !!st.runtime_ready && !!st.worker_present && (!st.engine_core_ready || versionMissing.length > 0);
+  const statusHint = blocked && (step === 3 || (step === 0 && baseBlocked)) ? "" : blocked || t("train.statusReady");
+
   // 没选数据集时说「未选择」，选了但测不出来（例如缺 ffprobe）时说「未检测」。
   const unknown = dataset ? t("train.notChecked") : t("train.unset");
 
@@ -640,11 +645,9 @@ export function TrainPage() {
                   <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150" style={{ width: `${Math.min(100, progress)}%` }} />
                 </div>
               </div>
-            ) : (
-              <div className="pt-1 text-[12px] leading-relaxed text-[var(--help)]">
-                {blocked || t("train.statusReady")}
-              </div>
-            )}
+            ) : statusHint ? (
+              <div className="pt-1 text-[12px] leading-relaxed text-[var(--help)]">{statusHint}</div>
+            ) : null}
           </div>
           <div className="flex-none flex items-center gap-2 mt-4 mb-2.5">
             <h3 className="text-[15.5px] font-semibold m-0">{t("train.logTitle")}</h3>
