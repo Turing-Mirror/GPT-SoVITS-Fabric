@@ -131,7 +131,7 @@ function AnnotPageImpl() {
     try {
       const r = await invoke<Loaded>("annot_load", { path: p });
       apply(r);
-      setMsg(t("s.annot.opened", { v0: r.total, v1: r.bad }));
+      // 行数和问题数已写在「当前标注」右侧，这里不再另报一遍。
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -180,6 +180,20 @@ function AnnotPageImpl() {
   }, []);
   useEffect(loadRoleLists, [loadRoleLists]);
   const rolePaged = usePaged(roleLists, ROLE_LIST_SIZE);
+
+  /** 关掉当前文件，回到角色标注文件的列表。 */
+  const close = useCallback(async () => {
+    if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
+    audioRef.current?.pause();
+    setPlaying("");
+    setPath("");
+    setRows([]);
+    setSpeakers([]);
+    setDirty(false);
+    setQuery("");
+    setOnly("all");
+    setErr("");
+  }, [dirty]);
 
   const reload = useCallback(async () => {
     if (!path) return;
@@ -310,8 +324,9 @@ function AnnotPageImpl() {
   }, [missing]);
 
   const CELL = "px-2 py-1.5 align-top";
+  // 输入框随内容伸缩（field-sizing），文本多长就显示多长，不截断。
   const INPUT =
-    "w-full px-2 py-1 rounded-[var(--rs)] text-[12.5px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]";
+    "[field-sizing:content] px-2 py-1 rounded-[var(--rs)] text-[12.5px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]";
 
   return (
     <div className="h-full overflow-y-auto">
@@ -319,6 +334,7 @@ function AnnotPageImpl() {
         <PageHead
           title={t("s.annot.title")}
           sub={t("s.annot.sub")}
+          back={path ? () => void close() : undefined}
           actions={
             <>
               {isTauri() && !inToolWindow() ? (
@@ -361,11 +377,11 @@ function AnnotPageImpl() {
             <Swap k={String(rolePaged.page)}>
               <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-1">
                 {rolePaged.slice.map((l, i) => (
-                  <div key={l.key} className="rise flex items-center gap-3 py-3 border-t border-[var(--hairline)] first:border-t-0" style={stagger(i)}>
+                  <div key={l.key} className="rise flex items-center gap-3 py-3" style={stagger(i)}>
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] text-[var(--ink)] truncate">{l.role}</div>
                       <div className="text-[12px] text-[var(--meta)] truncate">
-                        {l.file} · {t("s.annot.rowCount", { v0: l.rows })}
+                        {t("s.annot.roleListMeta", { v0: l.file, v1: l.rows })}
                       </div>
                     </div>
                     <Btn onClick={() => void openPath(l.path)}>{t("s.annot.openThis")}</Btn>
@@ -418,7 +434,6 @@ function AnnotPageImpl() {
                     {t("s.annot.bulkSpeaker")}
                   </Btn>
                   <Select
-                    width={112}
                     value=""
                     options={[
                       { id: "", label: t("s.annot.bulkLang") },
@@ -443,10 +458,10 @@ function AnnotPageImpl() {
                       <th className={`${CELL} w-[210px] font-medium`}>
                         {t("s.annot.colWav")}
                       </th>
-                      <th className={`${CELL} w-[120px] font-medium`}>
+                      <th className={`${CELL} w-px font-medium whitespace-nowrap`}>
                         {t("s.annot.colSpeaker")}
                       </th>
-                      <th className={`${CELL} w-[92px] font-medium`}>
+                      <th className={`${CELL} w-px font-medium whitespace-nowrap`}>
                         {t("s.annot.colLang")}
                       </th>
                       <th className={`${CELL} font-medium`}>{t("s.annot.colText")}</th>
@@ -455,10 +470,7 @@ function AnnotPageImpl() {
                   </thead>
                   <tbody>
                     {pageRows.map((r) => (
-                      <tr
-                        key={r.line}
-                        className="border-t border-[var(--hairline)] align-top"
-                      >
+                      <tr key={r.line} className="align-top">
                         <td className={`${CELL} font-mono text-[var(--meta)]`}>
                           {r.line}
                         </td>
@@ -499,7 +511,7 @@ function AnnotPageImpl() {
                               className="font-mono truncate text-[11.5px]"
                               title={r.wav}
                             >
-                              {r.wav || "—"}
+                              {r.wav}
                             </span>
                           </div>
                           {r.issues.length ? (
@@ -519,7 +531,7 @@ function AnnotPageImpl() {
                           <input
                             value={r.speaker}
                             onChange={(e) => edit(r.line, { speaker: e.target.value })}
-                            className={INPUT}
+                            className={`${INPUT} min-w-[80px] max-w-[220px]`}
                           />
                         </td>
                         <td className={CELL}>
@@ -527,7 +539,7 @@ function AnnotPageImpl() {
                             value={r.lang}
                             list="annot-langs"
                             onChange={(e) => edit(r.line, { lang: e.target.value })}
-                            className={INPUT}
+                            className={`${INPUT} min-w-[48px] max-w-[110px]`}
                           />
                         </td>
                         <td className={CELL}>
@@ -535,7 +547,7 @@ function AnnotPageImpl() {
                             value={r.text}
                             rows={1}
                             onChange={(e) => edit(r.line, { text: e.target.value })}
-                            className={`${INPUT} resize-y min-h-[30px] leading-relaxed`}
+                            className={`${INPUT} w-full resize-none min-h-[30px] leading-relaxed`}
                           />
                         </td>
                         <td className={CELL}>
