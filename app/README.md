@@ -1,9 +1,9 @@
-# RVC Fabric desktop shell (`app/`)
+# GPT-SoVITS Fabric desktop shell (`app/`)
 
-Tauri 2 + React + TypeScript + Tailwind UI host for RVC Fabric.
-Realtime inference still runs in the embedded Runtime (`pythonw` + `tools/realtime_worker.py`).
+Tauri 2 + React + TypeScript + Tailwind UI host for GPT-SoVITS Fabric.
+Speech synthesis runs in the embedded Runtime (`pythonw` + `tools/synth_worker.py`).
 
-This host **is** the product shell (Tk / `launcher/` UI removed). Only the realtime
+This host **is** the product shell (Tk / `launcher/` UI removed). Only the speech synthesis
 worker stays on Python under `Runtime\pythonw.exe`.
 
 ## Requirements
