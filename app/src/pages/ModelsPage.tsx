@@ -12,6 +12,7 @@ import { artOf } from "../lib/art";
 import { askConfirm } from "../lib/webDialog";
 import { goTo, openInAnnot, synthWithRole } from "../lib/intent";
 import { t } from "../i18n/t";
+import { joinClauses } from "../lib/text";
 
 /**
  * 角色库。
@@ -233,7 +234,7 @@ export function ModelsPage({
                         {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
                       </div>
                       <div className="mt-1.5">
-                        <Tag>{[r.version, t("library.refCount", { v0: String(refCount(r)) })].filter(Boolean).join(" · ")}</Tag>
+                        <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
                       </div>
                     </div>
                   );

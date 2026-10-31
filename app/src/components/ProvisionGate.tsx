@@ -14,6 +14,7 @@ import { isEngineCoreReady } from "../lib/downloadModels";
 import { MainGpuPicker, MAIN_GPU_AUTO, mainGpuTip } from "./MainGpuPicker";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
+import { listText } from "../lib/text";
 
 type VariantRow = {
   id: string;
@@ -399,7 +400,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
 
         {info.gpus && info.gpus.length > 0 ? (
           <p className="text-[12px] text-[var(--meta)] m-0 mb-4">
-            {t("s.af8a2d5711", { v0: info.gpus.join(" · ") })}
+            {t("s.af8a2d5711", { v0: listText(info.gpus) })}
           </p>
         ) : null}
 

@@ -1492,7 +1492,7 @@ pub fn run() {
             };
             logging::shell_log!("window url: {url:?}");
             let main_window = tauri::WebviewWindowBuilder::new(app, "main", url)
-            .title("GPT-SoVITS Fabric · dev-0825c")
+            .title("GPT-SoVITS Fabric dev-0825c")
             .inner_size(1180.0, 780.0)
             .min_inner_size(880.0, 640.0)
             .resizable(true)

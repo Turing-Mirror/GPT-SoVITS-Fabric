@@ -14,6 +14,7 @@ import { DiagnosticsDialog, type DiagReport } from "../components/DiagnosticsDia
 import { FindingList, type Finding } from "../components/FindingList";
 import { scrollPaneToId } from "../lib/scrollPane";
 import { Leave } from "../components/Presence";
+import { listText } from "../lib/text";
 
 /** 「申请专业优化」的开关。服务还没开放，先藏起来；后端命令仍然在。 */
 const SHOW_CONSULT = false;
@@ -80,7 +81,7 @@ export function MorePage({
   const backendDevice = String(status?.compute_device || "");
   const backendLine = backendLabel
     ? backendDevice && backendDevice !== backendLabel
-      ? `${backendLabel} · ${backendDevice}`
+      ? t("s.labelWithDetail", { v0: backendLabel, v1: backendDevice })
       : backendLabel
     : t("s.computeBackendIdle");
   // 装了 N 卡运行时却没用上 CUDA —— 这个矛盾我们判得出来，就别让用户自己猜。
@@ -126,7 +127,7 @@ export function MorePage({
     setBusyMsg(`${label}…`);
     try {
       const r = await invoke<{ path?: string; perf_note?: string }>(cmd, args);
-      const note = r?.perf_note ? ` · ${r.perf_note}` : "";
+      const note = r?.perf_note ? `${t("s.clauseSep")}${r.perf_note}` : "";
       setBusyMsg(
         t("s.05d0e1e672", {
           v0: label,
@@ -254,7 +255,7 @@ export function MorePage({
         : t("s.moreRunStateIdle");
 
   const gpus = provision?.gpus?.length
-    ? provision.gpus.join(" · ")
+    ? listText(provision.gpus)
     : t("s.90b74980e4");
   const runtimeLine = provision?.runtime_ready
     ? provision.installed_variant

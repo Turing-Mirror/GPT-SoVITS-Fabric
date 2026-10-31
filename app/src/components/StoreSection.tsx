@@ -42,6 +42,7 @@ import {
 } from "../lib/voiceDisplay";
 import { askConfirm } from "../lib/webDialog";
 import { openExternal } from "../lib/plaza";
+import { joinClauses } from "../lib/text";
 
 /** Parent + child focus key. Tab never appears in series / group labels. */
 const FOCUS_SEP = "\t";
@@ -1019,7 +1020,7 @@ function VoiceCard({
   const parentLabel = voiceParentSeries(v, loc);
   const childLabel = voiceChildGroup(v, loc);
   const meta =
-    [parentLabel, childLabel, v.size_label].filter(Boolean).join(" · ") ||
+    joinClauses([parentLabel, childLabel, v.size_label && t("s.metaSize", { v0: v.size_label })]) ||
     displayVoiceTag(v, loc);
   const coverBadge = author || displayVoiceOrigin(v);
   // 第三方音色下下来是别人的东西：作者是谁、从哪个仓库发的，得在**下载之前**
