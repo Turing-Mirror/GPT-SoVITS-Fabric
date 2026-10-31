@@ -51,6 +51,7 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("wallpaper_opacity".into(), json!(70));
     // 首页横幅自定义：文案留空 = 默认标题；不透明度最低由前端滑杆限在 20。
     m.insert("home_banner_text".into(), json!(""));
+    m.insert("home_banner_sub".into(), json!(""));
     m.insert("home_banner_opacity".into(), json!(100));
     // 新手引导的历史事件（首次成功合成）与永久关闭标记。前两步
     // （运行时/角色）每次实时推导，不需要存。不进任何设置分组：
@@ -356,6 +357,7 @@ pub fn describe() -> Value {
             "wallpaper_blur",
             "wallpaper_opacity",
             "home_banner_text",
+            "home_banner_sub",
             "home_banner_opacity",
         ],
     );

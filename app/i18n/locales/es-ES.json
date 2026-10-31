@@ -65,7 +65,10 @@
     "hotkeysOff": "Desactivados",
     "hotkeyToggleWindow": "Mostrar / ocultar la ventana principal",
     "hotkeyToggleWindowTip": "Ejemplos: CmdOrCtrl+F11, Alt+Shift+G. Tras editar, haga clic en otro lugar para registrar la combinación.",
-    "hotkeyTaken": "Otro programa ya las tiene, así que no pudieron registrarse: {v0}"
+    "hotkeyTaken": "Otro programa ya las tiene, así que no pudieron registrarse: {v0}",
+    "bannerSub": "Subtítulo del banner de inicio",
+    "bannerSubTip": "Una línea pequeña bajo el título del banner de inicio. Déjelo vacío para ocultarla.",
+    "bannerSubPlaceholder": "Vacío = sin subtítulo"
   },
   "locale": {
     "zh-CN": "简体中文",
@@ -89,7 +92,6 @@
   },
   "home": {
     "author": "Autor: {author}",
-    "tagline": "Cliente de escritorio de síntesis de voz listo para usar, basado en GPT-SoVITS. Instala un paquete de personaje, escribe texto y obtén voz natural al instante; también puedes entrenar tu propio personaje.",
     "qSynth": "Síntesis rápida",
     "qSynthDesc": "Elija una voz y una referencia y sintetice el texto",
     "qLibrary": "Biblioteca",
@@ -105,7 +107,9 @@
     "justNow": "ahora mismo",
     "mAgo": "hace {v0} min",
     "hAgo": "hace {v0} h",
-    "dAgo": "hace {v0} d"
+    "dAgo": "hace {v0} d",
+    "bannerTitle": "Elija una voz y empiece a sintetizar",
+    "noRole": "Ninguna voz seleccionada"
   },
   "glossary": {
     "sectionTitle": "Glosario",
@@ -296,7 +300,7 @@
     "2b9ddc0b69": "No hay modelos base de entrenamiento disponibles por ahora.",
     "2bd28fc9c2": "Repositorio y redes",
     "2bd41b71bb": "La interfaz de inferencia original se está iniciando. El primer inicio tarda unos 20–40 segundos en cargar torch y CUDA; después el navegador abre 127.0.0.1:9872.",
-    "2d0c1739e0": "Esquinas redondeadas: DWM no lo soporta (en Win10 sí, HRESULT={hr:#x}); se usa recorte de la región de la ventana",
+    "2d0c1739e0": "Esquinas redondeadas: DWM no lo soporta (normal en Win10); se mantienen rectas y se extiende el marco para la sombra del sistema",
     "2de72cf04d": "Se detectaron varias GPU NVIDIA. Sin elección, el motor usa la primera, que no es necesariamente la más rápida. Puede cambiarlo luego en «Más → Estado del runtime».",
     "33246f6a5e": "Hecho",
     "33d04e20c0": "El manifiesto no trae una URL de descarga del Runtime.",

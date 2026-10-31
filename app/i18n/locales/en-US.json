@@ -65,7 +65,10 @@
     "hotkeysOff": "Off",
     "hotkeyToggleWindow": "Show / hide the main window",
     "hotkeyToggleWindowTip": "Examples: CmdOrCtrl+F11, Alt+Shift+G. Click elsewhere after editing to register the new combination.",
-    "hotkeyTaken": "Another program already holds these, so they could not be registered: {v0}"
+    "hotkeyTaken": "Another program already holds these, so they could not be registered: {v0}",
+    "bannerSub": "Home banner subtitle",
+    "bannerSubTip": "A small line under the home banner title. Leave empty to hide.",
+    "bannerSubPlaceholder": "Leave empty to hide the subtitle"
   },
   "locale": {
     "zh-CN": "简体中文",
@@ -89,7 +92,6 @@
   },
   "home": {
     "author": "By {author}",
-    "tagline": "An out-of-the-box desktop client for GPT-SoVITS speech synthesis. Install a character pack, type text, and get natural speech instantly — or train your own character from raw material.",
     "qSynth": "Quick synthesis",
     "qSynthDesc": "Choose a voice and a reference clip, then synthesize your text",
     "qLibrary": "Library",
@@ -105,7 +107,9 @@
     "justNow": "just now",
     "mAgo": "{v0} min ago",
     "hAgo": "{v0} h ago",
-    "dAgo": "{v0} d ago"
+    "dAgo": "{v0} d ago",
+    "bannerTitle": "Choose a voice and start synthesizing",
+    "noRole": "No voice selected"
   },
   "glossary": {
     "sectionTitle": "Glossary",
@@ -296,7 +300,7 @@
     "2b9ddc0b69": "No training base models available right now.",
     "2bd28fc9c2": "Repo & socials",
     "2bd41b71bb": "The original inference interface is starting. The first start takes about 20–40 seconds to load torch and CUDA; the browser then opens 127.0.0.1:9872.",
-    "2d0c1739e0": "Rounded corners: DWM unsupported (fine on Win10, HRESULT={hr:#x}) — falling back to window region clipping",
+    "2d0c1739e0": "Rounded corners: not supported by DWM (normal on Win10); keeping square corners and extending the frame for the system shadow",
     "2de72cf04d": "Multiple NVIDIA GPUs detected. Without a choice, the engine uses the first one, which is not necessarily the fastest. You can change this later under “More → Runtime status”.",
     "33246f6a5e": "Done",
     "33d04e20c0": "No Runtime download URL in the manifest.",

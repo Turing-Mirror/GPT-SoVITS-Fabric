@@ -65,7 +65,10 @@
     "hotkeysOff": "已關閉",
     "hotkeyToggleWindow": "顯示 / 隱藏主介面",
     "hotkeyToggleWindowTip": "格式範例：CmdOrCtrl+F11、Alt+Shift+G。修改後點擊其他位置，即可重新註冊。",
-    "hotkeyTaken": "這些組合已被別的程式佔用，未能註冊：{v0}"
+    "hotkeyTaken": "這些組合已被別的程式佔用，未能註冊：{v0}",
+    "bannerSub": "首頁橫幅副標題",
+    "bannerSubTip": "顯示在首頁橫幅標題下方的一行小字。留空則不顯示。",
+    "bannerSubPlaceholder": "留空則不顯示副標題"
   },
   "locale": {
     "zh-CN": "简体中文",
@@ -89,7 +92,6 @@
   },
   "home": {
     "author": "作者 : {author}",
-    "tagline": "基於 GPT-SoVITS 的開箱即用語音合成桌面用戶端。安裝角色包，輸入文字，即刻獲得自然流暢的合成語音；也可以用自己的素材訓練專屬角色。",
     "qSynth": "快速合成",
     "qSynthDesc": "選擇角色與參考音訊，輸入文字後合成語音",
     "qLibrary": "模型",
@@ -105,7 +107,9 @@
     "justNow": "剛剛",
     "mAgo": "{v0} 分鐘前",
     "hAgo": "{v0} 小時前",
-    "dAgo": "{v0} 天前"
+    "dAgo": "{v0} 天前",
+    "bannerTitle": "選擇角色，開始合成",
+    "noRole": "未選擇角色"
   },
   "glossary": {
     "sectionTitle": "專有名詞",
@@ -296,7 +300,7 @@
     "2b9ddc0b69": "暫時沒有可下載的訓練底模。",
     "2bd28fc9c2": "倉庫與社媒",
     "2bd41b71bb": "原版推理介面正在啟動。首次啟動需要約 20–40 秒載入 torch 與 CUDA，隨後瀏覽器將開啟 127.0.0.1:9872。",
-    "2d0c1739e0": "圓角：DWM 不支援（Win10 正常，HRESULT={hr:#x}），改用視窗區域裁切",
+    "2d0c1739e0": "圓角：DWM 不支援（Win10 正常），保持直角，延伸邊框以取得系統陰影",
     "2de72cf04d": "檢測到多塊 NVIDIA 顯示卡。未指定時引擎預設使用排序第一的那塊，不一定是最快的。之後可在「其他 → 執行狀態」中修改。",
     "33246f6a5e": "完成",
     "33d04e20c0": "清單中沒有可用的 Runtime 下載網址。",

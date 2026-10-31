@@ -184,6 +184,13 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
   `role_set_cover` / `role_export` / `role_delete`，见 `characters.rs`）。
 - **说明页与其他页**：说明页标题行「联系社区」、常见问题搜索；「其他 → 仓库与社媒」
   第一行是诊断包入口，跳到「维护」。
+- **界面加载**：调试版与正式版一样从 exe 旁的 `frontend/` 经自定义协议加载，不连
+  `localhost:1430`。改完界面要 `vite build` 并拷到 `target/debug/frontend`。
+- **首页横幅**：同 RVC，底色 `--stage`，按「横幅不透明度」混合；标题取「首页横幅
+  文案」，下一行是当前合成角色，再下一行是「首页横幅副标题」（留空不显示）。RVC 横幅
+  右侧的徽标图不放，本产品还没有自己的徽标图。
+- **下拉选择**：`components/controls.tsx` 的 `Select` 改用 TRM 的 `Dropdown`，
+  不再弹系统原生列表。
 
 以下从 RVC-Fabric 沿用（只读复制后改造，不回写）：
 

@@ -1458,18 +1458,13 @@ pub fn run() {
                     }
                 }
             }
-            // Window URL: dev 构建直接吃 vite dev server（热更新可用）；release
-            // 走自定义协议，由 exe 旁的 frontend/ 目录供 UI —— 那是 gui_patch
-            // 热更的落点，两套渠道不能混。
+            // Window URL 一律走自定义协议，由 exe 旁的 frontend/ 目录供 UI（与 RVC Fabric
+            // 一致）。开发版也一样：改完界面 vite build 后拷进 target/debug/frontend，
+            // 不依赖 vite dev server 是否开着。
             // WebView2 cannot register non-standard schemes at all, so wry
             // rewrites `fabric://localhost/x` to `http://fabric.localhost/x`
             // and intercepts that; Windows is spelled out here to match what
             // the webview will actually report as its origin.
-            #[cfg(debug_assertions)]
-            let url = tauri::WebviewUrl::External(
-                "http://localhost:1430".parse().expect("dev url"),
-            );
-            #[cfg(not(debug_assertions))]
             let url = {
                 #[cfg(windows)]
                 let u = format!("http://{}.localhost/index.html", ui_assets::SCHEME);

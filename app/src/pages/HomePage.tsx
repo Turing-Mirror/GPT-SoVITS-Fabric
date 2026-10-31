@@ -7,6 +7,7 @@ import type { PageId } from "../lib/nav";
 import { synthWithRole } from "../lib/intent";
 import { artOf } from "../lib/art";
 import { stagger } from "../components/Motion";
+import { getConfig, onConfigPatch } from "../lib/config";
 
 /**
  * 首页。
@@ -41,6 +42,43 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/**
+ * 首页横幅的自定义文案与当前角色（设置 → 外观、合成页）。标题留空 = 默认标题；
+ * 副标题留空 = 不显示。配置变化走 onConfigPatch，改完立刻生效。
+ */
+function useBannerConfig(): { title: string; sub: string; role: string } {
+  const [v, setV] = useState({ title: "", sub: "", role: "" });
+  useEffect(() => {
+    let alive = true;
+    const str = (x: unknown) => (typeof x === "string" ? x : undefined);
+    void getConfig()
+      .then((c) => {
+        if (alive) setV({ title: str(c.home_banner_text) ?? "", sub: str(c.home_banner_sub) ?? "", role: str(c.synth_role) ?? "" });
+      })
+      .catch(() => {
+        /* 浏览器预览里没有 Tauri 后端，用默认标题 */
+      });
+    const off = onConfigPatch((p) =>
+      setV((prev) => ({
+        title: str(p.home_banner_text) ?? prev.title,
+        sub: str(p.home_banner_sub) ?? prev.sub,
+        role: str(p.synth_role) ?? prev.role,
+      })),
+    );
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+  return { title: v.title.trim(), sub: v.sub.trim(), role: v.role };
+}
+
+/**
+ * 横幅底色。--banner-opacity 由 applyAppearance 写到 <html> 上（默认 1），
+ * 只混这一格的背景色，文字与标志不受影响。
+ */
+const STAGE_BG = "color-mix(in srgb, var(--stage) calc(var(--banner-opacity, 1) * 100%), transparent)";
+
 function fmtAgo(mtime: number): string {
   const diff = Date.now() / 1000 - mtime;
   if (diff < 60) return t("home.justNow");
@@ -54,6 +92,7 @@ export function HomePage({ onNavigate }: Props) {
   void locale;
   const [roles, setRoles] = useState<Role[]>(isTauri() ? [] : DEMO_ROLES);
   const [recent, setRecent] = useState<Recent[]>([]);
+  const banner = useBannerConfig();
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -75,19 +114,21 @@ export function HomePage({ onNavigate }: Props) {
     [],
   );
 
-  return (
-    <PagePad>
-      {/* 页头：纯文字，不摆横幅卡。词标图在目标机缺资源时会渲染成被裁掉一半
-          的 alt 文本，比没有横幅更难看。 */}
-      <div className="pt-[26px] pb-1.5">
-        <h2 className="text-[25px] font-semibold tracking-tight m-0 max-[860px]:text-[22px]">
-          GPT-SoVITS Fabric
-        </h2>
-        <p className="text-[13px] text-[var(--help)] mt-1.5 mb-0 max-w-[560px] leading-relaxed">
-          {t("home.tagline")}
-        </p>
-      </div>
+  const current = roles.find((r) => r.id === banner.role);
 
+  return (
+    <div>
+      <div
+        className="relative overflow-hidden px-[30px] pt-8 pb-7 max-[1020px]:px-[22px] max-[1020px]:pt-7 max-[1020px]:pb-6 max-[720px]:px-4 max-[720px]:pt-[22px] max-[720px]:pb-5"
+        style={{ background: STAGE_BG }}
+      >
+        <h2 className="text-[27px] font-semibold tracking-tight m-0 mb-[15px] max-[860px]:text-2xl">{banner.title || t("home.bannerTitle")}</h2>
+        <p className="text-[19px] font-semibold text-[var(--accent)] m-0">
+          {current ? current.name || current.id : t("home.noRole")}
+        </p>
+        {banner.sub ? <p className="text-[12.5px] text-[var(--ink-muted)] m-0 mt-1.5">{banner.sub}</p> : null}
+      </div>
+    <PagePad>
       {/* 入口卡 */}
       <Block>
         <div className="grid grid-cols-3 max-[760px]:grid-cols-1 gap-[10px]">
@@ -182,5 +223,6 @@ export function HomePage({ onNavigate }: Props) {
         )}
       </Block>
     </PagePad>
+    </div>
   );
 }

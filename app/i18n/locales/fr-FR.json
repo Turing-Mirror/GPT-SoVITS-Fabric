@@ -65,7 +65,10 @@
     "hotkeysOff": "Désactivés",
     "hotkeyToggleWindow": "Afficher / masquer la fenêtre principale",
     "hotkeyToggleWindowTip": "Exemples : CmdOrCtrl+F11, Alt+Shift+G. Après modification, cliquez ailleurs pour enregistrer la combinaison.",
-    "hotkeyTaken": "Un autre programme les détient déjà, elles n'ont pas pu être enregistrées : {v0}"
+    "hotkeyTaken": "Un autre programme les détient déjà, elles n'ont pas pu être enregistrées : {v0}",
+    "bannerSub": "Sous-titre de la bannière d'accueil",
+    "bannerSubTip": "Une petite ligne sous le titre de la bannière d'accueil. Laissez vide pour la masquer.",
+    "bannerSubPlaceholder": "Vide = pas de sous-titre"
   },
   "locale": {
     "zh-CN": "简体中文",
@@ -89,7 +92,6 @@
   },
   "home": {
     "author": "Auteur : {author}",
-    "tagline": "Client de synthèse vocale prêt à l’emploi, basé sur GPT-SoVITS. Installez un pack de personnage, saisissez du texte et obtenez une voix naturelle immédiatement ; entraînez aussi votre propre personnage à partir de vos enregistrements.",
     "qSynth": "Synthèse rapide",
     "qSynthDesc": "Choisissez une voix et une référence, puis synthétisez le texte",
     "qLibrary": "Bibliothèque",
@@ -105,7 +107,9 @@
     "justNow": "à l'instant",
     "mAgo": "il y a {v0} min",
     "hAgo": "il y a {v0} h",
-    "dAgo": "il y a {v0} j"
+    "dAgo": "il y a {v0} j",
+    "bannerTitle": "Choisissez une voix et lancez la synthèse",
+    "noRole": "Aucune voix sélectionnée"
   },
   "glossary": {
     "sectionTitle": "Glossaire",
@@ -296,7 +300,7 @@
     "2b9ddc0b69": "Aucun modèle de base d'entraînement disponible pour le moment.",
     "2bd28fc9c2": "Dépôt et réseaux",
     "2bd41b71bb": "L’interface d’inférence d’origine démarre. Le premier démarrage prend environ 20 à 40 secondes pour charger torch et CUDA ; le navigateur ouvre ensuite 127.0.0.1:9872.",
-    "2d0c1739e0": "Coins arrondis : DWM non pris en charge (normal sous Win10, HRESULT={hr:#x}) ; repli sur le rognage de la zone de fenêtre",
+    "2d0c1739e0": "Coins arrondis : non pris en charge par DWM (normal sous Win10) ; coins droits conservés, cadre étendu pour l’ombre système",
     "2de72cf04d": "Plusieurs GPU NVIDIA détectés. Sans choix, le moteur utilise le premier, pas forcément le plus rapide. Modifiable ensuite dans « Plus → État du runtime ».",
     "33246f6a5e": "Terminé",
     "33d04e20c0": "Le manifeste ne contient pas d'URL de téléchargement du Runtime.",
