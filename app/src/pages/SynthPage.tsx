@@ -109,21 +109,11 @@ function refFits(sec: number | undefined): boolean {
   return sec == null || Number.isNaN(sec) || (sec >= REF_SEC.min && sec <= REF_SEC.max);
 }
 
-const LANG_BADGE: Record<string, string> = {
-  zh: "中",
-  all_zh: "中",
-  ja: "日",
-  all_ja: "日",
-  en: "英",
-  ko: "韩",
-  all_ko: "韩",
-  yue: "粤",
-  auto: "自",
-};
-
-function langBadge(lang: string): string {
-  const k = (lang || "").toLowerCase();
-  return LANG_BADGE[k] ?? (k ? k.slice(0, 2).toUpperCase() : "?");
+/** 参考行的语言名称。`.list` 里常见 zh、ja、all_zh 这类代码，统一按单一语种显示。 */
+function refLangKey(lang: string): string | null {
+  const k = (lang || "").toLowerCase().replace(/^all_/, "");
+  if (k === "en" || k === "auto") return LANG_LABEL[k];
+  return LANG_LABEL[`all_${k}`] ?? null;
 }
 
 /** 参考音频每页几条。 */
@@ -579,6 +569,11 @@ export function SynthPage() {
     setPreview(r.abs);
   };
 
+  const refLang = (code: string) => {
+    const k = refLangKey(code);
+    return k ? t(k) : code;
+  };
+
   const toggleAux = (r: RefRow) => {
     const k = keyOf(r);
     setAuxKeys((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
@@ -846,7 +841,9 @@ export function SynthPage() {
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-medium leading-tight truncate">{role.name}</div>
               <div className="text-[12px] text-[var(--meta)] mt-1 truncate">
-                {role.version} · {role.author ? t("home.author", { author: role.author }) : t("library.noAuthor")}
+                {role.author
+                  ? t("synth.roleMetaAuthor", { v0: role.version, v1: role.author })
+                  : t("synth.roleMetaNoAuthor", { v0: role.version })}
               </div>
             </div>
             <Select
@@ -931,9 +928,11 @@ export function SynthPage() {
                         <span className={["min-w-0 flex-1", ok ? "" : "opacity-55"].join(" ")}>
                           <span className="block text-[12.5px] leading-snug truncate">{row.text}</span>
                           <span className="block text-[11px] text-[var(--meta)] truncate mt-0.5 tabular-nums">
-                            {langBadge(row.lang)}
-                            {sec != null && !Number.isNaN(sec) ? ` · ${sec.toFixed(1)} s` : ""}
-                            {!row.exists ? ` · ${t("synth.refMissing")}` : !ok ? ` · ${t("synth.refLength")}` : ""}
+                            {!row.exists
+                              ? t("synth.refMissing")
+                              : sec != null && !Number.isNaN(sec)
+                                ? t(ok ? "synth.refMeta" : "synth.refMetaBad", { lang: refLang(row.lang), sec: sec.toFixed(1) })
+                                : refLang(row.lang)}
                           </span>
                         </span>
                         {row.exists && !on ? (

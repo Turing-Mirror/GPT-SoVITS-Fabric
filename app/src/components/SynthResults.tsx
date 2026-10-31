@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Btn } from "./ui";
 import { Select } from "./controls";
@@ -102,6 +102,15 @@ export function SynthResults({
   };
 
   const current = rows.find((r) => r.path === sel) ?? null;
+  const seed = current?.record?.params?.seed;
+  // 选中一条时列出它的详情，每项一行，名称在左、值在右。
+  const fields: [string, string][] = current?.record
+    ? [
+        [t("synth.resultRole"), current.record.role_name ?? ""],
+        [t("synth.pSeed"), typeof seed === "number" ? String(seed) : ""],
+        [t("synth.resultFile"), current.name],
+      ].filter((f): f is [string, string] => Boolean(f[1]))
+    : [];
 
   const rename = (name: string) => {
     if (!current) return;
@@ -146,7 +155,6 @@ export function SynthResults({
           rows.map((r) => {
             const on = r.path === sel;
             const rec = r.record ?? {};
-            const seed = rec.params?.seed;
             return (
               <div
                 key={r.path}
@@ -178,11 +186,11 @@ export function SynthResults({
                 </button>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13px] leading-snug line-clamp-2 break-all">{rec.text || r.name}</span>
+                  {/* 行里只放时间和时长，角色、种子等放在下方的详情里。 */}
                   <span className="block text-[11.5px] text-[var(--meta)] mt-0.5 truncate tabular-nums">
-                    {clock(r.mtime)}
-                    {rec.audio_sec ? ` · ${Number(rec.audio_sec).toFixed(1)} s` : ""}
-                    {rec.role_name ? ` · ${rec.role_name}` : ""}
-                    {typeof seed === "number" ? ` · ${t("synth.seedShort", { v0: seed })}` : ""}
+                    {rec.audio_sec
+                      ? t("synth.resultMeta", { time: clock(r.mtime), sec: Number(rec.audio_sec).toFixed(1) })
+                      : clock(r.mtime)}
                   </span>
                 </span>
               </div>
@@ -190,6 +198,16 @@ export function SynthResults({
           })
         )}
       </div>
+      {fields.length ? (
+        <dl className="flex-none m-0 mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
+          {fields.map(([k, v]) => (
+            <Fragment key={k}>
+              <dt className="text-[var(--meta)]">{k}</dt>
+              <dd className="m-0 truncate tabular-nums">{v}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      ) : null}
       <div className="flex-none flex items-center gap-1.5 mt-2.5 flex-wrap">
         <Btn disabled={!current} onClick={() => current && void invoke("synth_reveal_file", { path: current.path }).catch(() => {})}>
           {t("synth.resultReveal")}

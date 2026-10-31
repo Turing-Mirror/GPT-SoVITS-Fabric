@@ -104,14 +104,14 @@ function isTauri(): boolean {
 }
 
 function hhmm(sec?: number): string {
-  if (!sec || !isFinite(sec)) return "—";
+  if (!sec || !isFinite(sec)) return t("train.notChecked");
   const h = Math.floor(sec / 3600);
   const m = Math.round((sec % 3600) / 60);
   return h ? `${h} h ${m} min` : `${m} min`;
 }
 
 function gb(bytes?: number | null): string {
-  if (!bytes) return "—";
+  if (!bytes) return t("train.notChecked");
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
@@ -320,7 +320,7 @@ export function TrainPage() {
   }, [st.busy]);
 
   const steps: { title: string; sub: string; ok: boolean }[] = [
-    { title: t("train.stepVersion"), sub: version || "—", ok: baseReady },
+    { title: t("train.stepVersion"), sub: version || t("train.unset"), ok: baseReady },
     { title: t("train.datasetTitle"), sub: exp.trim() || t("train.unset"), ok: !!dataset && !!exp.trim() },
     {
       title: t("train.hyperTitle"),
@@ -341,6 +341,9 @@ export function TrainPage() {
     { label: t("train.datasetTitle"), value: scan ? t("train.itemsN", { v0: String(scan.files ?? 0) }) : t("train.unset"), ok: !!scan?.files },
   ];
 
+  // 没选数据集时说「未选择」，选了但测不出来（例如缺 ffprobe）时说「未检测」。
+  const unknown = dataset ? t("train.notChecked") : t("train.unset");
+
   const stepBody = [
     // 1. 版本与底模
     <div key="v" className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
@@ -351,7 +354,7 @@ export function TrainPage() {
           <Select
             full
             value={version}
-            options={versions.map((v) => ({ id: v.id, label: v.lora ? `${v.id} · LoRA` : v.id }))}
+            options={versions.map((v) => ({ id: v.id, label: v.lora ? t("train.versionLora", { v0: v.id }) : v.id }))}
             onChange={setVersion}
           />
         }
@@ -422,10 +425,10 @@ export function TrainPage() {
           没有 ffprobe 时 available=false，那几项就写「—」，不编。 */}
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 grid grid-cols-2 max-[560px]:grid-cols-1 gap-x-6 gap-y-3">
         {[
-          { label: t("train.statTotal"), value: scan ? String(scan.files ?? 0) : "—" },
-          { label: t("train.statHours"), value: inspect?.available ? `≈ ${hhmm(inspect.estimated_total_seconds)}` : "—" },
-          { label: t("train.statMedian"), value: inspect?.median_seconds ? `${inspect.median_seconds.toFixed(1)} s` : "—" },
-          { label: t("train.statLoud"), value: typeof inspect?.mean_volume_db === "number" ? `${inspect.mean_volume_db} dB` : "—" },
+          { label: t("train.statTotal"), value: scan ? String(scan.files ?? 0) : unknown },
+          { label: t("train.statHours"), value: inspect?.available && inspect.estimated_total_seconds ? `≈ ${hhmm(inspect.estimated_total_seconds)}` : unknown },
+          { label: t("train.statMedian"), value: inspect?.median_seconds ? `${inspect.median_seconds.toFixed(1)} s` : unknown },
+          { label: t("train.statLoud"), value: typeof inspect?.mean_volume_db === "number" ? `${inspect.mean_volume_db} dB` : unknown },
         ].map((s) => (
           <div key={s.label} className="flex items-center justify-between">
             <span className="text-[12.5px] text-[var(--help)]">{s.label}</span>
