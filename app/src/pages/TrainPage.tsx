@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PagePad, PageHead, Block, Btn } from "../components/ui";
+import { PagePad, PageHead, Btn } from "../components/ui";
+import { Swap } from "../components/Motion";
+import { Icon } from "../trm";
 import { Field, Select, Slider, Toggle } from "../components/controls";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -135,6 +137,8 @@ export function TrainPage() {
   const [err, setErr] = useState("");
   const [errCode, setErrCode] = useState("");
   const [starting, setStarting] = useState(false);
+  /** 中栏显示第几步（0–3）。 */
+  const [step, setStep] = useState(0);
 
   const logRef = useRef<HTMLPreElement>(null);
 
@@ -308,9 +312,227 @@ export function TrainPage() {
   const versions = st.versions ?? [];
   const missing = [...(st.engine_core_missing ?? []), ...versionMissing];
   const baseReady = !!st.engine_core_ready && versionMissing.length === 0;
+  const finished = !st.busy && doneStages.length === STAGES.length;
+
+  // 跑着的时候停在「开始训练」一步，进度和停止按钮都在那里。
+  useEffect(() => {
+    if (st.busy) setStep(3);
+  }, [st.busy]);
+
+  const steps: { title: string; sub: string; ok: boolean }[] = [
+    { title: t("train.stepVersion"), sub: version || "—", ok: baseReady },
+    { title: t("train.datasetTitle"), sub: exp.trim() || t("train.unset"), ok: !!dataset && !!exp.trim() },
+    {
+      title: t("train.hyperTitle"),
+      sub: t("train.hyperSummary", { v0: String(sovits.epochs), v1: String(gpt.epochs) }),
+      ok: !!dataset && !!exp.trim(),
+    },
+    {
+      title: t("train.start"),
+      sub: st.busy ? `${progress}%` : finished ? t("train.finished") : blocked ? t("train.notReady") : t("train.statusReady"),
+      ok: finished,
+    },
+  ];
+
+  const statusRows: { label: string; value: string; ok: boolean }[] = [
+    { label: t("train.rowRuntime"), value: st.runtime_ready && st.worker_present ? t("train.ok") : t("train.notReady"), ok: !!st.runtime_ready && !!st.worker_present },
+    { label: t("train.rowBase"), value: baseReady ? t("train.ok") : t("train.missingN", { v0: String(missing.length) }), ok: baseReady },
+    { label: t("train.rowGpu"), value: st.nvidia ? "NVIDIA" : t("train.gpuNone"), ok: !!st.nvidia },
+    { label: t("train.datasetTitle"), value: scan ? t("train.itemsN", { v0: String(scan.files ?? 0) }) : t("train.unset"), ok: !!scan?.files },
+  ];
+
+  const stepBody = [
+    // 1. 版本与底模
+    <div key="v" className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
+      <Field
+        label={t("train.version")}
+        tip={t("train.versionTip")}
+        control={
+          <Select
+            full
+            value={version}
+            options={versions.map((v) => ({ id: v.id, label: v.lora ? `${v.id} · LoRA` : v.id }))}
+            onChange={setVersion}
+          />
+        }
+      />
+      {/* 判据是「这台机器上真的有这份权重」：引擎资源加上所选版本自己的底模。 */}
+      <div className="text-[12.5px]">
+        {baseReady ? (
+          <span className="text-[var(--accent)]">{t("train.baseReady")}</span>
+        ) : (
+          <span className="text-[var(--notify)]">{t("train.baseMissing", { v0: String(missing.length) })}</span>
+        )}
+      </div>
+      {missing.length ? (
+        <pre className="rounded-[var(--rs)] bg-[var(--page-bg)] p-2.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto max-h-[240px] m-0">
+          {missing.join("\n")}
+        </pre>
+      ) : null}
+      <div className="text-[12.5px] text-[var(--help)]">{t("train.baseHint")}</div>
+    </div>,
+
+    // 2. 训练集
+    <div key="d" className="flex flex-col gap-[10px]">
+      <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-[13.5px] font-medium">{t("train.listFile")}</div>
+          <div className="text-[12px] text-[var(--help)] mt-1 break-all">{dataset || t("train.listDesc")}</div>
+        </div>
+        <Btn onClick={() => void pickDataset()}>{t("train.importList")}</Btn>
+      </div>
+
+      {/* 流水线第一步的入口。素材里带伴奏就直接拿去训，出来的音色会把
+          背景音一起学进去 —— 分离这一整套（separate.rs + worker + pymss）
+          早就在仓库里，之前只是没有任何地方能打开它。 */}
+      <div className="flex items-center justify-between gap-3 flex-wrap py-1">
+        <div className="min-w-0">
+          <div className="text-[13.5px] font-medium">{t("train.sepEntry")}</div>
+          <div className="text-[12px] text-[var(--help)] mt-1 leading-relaxed">{t("train.sepEntryDesc")}</div>
+        </div>
+        <Btn onClick={() => openTool("separate")}>{t("train.sepOpen")}</Btn>
+      </div>
+
+      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
+        <Field
+          label={t("train.expName")}
+          tip={t("train.expNameTip")}
+          control={
+            <input
+              value={exp}
+              onChange={(e) => setExp(e.target.value)}
+              placeholder={t("train.expNamePh")}
+              className="inline-flex w-full min-w-[230px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
+            />
+          }
+        />
+        <Field
+          label={t("train.outputDir")}
+          tip={t("train.outputDirTip")}
+          control={
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12.5px] text-[var(--help)] break-all">{outDir || t("train.outputDefault")}</span>
+              <Btn onClick={() => void pickOutput()}>{t("train.pickOutput")}</Btn>
+            </div>
+          }
+        />
+      </div>
+
+      {/* 数字全部来自 train_scan_dataset / train_inspect_dataset。
+          没有 ffprobe 时 available=false，那几项就写「—」，不编。 */}
+      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 grid grid-cols-2 max-[560px]:grid-cols-1 gap-x-6 gap-y-3">
+        {[
+          { label: t("train.statTotal"), value: scan ? String(scan.files ?? 0) : "—" },
+          { label: t("train.statHours"), value: inspect?.available ? `≈ ${hhmm(inspect.estimated_total_seconds)}` : "—" },
+          { label: t("train.statMedian"), value: inspect?.median_seconds ? `${inspect.median_seconds.toFixed(1)} s` : "—" },
+          { label: t("train.statLoud"), value: typeof inspect?.mean_volume_db === "number" ? `${inspect.mean_volume_db} dB` : "—" },
+        ].map((s) => (
+          <div key={s.label} className="flex items-center justify-between">
+            <span className="text-[12.5px] text-[var(--help)]">{s.label}</span>
+            <span className="text-[13.5px] tabular-nums font-medium">{s.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>,
+
+    // 3. 训练参数
+    <div key="h" className="flex flex-col gap-[10px]">
+      <div className="text-[12.5px] text-[var(--meta)] px-1">{t("train.sovitsTitle")}</div>
+      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
+        <PartFields part={sovits} defaults={sd} minEpochs={1} onChange={setSovits} />
+        <Field
+          label={t("train.lr")}
+          control={
+            <Slider
+              value={Math.round(lr * 100000) / 100000}
+              min={0.00001}
+              max={0.001}
+              step={0.00001}
+              defaultValue={sd?.learning_rate ?? 0.0001}
+              onChange={(v) => setLr(v)}
+              format={(v) => v.toExponential(1)}
+            />
+          }
+        />
+        {info?.lora ? (
+          <Field
+            label={t("train.loraRank")}
+            tip={t("train.loraRankTip")}
+            control={
+              <Select
+                value={String(loraRank)}
+                options={(sd?.lora_ranks ?? [16, 32, 64, 128]).map((r) => ({ id: String(r), label: String(r) }))}
+                onChange={(v) => setLoraRank(Number(v))}
+              />
+            }
+          />
+        ) : null}
+      </div>
+
+      <div className="text-[12.5px] text-[var(--meta)] px-1 mt-2">{t("train.gptTitle")}</div>
+      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
+        <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
+      </div>
+
+      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2">
+        {/* Toggle 自带 label/tip，不套 Field —— 套了会出现两个标题。 */}
+        <Toggle checked={resume} onChange={setResume} label={t("train.resume")} tip={t("train.resumeTip")} />
+      </div>
+    </div>,
+
+    // 4. 开始训练
+    <div key="s" className="rounded-[var(--r)] bg-[var(--group)] p-4">
+      <div className="grid grid-cols-2 min-[1180px]:grid-cols-4 gap-[8px]">
+        {STAGES.map((s) => {
+          const running = stage === s;
+          const done = doneStages.includes(s);
+          return (
+            <div
+              key={s}
+              className={[
+                "rounded-[var(--rs)] px-3 py-2.5 text-center text-[12.5px] transition-colors duration-200 inline-flex items-center justify-center gap-1.5",
+                running
+                  ? "bg-[var(--accent)] text-[var(--accent-ink)] font-semibold"
+                  : done
+                    ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                    : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink-muted)]",
+              ].join(" ")}
+            >
+              {done && !running ? <Icon name="check" size={12} /> : null}
+              {t(STAGE_KEYS[s])}
+            </div>
+          );
+        })}
+      </div>
+      <div className="h-[6px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden mt-3">
+        <div
+          className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-[var(--ease)]"
+          style={{ width: `${Math.min(100, progress)}%` }}
+        />
+      </div>
+      <div className="flex items-center gap-3 mt-3 flex-wrap">
+        {st.busy ? (
+          <Btn onClick={() => void invoke("train_cancel").catch(() => {})}>{t("train.cancel")}</Btn>
+        ) : (
+          <Btn primary busy={starting} disabled={!!blocked} onClick={() => void start()}>
+            {t("train.start")}
+          </Btn>
+        )}
+        <span className="text-[12px] text-[var(--meta)]">
+          {blocked || t("train.diskFree", { v0: gb(st.disk_free_bytes) })}
+        </span>
+        {finished ? <Btn onClick={() => goTo("models")}>{t("train.viewRole")}</Btn> : null}
+      </div>
+      {err ? (
+        <div className="mt-3">
+          <ErrorNote text={err} code={errCode} />
+        </div>
+      ) : null}
+    </div>,
+  ];
 
   return (
-    <PagePad>
+    <PagePad fill>
       <PageHead
         title={t("train.title")}
         sub={t("train.subtitle")}
@@ -324,7 +546,7 @@ export function TrainPage() {
       />
 
       {st.interrupted ? (
-        <div className=" rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent)] px-4 py-3 text-[12.5px] mb-4">
+        <div className="flex-none mt-[18px] rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent)] px-4 py-3 text-[12.5px]">
           {t("train.interrupted", {
             v0: String(st.interrupted.exp ?? ""),
             v1: String(st.interrupted.epoch ?? 0),
@@ -333,246 +555,106 @@ export function TrainPage() {
         </div>
       ) : null}
 
-      <Block title={t("train.modelTitle")} note={t("train.modelNote")}>
-        <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-          <Field
-            label={t("train.version")}
-            tip={t("train.versionTip")}
-            control={
-              <Select
-                full
-                value={version}
-                options={versions.map((v) => ({ id: v.id, label: v.lora ? `${v.id} · LoRA` : v.id }))}
-                onChange={setVersion}
-              />
-            }
-          />
-          {/* 判据是「这台机器上真的有这份权重」：引擎资源加上所选版本自己的底模。 */}
-          <div className="text-[12.5px]">
-            {baseReady ? (
-              <span className="text-[var(--accent)]">{t("train.baseReady")}</span>
-            ) : (
-              <span className="text-[var(--notify)]">
-                {t("train.baseMissing", { v0: String(missing.length) })}
-              </span>
-            )}
-          </div>
-          {missing.length ? (
-            <pre className="rounded-[var(--rs)] bg-[var(--page-bg)] p-2.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0">
-              {missing.join("\n")}
-            </pre>
-          ) : null}
-          <div className="text-[12.5px] text-[var(--help)]">{t("train.baseHint")}</div>
-        </div>
-      </Block>
-
-      <Block title={t("train.datasetTitle")} note={t("train.datasetNote")}>
-        <div className=" flex flex-col gap-[10px]">
-          <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-5 flex items-center justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <div className="text-[13.5px] font-medium">{t("train.listFile")}</div>
-              <div className="text-[12px] text-[var(--help)] mt-1 break-all">
-                {dataset || t("train.listDesc")}
-              </div>
-            </div>
-            <Btn onClick={() => void pickDataset()}>{t("train.importList")}</Btn>
-          </div>
-
-          {/* 流水线第一步的入口。素材里带伴奏就直接拿去训，出来的音色会把
-              背景音一起学进去 —— 分离这一整套（separate.rs + worker + pymss）
-              早就在仓库里，之前只是没有任何地方能打开它。 */}
-          <div className="flex items-center justify-between gap-3 flex-wrap py-1">
-            <div className="min-w-0">
-              <div className="text-[13.5px] font-medium">{t("train.sepEntry")}</div>
-              <div className="text-[12px] text-[var(--help)] mt-1 leading-relaxed">
-                {t("train.sepEntryDesc")}
-              </div>
-            </div>
-            <Btn onClick={() => openTool("separate")}>{t("train.sepOpen")}</Btn>
-          </div>
-
-          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-            <Field
-              label={t("train.expName")}
-              tip={t("train.expNameTip")}
-              control={
-                <input
-                  value={exp}
-                  onChange={(e) => setExp(e.target.value)}
-                  placeholder={t("train.expNamePh")}
-                  className="inline-flex w-full min-w-[230px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
-                />
-              }
-            />
-            <Field
-              label={t("train.outputDir")}
-              tip={t("train.outputDirTip")}
-              control={
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[12.5px] text-[var(--help)] break-all">
-                    {outDir || t("train.outputDefault")}
-                  </span>
-                  <Btn onClick={() => void pickOutput()}>{t("train.pickOutput")}</Btn>
-                </div>
-              }
-            />
-          </div>
-
-          {/* 数字全部来自 train_scan_dataset / train_inspect_dataset。
-              没有 ffprobe 时 available=false，那几项就写「—」，不编。 */}
-          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 grid grid-cols-2 max-[560px]:grid-cols-1 gap-x-6 gap-y-3">
-            {[
-              { label: t("train.statTotal"), value: scan ? String(scan.files ?? 0) : "—" },
-              {
-                label: t("train.statHours"),
-                value: inspect?.available ? `≈ ${hhmm(inspect.estimated_total_seconds)}` : "—",
-              },
-              {
-                label: t("train.statMedian"),
-                value: inspect?.median_seconds ? `${inspect.median_seconds.toFixed(1)} s` : "—",
-              },
-              {
-                label: t("train.statLoud"),
-                value:
-                  typeof inspect?.mean_volume_db === "number"
-                    ? `${inspect.mean_volume_db} dB`
-                    : "—",
-              },
-            ].map((s) => (
-              <div key={s.label} className="flex items-center justify-between">
-                <span className="text-[12.5px] text-[var(--help)]">{s.label}</span>
-                <span className="text-[13.5px] tabular-nums font-medium">{s.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Block>
-
-      <Block
-        title={t("train.hyperTitle")}
-        action={<Btn onClick={applyDefaults}>{t("train.resetDefaults")}</Btn>}
-      >
-        <div className="flex flex-col gap-[10px]">
-          <div className="text-[12.5px] text-[var(--meta)] px-1">{t("train.sovitsTitle")}</div>
-          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-            <PartFields
-              part={sovits}
-              defaults={sd}
-              minEpochs={1}
-              onChange={setSovits}
-            />
-            <Field
-              label={t("train.lr")}
-              control={
-                <Slider
-                  value={Math.round(lr * 100000) / 100000}
-                  min={0.00001}
-                  max={0.001}
-                  step={0.00001}
-                  defaultValue={sd?.learning_rate ?? 0.0001}
-                  onChange={(v) => setLr(v)}
-                  format={(v) => v.toExponential(1)}
-                />
-              }
-            />
-            {info?.lora ? (
-              <Field
-                label={t("train.loraRank")}
-                tip={t("train.loraRankTip")}
-                control={
-                  <Select
-                    value={String(loraRank)}
-                    options={(sd?.lora_ranks ?? [16, 32, 64, 128]).map((r) => ({
-                      id: String(r),
-                      label: String(r),
-                    }))}
-                    onChange={(v) => setLoraRank(Number(v))}
-                  />
-                }
-              />
-            ) : null}
-          </div>
-
-          <div className="text-[12.5px] text-[var(--meta)] px-1 mt-2">{t("train.gptTitle")}</div>
-          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-            <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
-          </div>
-
-          <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2">
-            {/* Toggle 自带 label/tip，不套 Field —— 套了会出现两个标题。 */}
-            <Toggle
-              checked={resume}
-              onChange={setResume}
-              label={t("train.resume")}
-              tip={t("train.resumeTip")}
-            />
-          </div>
-        </div>
-      </Block>
-
-      <Block title={t("train.pipelineTitle")}>
-        <div className="">
-          <div className="grid grid-cols-4 gap-[8px]">
-            {STAGES.map((s) => {
-              const running = stage === s;
-              const done = doneStages.includes(s);
-              return (
-                <div
-                  key={s}
+      <div className="mt-[22px] flex-1 min-h-0 grid gap-[18px] grid-cols-1 min-[900px]:grid-cols-[minmax(190px,220px)_minmax(0,1fr)_minmax(260px,320px)] min-[900px]:pb-[22px]">
+        {/* 左栏：步骤 */}
+        <nav className="min-h-0 flex flex-col gap-1.5 max-[899px]:grid max-[899px]:grid-cols-2">
+          {steps.map((s, i) => {
+            const on = step === i;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setStep(i)}
+                className={[
+                  "w-full text-left border-0 rounded-[var(--r)] px-3 py-2.5 flex items-center gap-2.5 cursor-pointer transition-colors duration-150",
+                  on ? "bg-[var(--accent-soft)]" : "bg-transparent hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
+                ].join(" ")}
+              >
+                <span
                   className={[
-                    "rounded-[var(--rs)] px-3 py-2.5 text-center text-[12.5px] transition-colors duration-200",
-                    running
-                      ? "bg-[var(--accent)] text-[var(--accent-ink)] font-semibold"
-                      : done
-                        ? "bg-[var(--accent-soft)] text-[var(--accent)]"
-                        : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink-muted)]",
+                    "shrink-0 w-[22px] h-[22px] rounded-full grid place-items-center text-[11.5px] font-semibold tabular-nums",
+                    s.ok
+                      ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                      : on
+                        ? "bg-[var(--stage)] text-[var(--accent)]"
+                        : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
                   ].join(" ")}
                 >
-                  {done && !running ? "✓ " : ""}
-                  {t(STAGE_KEYS[s])}
-                </div>
-              );
-            })}
-          </div>
-          <div className="h-[6px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden mt-3">
-            <div
-              className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-[var(--ease)]"
-              style={{ width: `${Math.min(100, progress)}%` }}
-            />
-          </div>
-          <div className="flex items-center gap-3 mt-3 flex-wrap">
-            {st.busy ? (
-              <Btn onClick={() => void invoke("train_cancel").catch(() => {})}>
-                {t("train.cancel")}
-              </Btn>
-            ) : (
-              <Btn primary busy={starting} disabled={!!blocked} onClick={() => void start()}>
-                {t("train.start")}
-              </Btn>
-            )}
-            <span className="text-[12px] text-[var(--meta)]">
-              {blocked || t("train.diskFree", { v0: gb(st.disk_free_bytes) })}
-            </span>
-            {!st.busy && doneStages.length === STAGES.length ? (
-              <Btn onClick={() => goTo("models")}>{t("train.viewRole")}</Btn>
+                  {s.ok ? <Icon name="check" size={12} /> : i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={["block text-[13px] truncate", on ? "font-semibold text-[var(--accent)]" : ""].join(" ")}>{s.title}</span>
+                  <span className="block text-[11.5px] text-[var(--meta)] truncate mt-0.5 tabular-nums">{s.sub}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* 中栏：当前步骤 */}
+        <div className="min-h-0 flex flex-col min-[900px]:overflow-y-auto min-[900px]:overscroll-contain min-[900px]:pr-1">
+          <div className="flex-none flex items-center gap-2 mb-2.5 min-h-[30px]">
+            <h3 className="text-[15.5px] font-semibold m-0">{steps[step].title}</h3>
+            {step === 0 ? <span className="text-[12px] text-[var(--meta)]">{t("train.modelNote")}</span> : null}
+            {step === 1 ? <span className="text-[12px] text-[var(--meta)]">{t("train.datasetNote")}</span> : null}
+            {step === 2 ? (
+              <span className="ml-auto">
+                <Btn onClick={applyDefaults}>{t("train.resetDefaults")}</Btn>
+              </span>
             ) : null}
           </div>
-          {err ? (
-            <div className="mt-3">
-              <ErrorNote text={err} code={errCode} />
-            </div>
-          ) : null}
+          <Swap k={String(step)}>{stepBody[step]}</Swap>
+          <div className="flex-none flex items-center gap-2 mt-4">
+            {step > 0 ? <Btn onClick={() => setStep(step - 1)}>{t("train.prev")}</Btn> : null}
+            {step < steps.length - 1 ? (
+              <span className="ml-auto">
+                <Btn primary={steps[step].ok} onClick={() => setStep(step + 1)}>{t("train.next")}</Btn>
+              </span>
+            ) : null}
+          </div>
         </div>
-      </Block>
 
-      <Block title={t("train.logTitle")} note={t("train.logNote")}>
-        <pre
-          ref={logRef}
-          className=" rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto max-h-[220px] m-0 whitespace-pre-wrap tabular-nums"
-        >
-          {log.length ? log.join("\n") : t("train.logEmpty")}
-        </pre>
-      </Block>
+        {/* 右栏：状态与日志 */}
+        <div className="min-h-[360px] min-[900px]:min-h-0 flex flex-col">
+          <div className="flex-none flex items-center gap-2 mb-2.5 min-h-[30px]">
+            <h3 className="text-[15.5px] font-semibold m-0">{t("train.statusTitle")}</h3>
+          </div>
+          <div className="flex-none rounded-[var(--r)] bg-[var(--group)] p-3.5 flex flex-col gap-2.5">
+            {statusRows.map((r) => (
+              <div key={r.label} className="flex items-center gap-2 text-[12.5px]">
+                <span className={["w-[7px] h-[7px] rounded-full shrink-0", r.ok ? "bg-[var(--accent)]" : "bg-[var(--notify)]"].join(" ")} />
+                <span className="text-[var(--help)]">{r.label}</span>
+                <span className="ml-auto tabular-nums truncate">{r.value}</span>
+              </div>
+            ))}
+            {st.busy ? (
+              <div className="pt-2.5 border-t border-[var(--hairline)]">
+                <div className="flex items-center justify-between text-[12px] mb-1.5">
+                  <span className="text-[var(--accent)]">{stage ? t(STAGE_KEYS[stage]) : t("train.start")}</span>
+                  <span className="tabular-nums">{progress}%</span>
+                </div>
+                <div className="h-[5px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden">
+                  <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150" style={{ width: `${Math.min(100, progress)}%` }} />
+                </div>
+              </div>
+            ) : (
+              <div className="pt-2.5 border-t border-[var(--hairline)] text-[12px] leading-relaxed text-[var(--help)]">
+                {blocked || t("train.statusReady")}
+              </div>
+            )}
+          </div>
+          <div className="flex-none flex items-center gap-2 mt-4 mb-2.5">
+            <h3 className="text-[15.5px] font-semibold m-0">{t("train.logTitle")}</h3>
+            <span className="text-[12px] text-[var(--meta)] truncate">{t("train.logNote")}</span>
+          </div>
+          <pre
+            ref={logRef}
+            className="flex-1 min-h-[160px] rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0 whitespace-pre-wrap tabular-nums"
+          >
+            {log.length ? log.join("\n") : t("train.logEmpty")}
+          </pre>
+        </div>
+      </div>
     </PagePad>
   );
 }

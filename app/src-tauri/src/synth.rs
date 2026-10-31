@@ -77,7 +77,82 @@ fn stop_file(root: &Path) -> PathBuf {
     paths::update_cache(root).join("synth_stop")
 }
 
-/// 最近的合成产物，按修改时间倒序。首页「最近合成」用。
+/// 合成记录：与音频同名的 `.json`，存文本、角色、参数（含实际种子）。
+/// 合成页右栏的历史与「重新使用这组参数」都读它。写失败不影响音频本身。
+fn record_path(audio: &Path) -> PathBuf {
+    audio.with_extension("json")
+}
+
+fn write_record(audio: &Path, rec: &Value) {
+    if let Ok(s) = serde_json::to_string_pretty(rec) {
+        let _ = std::fs::write(record_path(audio), s);
+    }
+}
+
+fn read_record(audio: &Path) -> Value {
+    std::fs::read_to_string(record_path(audio))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(Value::Null)
+}
+
+/// 只认输出目录里的直接子文件：前端传来的路径不能借改名、删除碰到别处。
+fn owned_output(root: &Path, path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path.trim());
+    let dir = out_dir(root);
+    let ok = p.is_file()
+        && p.parent()
+            .and_then(|d| d.canonicalize().ok())
+            .zip(dir.canonicalize().ok())
+            .map(|(a, b)| a == b)
+            .unwrap_or(false);
+    if ok {
+        Ok(p)
+    } else {
+        Err(crate::i18n::t("s.synthErrNotOutput"))
+    }
+}
+
+/// 改名：音频与记录一起改，扩展名保持不变。
+pub fn rename_output(root: &Path, path: &str, name: &str) -> Result<String, String> {
+    let src = owned_output(root, path)?;
+    let name = name.trim();
+    let bad = name.is_empty()
+        || name.len() > 120
+        || name
+            .chars()
+            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control());
+    if bad {
+        return Err(crate::i18n::t("s.synthErrBadName"));
+    }
+    let ext = src.extension().and_then(|x| x.to_str()).unwrap_or("wav");
+    let dst = src.with_file_name(format!("{name}.{ext}"));
+    if dst == src {
+        return Ok(dst.to_string_lossy().into_owned());
+    }
+    if dst.exists() {
+        return Err(crate::i18n::t("s.synthErrNameTaken"));
+    }
+    std::fs::rename(&src, &dst).map_err(|e| e.to_string())?;
+    let rec = record_path(&src);
+    if rec.is_file() {
+        let _ = std::fs::rename(&rec, record_path(&dst));
+    }
+    Ok(dst.to_string_lossy().into_owned())
+}
+
+/// 删除：移入回收站，音频与记录一起。
+pub fn delete_output(root: &Path, path: &str) -> Result<(), String> {
+    let src = owned_output(root, path)?;
+    let rec = record_path(&src);
+    trash::delete(&src).map_err(|e| e.to_string())?;
+    if rec.is_file() {
+        let _ = trash::delete(&rec);
+    }
+    Ok(())
+}
+
+/// 最近的合成产物，按修改时间倒序。首页「最近合成」与合成页右栏用。
 pub fn recent_outputs(root: &Path, limit: usize) -> Value {
     let dir = out_dir(root);
     let mut rows: Vec<(std::time::SystemTime, String, String)> = Vec::new();
@@ -110,6 +185,7 @@ pub fn recent_outputs(root: &Path, limit: usize) -> Value {
         .map(|(mtime, name, path)| {
             json!({
                 "name": name,
+                "record": read_record(Path::new(&path)),
                 "path": path,
                 "mtime": mtime
                     .duration_since(std::time::UNIX_EPOCH)
@@ -401,6 +477,7 @@ pub fn synthesize(
     ref_lang: &str,
     params: &Value,
     streaming: bool,
+    opts: &Value,
 ) -> Result<Value, String> {
     {
         let mut g = BUSY.lock().unwrap_or_else(|e| e.into_inner());
@@ -412,6 +489,7 @@ pub fn synthesize(
     cancel_flag().store(false, Ordering::SeqCst);
     let out = synthesize_inner(
         app, root, role_id, role_dir, version, text, ref_wav, ref_text, ref_lang, params, streaming,
+        opts,
     );
     *BUSY.lock().unwrap_or_else(|e| e.into_inner()) = false;
     let _ = std::fs::remove_file(stop_file(root));
@@ -432,6 +510,7 @@ fn synthesize_inner(
     ref_lang: &str,
     params: &Value,
     streaming: bool,
+    opts: &Value,
 ) -> Result<Value, String> {
     if !paths::runtime_ready(root) {
         return Err(crate::i18n::t("s.synthErrNoRuntime"));
@@ -446,7 +525,8 @@ fn synthesize_inner(
             ));
         }
     }
-    let job = format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+    // 带毫秒：批量合成一秒内可能出好几条。
+    let job = format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S_%3f"));
     let stop = stop_file(root);
     let _ = std::fs::remove_file(&stop);
 
@@ -511,7 +591,8 @@ fn synthesize_inner(
     }
 
     // 2) synth：分片经事件转发，done/error 收尾。
-    let out_path = out_dir(root).join(format!("{job}.wav"));
+    let format = opts.get("format").and_then(|x| x.as_str()).unwrap_or("wav");
+    let out_path = out_dir(root).join(format!("{job}.{format}"));
     send(
         resident,
         &json!({
@@ -523,6 +604,8 @@ fn synthesize_inner(
             "ref_lang": ref_lang,
             "params": params,
             "streaming": streaming,
+            "aux_refs": opts.get("aux_refs").cloned().unwrap_or(json!([])),
+            "format": format,
             "out_dir": out_dir(root).to_string_lossy(),
             "stop_file": stop.to_string_lossy(),
         }),
@@ -557,6 +640,24 @@ fn synthesize_inner(
             }
             "done" => {
                 let _ = app.emit("synth-done", &v);
+                let out = v
+                    .get("out")
+                    .and_then(|x| x.as_str())
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| out_path.clone());
+                write_record(
+                    &out,
+                    &json!({
+                        "text": text,
+                        "role_id": role_id,
+                        "role_name": opts.get("role_name").cloned().unwrap_or(json!(role_id)),
+                        "ref_wav": ref_wav,
+                        "params": params,
+                        "audio_sec": v.get("audio_sec").cloned().unwrap_or(json!(0)),
+                        "t_first_ms": v.get("t_first_ms").cloned().unwrap_or(json!(0)),
+                        "t_total_ms": v.get("t_total_ms").cloned().unwrap_or(json!(0)),
+                    }),
+                );
                 return Ok(json!({
                     "ok": true,
                     "job": job,

@@ -16,7 +16,10 @@
     {"cmd":"synth",  "job":"<id>", "text":"...",
      "ref_wav":"...", "ref_text":"...", "ref_lang":"ZH",
      "params":{"speed":1.0,"top_k":15,"top_p":1.0,"temperature":1.0,
-               "repetition_penalty":1.35},
+               "repetition_penalty":1.35,"text_lang":"auto","text_split_method":"cut1",
+               "fragment_interval":0.3,"seed":-1,"sample_steps":32,
+               "super_sampling":false,"batch_size":1},
+     "aux_refs":["..."], "format":"wav|flac",
      "streaming":true, "out_dir":"...",
      "cnhubert":"...", "bert":"..."}
     {"cmd":"unload", "role_id":"..."}
@@ -26,7 +29,8 @@ stdout 每行一条 JSON::
 
     {"event":"ready",    "role":"<id>", "cached":bool, "device":"..."}
     {"event":"chunk",    "job":"<id>", "seq":n, "sec":12.3}
-    {"event":"done",     "job":"<id>", "t_first_ms":n, "t_total_ms":n, "out":"...", "sec":12.3}
+    {"event":"done",     "job":"<id>", "t_first_ms":n, "t_total_ms":n, "out":"...", "sec":12.3,
+     "audio_sec":4.2}
     {"event":"error",    "job":"<id>", "message":"...", "code":"oom|cancelled|..."}
     {"event":"unloaded", "role":"<id>"}
     {"event":"bye"}
@@ -96,6 +100,11 @@ activate(change_cwd=True)
 # 看不见）。engine_assets.rs 的 engine_core_files 与这里必须对齐。
 DEFAULT_CNHUBERT = "GPT_SoVITS/pretrained_models/chinese-hubert-base"
 DEFAULT_BERT = "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large"
+
+# 上游 text_segmentation_method.py 注册的切句方式。
+SPLIT_METHODS = {"cut0", "cut1", "cut2", "cut3", "cut4", "cut5"}
+# 导出格式。wav 用标准库写；flac 走 soundfile（上游依赖里已有）。
+OUT_FORMATS = {"wav", "flac"}
 
 
 def emit(**kw) -> None:
@@ -338,11 +347,22 @@ class SynthEngine:
         streaming = bool(req.get("streaming", True))
         out_dir = Path(str(req.get("out_dir") or "."))
         out_dir.mkdir(parents=True, exist_ok=True)
-        final = out_dir / f"{job}.wav"
+        fmt = str(req.get("format") or "wav").lower()
+        if fmt not in OUT_FORMATS:
+            fmt = "wav"
+        final = out_dir / f"{job}.{fmt}"
+
+        # 切句方式。未指定时：上游默认 "cut1"（按标点凑四句），长文本会切得
+        # 很粗；超过一屏就换成 "cut5"（逐标点切），首片来得更快也更好取消。
+        # 取值见上游 text_segmentation_method.py，写别的名字会被它拒。
+        split = str(params.get("text_split_method") or "")
+        if split not in SPLIT_METHODS:
+            split = "cut5" if len(text) > 100 else "cut1"
+        aux = [str(x) for x in (req.get("aux_refs") or []) if str(x).strip()]
 
         request = {
             "text": text,
-            "text_lang": "auto",
+            "text_lang": str(params.get("text_lang") or "auto"),
             "ref_audio_path": str(req.get("ref_wav") or ""),
             "prompt_text": str(req.get("ref_text") or ""),
             "prompt_lang": str(req.get("ref_lang") or "zh").lower() or "zh",
@@ -351,15 +371,18 @@ class SynthEngine:
             "temperature": float(params.get("temperature", 1.0)),
             "repetition_penalty": float(params.get("repetition_penalty", 1.35)),
             "speed_factor": float(params.get("speed", 1.0)),
+            "fragment_interval": float(params.get("fragment_interval", 0.3)),
+            "batch_size": max(1, int(params.get("batch_size", 1))),
+            "super_sampling": bool(params.get("super_sampling", False)),
             "streaming_mode": bool(streaming),
-            "seed": -1,
+            "seed": int(params.get("seed", -1)),
             "parallel_infer": True,
-            # 切句方式。上游默认 "cut1"（按标点凑四句），长文本会切得很粗；
-            # 超过一屏就换成 "cut5"（逐标点切），首片来得更快也更好取消。
-            # 取值见上游 text_segmentation_method.py，写别的名字会被它拒。
-            "text_split_method": "cut5" if len(text) > 100 else "cut1",
-            "aux_ref_audio_paths": [],
+            "text_split_method": split,
+            "aux_ref_audio_paths": aux,
         }
+        # 采样步数的缺省值随版本变（v5turbo 是 4，其余 32），没指定就交给上游。
+        if params.get("sample_steps") not in (None, ""):
+            request["sample_steps"] = int(params["sample_steps"])
         # 注：不要往这里塞 media_type / split_sentence —— `run()` 的入参表里
         # 没有这两个键，塞了会被静默丢弃，看着像生效了其实没有。
 
@@ -405,15 +428,31 @@ class SynthEngine:
             emit(event="error", job=job, message="没有产出任何音频", code="empty")
             return
 
-        _write_wav(final, frames, sr)
+        try:
+            _write_audio(final, frames, sr, fmt)
+        except Exception as exc:  # noqa: BLE001
+            emit(event="error", job=job, message="写入音频失败", code="write_failed", detail=str(exc))
+            return
         emit(
             event="done",
+            audio_sec=round(sum(len(c) for c in frames) / 2 / sr, 2),
             job=job,
             t_first_ms=first_ms,
             t_total_ms=int((time.perf_counter() - t0) * 1000),
             out=str(final),
             sec=round(time.perf_counter() - t0, 2),
         )
+
+
+def _write_audio(path: Path, chunks: list[bytes], sr: int, fmt: str) -> None:
+    if fmt == "wav":
+        _write_wav(path, chunks, sr)
+        return
+    import numpy as np
+    import soundfile
+
+    data = np.frombuffer(b"".join(chunks), dtype=np.int16)
+    soundfile.write(str(path), data, int(sr), format=fmt.upper())
 
 
 def _write_wav(path: Path, chunks: list[bytes], sr: int) -> None:

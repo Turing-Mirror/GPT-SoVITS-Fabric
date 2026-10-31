@@ -814,6 +814,7 @@ async fn synth_start(
     ref_lang: Option<String>,
     params: Option<Value>,
     streaming: Option<bool>,
+    opts: Option<Value>,
 ) -> Result<Value, String> {
     let root = root_clone(&state)?;
     let role_dir = PathBuf::from(role_dir.trim());
@@ -830,6 +831,7 @@ async fn synth_start(
             ref_lang.as_deref().unwrap_or("zh"),
             params.as_ref().unwrap_or(&json!({})),
             streaming.unwrap_or(true),
+            opts.as_ref().unwrap_or(&json!({})),
         )
     })
     .await
@@ -851,9 +853,23 @@ fn synth_reveal_output(state: State<'_, Mutex<AppState>>) -> Result<(), String> 
 
 /// 首页「最近合成」：输出目录里最新的几条产物。
 #[tauri::command]
-fn synth_recent(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+fn synth_recent(state: State<'_, Mutex<AppState>>, limit: Option<usize>) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    Ok(synth::recent_outputs(&root, 8))
+    Ok(synth::recent_outputs(&root, limit.unwrap_or(8).min(500)))
+}
+
+/// 合成页右栏：改名。
+#[tauri::command]
+fn synth_rename(state: State<'_, Mutex<AppState>>, path: String, name: String) -> Result<String, String> {
+    let root = root_clone(&state)?;
+    synth::rename_output(&root, &path, &name)
+}
+
+/// 合成页右栏：删除（移入回收站）。
+#[tauri::command]
+fn synth_delete(state: State<'_, Mutex<AppState>>, path: String) -> Result<(), String> {
+    let root = root_clone(&state)?;
+    synth::delete_output(&root, &path)
 }
 
 /// 最近合成条目的「在文件夹中显示」。
@@ -1404,6 +1420,8 @@ pub fn run() {
             synth_cancel,
             synth_reveal_output,
             synth_recent,
+            synth_rename,
+            synth_delete,
             synth_reveal_file,
             extra_list,
             extra_download,

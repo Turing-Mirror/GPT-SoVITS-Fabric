@@ -345,7 +345,15 @@ export default function App() {
       if (!cfg || cancelled) return;
       // null/undefined = never answered. false = declined, do not ask again.
       if (cfg.telemetry_opt_in !== null && cfg.telemetry_opt_in !== undefined) return;
-      timer = window.setTimeout(() => !cancelled && setAskTelemetry(true), 60_000);
+      // 计时期间用户可能已经答过（上一次合成排的计时器先弹了），到点再查一次。
+      timer = window.setTimeout(() => {
+        void invoke<Record<string, unknown>>("config_get")
+          .then((now) => {
+            const answered = now?.telemetry_opt_in !== null && now?.telemetry_opt_in !== undefined;
+            if (!cancelled && !answered) setAskTelemetry(true);
+          })
+          .catch(() => {});
+      }, 60_000);
     })();
     return () => {
       cancelled = true;

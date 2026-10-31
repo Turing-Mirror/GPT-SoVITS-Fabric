@@ -30,6 +30,15 @@ pub fn defaults() -> Map<String, Value> {
     m.insert("synth_top_p".into(), json!(1.0));
     m.insert("synth_temperature".into(), json!(1.0));
     m.insert("synth_rep_penalty".into(), json!(1.35));
+    m.insert("synth_text_lang".into(), json!("auto"));
+    m.insert("synth_split".into(), json!(""));
+    m.insert("synth_fragment_interval".into(), json!(0.3));
+    m.insert("synth_seed".into(), json!(-1));
+    m.insert("synth_seed_fixed".into(), json!(false));
+    m.insert("synth_sample_steps".into(), json!(""));
+    m.insert("synth_super_sampling".into(), json!(false));
+    m.insert("synth_batch_size".into(), json!(1));
+    m.insert("synth_format".into(), json!("wav"));
     // 主显卡序号。-1 = 自动（交给 torch 自己挑）。
     //
     // 不进 COLD_KEYS：worker 不读这个键，它是通过进程环境变量

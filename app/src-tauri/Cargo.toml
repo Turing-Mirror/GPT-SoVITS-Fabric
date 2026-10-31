@@ -40,6 +40,7 @@ tar = "0.4"
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
+trash = "=5.2.6"
 regex = "1"
 # Local-time stamps for diagnostics / consult filenames (support reads these)
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
