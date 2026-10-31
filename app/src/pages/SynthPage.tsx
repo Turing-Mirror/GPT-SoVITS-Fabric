@@ -522,7 +522,7 @@ export function SynthPage() {
                     "active:scale-[0.97]",
                     on
                       ? "shadow-[inset_0_0_0_2px_var(--accent)] bg-[var(--accent-soft)]"
-                      : "bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)]",
+                      : "bg-[var(--group)] hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]",
                   ].join(" ")}
                 >
                   <div

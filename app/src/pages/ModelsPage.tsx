@@ -216,7 +216,7 @@ export function ModelsPage({
                   return (
                     <div
                       key={r.id}
-                      className="group rise relative rounded-[var(--r)] bg-[var(--group)] p-2.5 cursor-pointer transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--ink)_5%,transparent)]"
+                      className="group rise relative rounded-[var(--r)] bg-[var(--group)] p-2.5 cursor-pointer transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]"
                       style={stagger(i)}
                       onClick={() => synthWithRole(r.id)}
                       onContextMenu={(e) => menu.open(e, itemsFor(r))}
