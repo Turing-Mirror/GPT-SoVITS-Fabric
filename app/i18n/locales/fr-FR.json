@@ -1288,7 +1288,7 @@
       "home": "Retour à l’accueil",
       "reload": "Recharger",
       "resetUi": "Rétablir l’interface par défaut",
-      "resetNote": "Rétablir l’interface ne réinitialise que l’apparence et la disposition. Aucune donnée n’est supprimée.",
+      "resetNote": "Restaurer l'interface par défaut ne réinitialise que l'apparence et la disposition. Vos données ne sont pas touchées.",
       "details": "Détails de l’erreur",
       "hint": "Pour signaler le problème, joignez le texte ci-dessous.",
       "copy": "Copier les détails",

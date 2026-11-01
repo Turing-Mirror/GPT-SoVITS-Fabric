@@ -1288,7 +1288,7 @@
       "home": "Volver al inicio",
       "reload": "Recargar",
       "resetUi": "Restaurar la interfaz predeterminada",
-      "resetNote": "Restaurar la interfaz solo recupera el aspecto y la disposición predeterminados. No se elimina ningún dato.",
+      "resetNote": "Restaurar la interfaz predeterminada solo restablece la apariencia y la disposición. Sus datos no se ven afectados.",
       "details": "Detalles del error",
       "hint": "Al informar del problema, incluye el texto siguiente.",
       "copy": "Copiar detalles del error",

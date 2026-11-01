@@ -1288,7 +1288,7 @@
       "home": "Back to Home",
       "reload": "Reload",
       "resetUi": "Restore default interface",
-      "resetNote": "Restoring the default interface only resets the look and layout. No data is deleted.",
+      "resetNote": "Restoring the default interface resets only the appearance and layout. Your data is not affected.",
       "details": "Error details",
       "hint": "When reporting the problem, please include the text below.",
       "copy": "Copy error details",
