@@ -34,6 +34,7 @@ struct Resident {
 
 static RESIDENT: Mutex<Option<Resident>> = Mutex::new(None);
 static BUSY: Mutex<bool> = Mutex::new(false);
+static OWNER: Mutex<Option<String>> = Mutex::new(None);
 static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 /// worker 最近一次 ready 时报的设备（"cuda:0" / "mps" / "cpu"）。
 /// 「其他」页的计算后端行读这个 —— 合成没跑过就没有后端可言，空着。
@@ -119,9 +120,9 @@ pub fn rename_output(root: &Path, path: &str, name: &str) -> Result<String, Stri
     let name = name.trim();
     let bad = name.is_empty()
         || name.len() > 120
-        || name
-            .chars()
-            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control());
+        || name.chars().any(|c| {
+            matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control()
+        });
     if bad {
         return Err(crate::i18n::t("s.synthErrBadName"));
     }
@@ -162,7 +163,12 @@ pub fn recent_outputs(root: &Path, limit: usize) -> Value {
             let is_audio = p
                 .extension()
                 .and_then(|x| x.to_str())
-                .map(|x| matches!(x.to_ascii_lowercase().as_str(), "wav" | "flac" | "mp3" | "ogg"))
+                .map(|x| {
+                    matches!(
+                        x.to_ascii_lowercase().as_str(),
+                        "wav" | "flac" | "mp3" | "ogg"
+                    )
+                })
                 .unwrap_or(false);
             if !p.is_file() || !is_audio {
                 continue;
@@ -173,7 +179,10 @@ pub fn recent_outputs(root: &Path, limit: usize) -> Value {
                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
             rows.push((
                 mtime,
-                p.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+                p.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
                 p.to_string_lossy().into_owned(),
             ));
         }
@@ -255,8 +264,14 @@ fn ensure_worker(root: &Path) -> Result<(), String> {
         .spawn()
         .map_err(|e| crate::i18n::te("s.4f592d4fc2", &e))?;
     let pid = child.id();
-    let stdin = child.stdin.take().ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
-    let stdout = child.stdout.take().ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
     let _guard = crate::worker::ToolPidGuard::new(pid);
 
     let mut resident = Resident {
@@ -374,7 +389,17 @@ pub fn is_busy() -> bool {
 }
 
 pub fn cancel() {
-    cancel_flag().store(true, Ordering::SeqCst);
+    cancel_for(None);
+}
+pub fn cancel_for(owner: Option<&str>) {
+    let busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+    if *busy && OWNER.lock().unwrap_or_else(|e| e.into_inner()).as_deref() == owner {
+        cancel_flag().store(true, Ordering::SeqCst);
+    }
+}
+fn emit_progress(app: &AppHandle, event: &str, mut value: Value) {
+    value["owner"] = json!(OWNER.lock().unwrap_or_else(|e| e.into_inner()).clone());
+    let _ = app.emit(event, value);
 }
 
 /// 本地角色包清单：扫 `User_Data/characters/*/config.json`。
@@ -485,15 +510,21 @@ pub fn synthesize(
             return Err(crate::i18n::t("s.synthErrBusy"));
         }
         *g = true;
+        *OWNER.lock().unwrap_or_else(|e| e.into_inner()) =
+            opts["owner"].as_str().map(str::to_owned);
+        cancel_flag().store(false, Ordering::SeqCst);
     }
-    cancel_flag().store(false, Ordering::SeqCst);
     let out = synthesize_inner(
-        app, root, role_id, role_dir, version, text, ref_wav, ref_text, ref_lang, params, streaming,
-        opts,
+        app, root, role_id, role_dir, version, text, ref_wav, ref_text, ref_lang, params,
+        streaming, opts,
     );
-    *BUSY.lock().unwrap_or_else(|e| e.into_inner()) = false;
-    let _ = std::fs::remove_file(stop_file(root));
-    cancel_flag().store(false, Ordering::SeqCst);
+    {
+        let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = std::fs::remove_file(stop_file(root));
+        cancel_flag().store(false, Ordering::SeqCst);
+        *OWNER.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *busy = false;
+    }
     out
 }
 
@@ -526,7 +557,15 @@ fn synthesize_inner(
         }
     }
     // 带毫秒：批量合成一秒内可能出好几条。
-    let job = format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S_%3f"));
+    let job = opts["job_id"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S_%3f")));
+    let output = opts["output_dir"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| out_dir(root));
+    std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     let stop = stop_file(root);
     let _ = std::fs::remove_file(&stop);
 
@@ -566,7 +605,9 @@ fn synthesize_inner(
         }
         let line = read_line_with_deadline(resident, Duration::from_secs(180))
             .map_err(|_| crate::i18n::t("s.synthErrLoadTimeout"))?;
-        let Some(v) = parse_event(&line) else { continue };
+        let Some(v) = parse_event(&line) else {
+            continue;
+        };
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "ready" => {
                 if let Some(d) = v.get("device").and_then(|x| x.as_str()) {
@@ -592,7 +633,7 @@ fn synthesize_inner(
 
     // 2) synth：分片经事件转发，done/error 收尾。
     let format = opts.get("format").and_then(|x| x.as_str()).unwrap_or("wav");
-    let out_path = out_dir(root).join(format!("{job}.{format}"));
+    let out_path = output.join(format!("{job}.{format}"));
     send(
         resident,
         &json!({
@@ -606,7 +647,7 @@ fn synthesize_inner(
             "streaming": streaming,
             "aux_refs": opts.get("aux_refs").cloned().unwrap_or(json!([])),
             "format": format,
-            "out_dir": out_dir(root).to_string_lossy(),
+            "out_dir": output.to_string_lossy(),
             "stop_file": stop.to_string_lossy(),
         }),
     )?;
@@ -633,13 +674,15 @@ fn synthesize_inner(
                 return Err(crate::i18n::t("s.synthErrWorkerGone"));
             }
         };
-        let Some(v) = parse_event(&line) else { continue };
+        let Some(v) = parse_event(&line) else {
+            continue;
+        };
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "chunk" => {
-                let _ = app.emit("synth-chunk", v);
+                emit_progress(app, "synth-chunk", v);
             }
             "done" => {
-                let _ = app.emit("synth-done", &v);
+                emit_progress(app, "synth-done", v.clone());
                 let out = v
                     .get("out")
                     .and_then(|x| x.as_str())
@@ -669,7 +712,7 @@ fn synthesize_inner(
             "error" => {
                 let code = v.get("code").and_then(|x| x.as_str()).unwrap_or("");
                 if code == "cancelled" || cancelled {
-                    let _ = app.emit("synth-error", json!({"job": job, "code": "cancelled"}));
+                    emit_progress(app, "synth-error", json!({"job": job, "code": "cancelled"}));
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
                 let msg = crate::i18n::t_worker_msg(&v);
@@ -679,7 +722,11 @@ fn synthesize_inner(
                 } else {
                     format!("{msg}（{detail}）")
                 };
-                let _ = app.emit("synth-error", json!({"job": job, "code": code, "message": msg}));
+                emit_progress(
+                    app,
+                    "synth-error",
+                    json!({"job": job, "code": code, "message": msg}),
+                );
                 return Err(msg);
             }
             _ => {}

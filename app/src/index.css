@@ -1115,3 +1115,6 @@ body::before {
 }
 
 
+
+/* Embedded hosts own the outer window; application navigation stays intact. */
+[data-trm-host="embedded"] .native-window-controls { display: none; }

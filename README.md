@@ -39,3 +39,7 @@ Runtime\pythonw.exe tools\synth_worker.py --resident
 | 组装开发用产品根 | `python scripts/dev_root.py --pretrained <pretrained_models> --g2pw <G2PWModel>`，之后设 `TM_VOICE_ROOT=data/dev-root` |
 
 `dev_root.py` 不带参数再跑一次只同步 `engine-payload`，模型与 Runtime 用目录联接，不复制。
+
+## Local API (Neptune)
+
+The Neptune branch includes an independent local API and bundled MCP server. See [API v1](docs/api-v1.md) for discovery, capabilities, tasks, and standalone use.

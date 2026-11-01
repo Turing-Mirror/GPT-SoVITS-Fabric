@@ -2,23 +2,24 @@
 //!
 //! Stages 1–4: window/UI, worker bridge, Runtime provision, voice catalog & store.
 
-pub mod catalog;
-mod characters;
 mod annot;
 mod asset_scope;
 mod autostart;
-mod link_check;
+pub mod catalog;
+mod characters;
 mod config;
 mod crash;
 mod download;
 mod engine_assets;
-mod hf;
 mod extra_assets;
-mod gpu_pref;
 mod extract;
+mod gpu_pref;
+mod hf;
 mod i18n;
 mod known_issues;
 mod legacy;
+mod link_check;
+mod local_api;
 mod logging;
 mod mirrors;
 pub mod paths;
@@ -26,18 +27,18 @@ pub mod plaza;
 mod provision;
 mod selfcheck;
 mod separate;
-mod vcredist;
 mod shell_extras;
-mod synth;
 mod store;
+mod synth;
 mod telemetry;
 #[cfg(test)]
 mod testutil;
-mod wallpaper;
 mod tool_window;
 mod train;
 mod ui_assets;
 pub mod update;
+mod vcredist;
+mod wallpaper;
 mod window_watch;
 mod worker;
 
@@ -96,7 +97,10 @@ async fn assets_ensure_engine_core(
                     crate::i18n::te("s.727e8c1993", &(fmt_size(total)))
                 }
                 _ if done == 0 => crate::i18n::t("s.6bde20da46"),
-                _ => crate::i18n::tn("s.1342ffb704", &[&fmt_size(done), &fmt_size(total), &format!("{:.1}", pct)]),
+                _ => crate::i18n::tn(
+                    "s.1342ffb704",
+                    &[&fmt_size(done), &fmt_size(total), &format!("{:.1}", pct)],
+                ),
             };
             let _ = app.emit(
                 "provision-progress",
@@ -138,7 +142,10 @@ async fn assets_ensure_vcredist(
                     crate::i18n::te("s.c86b0f4fc1", &(fmt_size(total)))
                 }
                 _ if done == 0 => crate::i18n::t("s.3a05d4d51e"),
-                _ => crate::i18n::tn("s.350261fb86", &[&fmt_size(done), &fmt_size(total), &format!("{:.1}", pct)]),
+                _ => crate::i18n::tn(
+                    "s.350261fb86",
+                    &[&fmt_size(done), &fmt_size(total), &format!("{:.1}", pct)],
+                ),
             };
             let _ = app.emit(
                 "provision-progress",
@@ -167,9 +174,6 @@ async fn vcredist_install(state: State<'_, Mutex<AppState>>) -> Result<Value, St
     .await
     .map_err(|e| e.to_string())?
 }
-
-
-
 
 /// Full effective settings (defaults overlaid with saved values).
 #[tauri::command]
@@ -253,7 +257,10 @@ async fn cover_resolve_many(
 #[tauri::command]
 fn pick_wallpaper(window: tauri::WebviewWindow) -> Option<String> {
     let picked = crate::shell_extras::dialog_on(Some(&window))
-        .add_filter(&crate::i18n::t("s.be8da62ea1"), &["jpg", "jpeg", "png", "webp", "bmp"])
+        .add_filter(
+            &crate::i18n::t("s.be8da62ea1"),
+            &["jpg", "jpeg", "png", "webp", "bmp"],
+        )
         .set_title(&crate::i18n::t("s.501fdcd3ef"))
         .pick_file()
         .map(|p| p.to_string_lossy().into_owned());
@@ -364,7 +371,6 @@ async fn storage_usage(state: State<'_, Mutex<AppState>>) -> Result<Value, Strin
         .map_err(|e| e.to_string())
 }
 
-
 /// 选完数据集立刻数一遍：这个目录里到底有几个音频。
 #[tauri::command]
 async fn train_scan_dataset(path: String) -> Result<Value, String> {
@@ -396,7 +402,6 @@ async fn diagnostics_summary_text(state: State<'_, Mutex<AppState>>) -> Result<S
 fn onboarding_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     Ok(link_check::onboarding(&root_clone(&state)?))
 }
-
 
 /// 出包之前，把包里会有哪些文件、各自多大摆出来。
 ///
@@ -438,10 +443,7 @@ async fn diagnostics_build(
 
 /// Bundle the current voice's config + profiles for paid tuning.
 #[tauri::command]
-async fn consult_build(
-    state: State<'_, Mutex<AppState>>,
-    note: String,
-) -> Result<Value, String> {
+async fn consult_build(state: State<'_, Mutex<AppState>>, note: String) -> Result<Value, String> {
     let root = root_clone(&state)?;
     tauri::async_runtime::spawn_blocking(move || {
         shell_extras::build_consult_pack(&root, &note).map(|p| {
@@ -721,9 +723,12 @@ fn separate_pick(
     let picked = if folder {
         d.set_title(&crate::i18n::t("s.cb12ce77e7")).pick_folder()
     } else {
-        d.add_filter(&crate::i18n::t("s.461189f186"), &["wav", "mp3", "flac", "m4a", "ogg", "wma", "aac"])
-            .set_title(&crate::i18n::t("s.7ba52d2bf3"))
-            .pick_file()
+        d.add_filter(
+            &crate::i18n::t("s.461189f186"),
+            &["wav", "mp3", "flac", "m4a", "ogg", "wma", "aac"],
+        )
+        .set_title(&crate::i18n::t("s.7ba52d2bf3"))
+        .pick_file()
     }
     .map(|p| p.to_string_lossy().into_owned());
     if let Some(ref p) = picked {
@@ -794,7 +799,6 @@ fn tools_open_help(app: AppHandle, section: Option<String>) -> Result<(), String
 
 // --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
 
-
 #[tauri::command]
 fn synth_characters(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
@@ -860,7 +864,11 @@ fn synth_recent(state: State<'_, Mutex<AppState>>, limit: Option<usize>) -> Resu
 
 /// 合成页右栏：改名。
 #[tauri::command]
-fn synth_rename(state: State<'_, Mutex<AppState>>, path: String, name: String) -> Result<String, String> {
+fn synth_rename(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    name: String,
+) -> Result<String, String> {
     let root = root_clone(&state)?;
     synth::rename_output(&root, &path, &name)
 }
@@ -930,7 +938,12 @@ async fn role_import_pack(
 }
 
 #[tauri::command]
-fn role_update(state: State<'_, Mutex<AppState>>, id: String, name: String, author: String) -> Result<Value, String> {
+fn role_update(
+    state: State<'_, Mutex<AppState>>,
+    id: String,
+    name: String,
+    author: String,
+) -> Result<Value, String> {
     characters::update_meta(&root_clone(&state)?, &id, &name, &author)
 }
 
@@ -1013,10 +1026,7 @@ fn extra_cancel() {
 /// Windows 上占用中的文件根本删不掉（报一句看不懂的 os error 32），
 /// Linux 上删得掉、但任务会在某个中途步骤炸 —— 两种都不如当场拦下来。
 #[tauri::command]
-async fn extra_remove(
-    state: State<'_, Mutex<AppState>>,
-    key: String,
-) -> Result<Value, String> {
+async fn extra_remove(state: State<'_, Mutex<AppState>>, key: String) -> Result<Value, String> {
     let root = root_clone(&state)?;
     // 哪一类归哪个任务管，由清单里的 group 说了算，所以判断放在 extra_assets
     // 里做 —— 这里只负责把「谁正在跑」这两件事实递进去。
@@ -1140,11 +1150,9 @@ async fn provision_start(
     // path for the whole transfer, which meant the 取消 button's own invoke
     // could not be delivered — the user could watch the progress bar but not
     // stop it.
-    tauri::async_runtime::spawn_blocking(move || {
-        provision::run_provision(app, root, variant, f)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || provision::run_provision(app, root, variant, f))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1155,25 +1163,6 @@ fn provision_cancel() -> Result<(), String> {
 
 // ----- Stage 4: voices + store ------------------------------------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #[tauri::command]
 async fn store_catalog(
     state: State<'_, Mutex<AppState>>,
@@ -1182,11 +1171,9 @@ async fn store_catalog(
     let root = root_clone(&state)?;
     let remote = prefer_remote.unwrap_or(true);
     // Network fetch — never on the IPC thread.
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(store::fetch_store_catalog(&root, remote))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || Ok(store::fetch_store_catalog(&root, remote)))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1218,18 +1205,12 @@ fn store_staged(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
 
 /// 在资源管理器里打开暂存目录，用户自己看文件、自己删。
 #[tauri::command]
-fn store_reveal_staged(
-    state: State<'_, Mutex<AppState>>,
-    voice_id: String,
-) -> Result<(), String> {
+fn store_reveal_staged(state: State<'_, Mutex<AppState>>, voice_id: String) -> Result<(), String> {
     store::reveal_staged(&root_clone(&state)?, &voice_id)
 }
 
 #[tauri::command]
-fn store_discard_staged(
-    state: State<'_, Mutex<AppState>>,
-    voice_id: String,
-) -> Result<(), String> {
+fn store_discard_staged(state: State<'_, Mutex<AppState>>, voice_id: String) -> Result<(), String> {
     store::discard_staged(&root_clone(&state)?, &voice_id)
 }
 
@@ -1286,6 +1267,42 @@ async fn wallpaper_data_url(path: String) -> Result<String, String> {
 }
 
 pub fn run() {
+    let mut args = std::env::args();
+    while let Some(arg) = args.next() {
+        if arg == "--product-root" {
+            if let Some(path) = args.next() {
+                std::env::set_var("TM_VOICE_ROOT", path);
+            }
+        }
+    }
+    if std::env::args().any(|arg| arg == "--print-api-manifest") {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&local_api::manifest()).expect("manifest")
+        );
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--register-api") {
+        let record = trm_app_protocol::discovery::Installation::new(
+            local_api::manifest(),
+            std::env::current_exe().expect("executable"),
+            std::env::var("TM_VOICE_ROOT")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| paths::product_root()),
+            ui_assets::external_dir(),
+        );
+        record.register().expect("register installation");
+        return;
+    }
+    let mut context = tauri::generate_context!();
+    let identity = trm_app_protocol::discovery::Installation::new(
+        local_api::manifest(),
+        std::env::current_exe().expect("executable"),
+        paths::product_root(),
+        None,
+    );
+    context.config_mut().identifier =
+        format!("{}.{}", context.config().identifier, identity.install_id);
     let root = paths::product_root();
     // Before anything else: a release build has no console, so without this the
     // rest of these lines would go nowhere.
@@ -1293,7 +1310,8 @@ pub fn run() {
     i18n::init_from_config(&root);
     // pid 在横幅里，是因为 shell.log 是跨启动追加的：报告「进程还在但看不见
     // 窗口」时，得先能确认手上这段日志和任务管理器里那个进程是同一次运行。
-    logging::shell_log!("=== GPT-SoVITS Fabric {} 启动（pid {}）===",
+    logging::shell_log!(
+        "=== GPT-SoVITS Fabric {} 启动（pid {}）===",
         update::APP_VERSION,
         std::process::id()
     );
@@ -1310,13 +1328,6 @@ pub fn run() {
     // 必须在建窗之前：WebView2 只在第一个 webview 创建时读这个环境变量。
     apply_webview_compat_flag(&root);
 
-    // 尽早清 TEMP：放在 setup 之前，避免建窗/预热 worker 占着文件删不掉。
-    // 官方 WebUI 也是一启动就 rmtree(TEMP)。
-    {
-        let stats = paths::clean_temps(&root);
-        paths::log_clean_stats(&crate::i18n::t("s.ebd26da421"), &root, &stats);
-    }
-
     tauri::Builder::default()
         // 必须是第一个：插件在第二个进程里做的事就是把命令行递给已经在跑的那个，
         // 然后自己 exit，越早越好，别让它先把窗口和 worker 建起来。
@@ -1328,15 +1339,13 @@ pub fn run() {
         // 第二个进程在插件里直接退出，它自己的日志只会留下一行启动横幅然后没有
         // 下文，看起来很像白屏。真正的说明在这里由第一个进程写出来。
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            if argv.iter().any(|arg|arg == "--headless") {return;}
             logging::shell_log!("检测到重复启动（argv={argv:?} cwd={cwd}），聚焦现有窗口");
-            let Some(win) = app.get_webview_window("main") else {
-                return;
-            };
+            if app.get_webview_window("main").is_none(){return;}
             // rescue 的注释写着「只在有理由相信窗口不见了不是用户的意思时调用」。
             // 用户刚刚又点了一次图标，那就是他要看到这扇窗 —— 关到托盘里、最小化
             // 了、被拖到屏幕外，这里都该拉回来。
-            window_watch::rescue(&win);
-            let _ = win.set_focus();
+            local_api::show_window(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -1444,6 +1453,9 @@ pub fn run() {
             annot_reveal,
         ])
         .setup(move |app| {
+            // Only the owning process may clean temporary engine files.
+            let stats = paths::clean_temps(&root);
+            paths::log_clean_stats(&crate::i18n::t("s.ebd26da421"), &root, &stats);
             // 原生对话框要认父窗口，先把句柄存下来（见 shell_extras::dialog）。
             shell_extras::remember_app(app.handle());
             // asset 协议白名单：tauri.conf.json 的静态 scope 为空，全部放行
@@ -1488,11 +1500,12 @@ pub fn run() {
                 let u = format!("http://{}.localhost/index.html", ui_assets::SCHEME);
                 #[cfg(not(windows))]
                 let u = format!("{}://localhost/index.html", ui_assets::SCHEME);
-                tauri::WebviewUrl::CustomProtocol(u.parse().expect("fabric url"))
+                if local_api::headless(){tauri::WebviewUrl::External("about:blank".parse().unwrap())}else{tauri::WebviewUrl::CustomProtocol(u.parse().expect("fabric url"))}
             };
             logging::shell_log!("window url: {url:?}");
             let main_window = tauri::WebviewWindowBuilder::new(app, "main", url)
-            .title("GPT-SoVITS Fabric dev-0825c")
+            .title("GPT-SoVITS Fabric")
+            .visible(!local_api::headless())
             .inner_size(1180.0, 780.0)
             .min_inner_size(880.0, 640.0)
             .resizable(true)
@@ -1505,10 +1518,11 @@ pub fn run() {
             // `.center()` 只认主显示器。多显示器的人主屏未必是他正在看的那
             // 块，窗口连同任务栏按钮一起去了另一块屏，这头看起来就跟没启动
             // 一样。摆到光标所在的屏上。
-            window_watch::place_on_active_monitor(&main_window);
+            if !local_api::headless() {window_watch::place_on_active_monitor(&main_window); }
             // 无边框窗口默认是直角的，Win11 上跟系统其他窗口格格不入。
             window_watch::round_corners(&main_window);
-            window_watch::report_and_rescue(&main_window, &crate::i18n::t("s.ad667e5e16"));
+            if !local_api::headless() {window_watch::report_and_rescue(&main_window, &crate::i18n::t("s.ad667e5e16"));}
+            local_api::start(app.handle(),root.clone()).map_err(std::io::Error::other)?;
 
             // A blank window is the one failure the user cannot describe and we
             // cannot see. If the UI never reports back, say so in the log with
@@ -1542,7 +1556,7 @@ pub fn run() {
                         //
                         // 界面报到了就说明它活着、看得见，用户把它收哪儿是他的事。
                         window_watch::report(&w, &crate::i18n::t("s.6c0434f6f2"));
-                        if !ui_assets::ui_reported_ready() {
+                        if !local_api::headless() && !ui_assets::ui_reported_ready() {
                             window_watch::rescue(&w);
                         }
                     }
@@ -1625,11 +1639,12 @@ pub fn run() {
             });
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while running GPT-SoVITS Fabric")
         .run(|app, event| {
             // 退出时再清一遍，把本会话分离/下载留下的中间文件收掉。
             if let tauri::RunEvent::Exit = event {
+                if let Some(service)=app.try_state::<std::sync::Arc<trm_app_protocol::Service>>() {service.remove_running_record();}
                 if let Ok(g) = app.state::<Mutex<AppState>>().lock() {
                     synth::shutdown();
                     worker::kill_runtime_pythons(&g.root, false);

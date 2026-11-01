@@ -12,6 +12,7 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
+trm-app-protocol = { git = "https://github.com/Turing-Mirror/trm-app-protocol.git", rev = "f02269b436215a04980b0b450edf7764a5d79493", features = ["codegen"] }
 tauri-build = { version = "2", features = [] }
 
 [[bin]]
@@ -23,6 +24,7 @@ name = "catalog-check"
 path = "src/bin/catalog-check.rs"
 
 [dependencies]
+trm-app-protocol = { git = "https://github.com/Turing-Mirror/trm-app-protocol.git", rev = "f02269b436215a04980b0b450edf7764a5d79493" }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
@@ -74,3 +76,7 @@ windows-sys = { version = "0.59", features = [
   # 诊断自检要看产品所在盘还剩多少（GetDiskFreeSpaceExW）。
   "Win32_Storage_FileSystem",
 ] }
+
+[[bin]]
+name = "gpt-sovits-fabric-mcp"
+path = "src/bin/mcp.rs"

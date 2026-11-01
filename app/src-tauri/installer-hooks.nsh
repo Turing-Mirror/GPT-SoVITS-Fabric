@@ -41,6 +41,8 @@ Var KeepUserData
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; Register the local capability manifest without starting the interface.
+  nsExec::ExecToLog '"$INSTDIR\${MAINBINARYNAME}.exe" --register-api --product-root "$INSTDIR"'
   ; 安装目录的注册表键由 Tauri 模板自己写（WriteRegStr SHCTX MANUPRODUCTKEY），
   ; 这里不用重复写。重复写反而危险：写歪一个字符，下次 OTA 就找不到安装目录，
   ; 当成全新安装落到 %LOCALAPPDATA%，用户几个 GB 的运行时要重下一遍。

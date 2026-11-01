@@ -511,8 +511,8 @@ export function SynthPage() {
       void p.then((fn) => (alive ? offs.push(fn) : fn()));
 
     keep(
-      listen<{ seq?: number; sec?: number }>("synth-chunk", (ev) => {
-        if (!alive) return;
+      listen<{ seq?: number; sec?: number; owner?: string | null }>("synth-chunk", (ev) => {
+        if (!alive || ev.payload.owner != null) return;
         const seq = ev.payload?.seq ?? 0;
         setChunks(seq + 1);
         // 进度里的时间都从点下「开始合成」算起，含首次加载模型，和界面上走的秒数一致。
@@ -520,8 +520,8 @@ export function SynthPage() {
       }),
     );
     keep(
-      listen("synth-done", () => {
-        if (!alive) return;
+      listen<{ owner?: string | null }>("synth-done", (ev) => {
+        if (!alive || ev.payload.owner != null) return;
         setTTotal(Math.round(performance.now() - startedAt.current));
       }),
     );
