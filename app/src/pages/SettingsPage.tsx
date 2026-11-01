@@ -332,7 +332,6 @@ function SettingsPageImpl({
               />
               <Field
                 label={t("settings.autoStart")}
-                tip={t("settings.autoStartTip")}
                 control={
                   <Toggle
                     label={autoStart ? t("settings.autoStartOn") : t("settings.autoStartOff")}

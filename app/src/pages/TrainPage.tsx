@@ -544,7 +544,6 @@ export function TrainPage() {
     <PagePad fill>
       <PageHead
         title={t("train.title")}
-        sub={t("train.subtitle")}
         actions={
           !isTauri() ? (
             <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent)]">

@@ -48,9 +48,6 @@ export function tips(): Record<string, string> {
     wallpaper_path: t("s.f06f8d2041"),
     wallpaper_blur: t("s.f069ff33fd"),
     wallpaper_opacity: t("s.6e2aba9d02"),
-    home_banner_text: t("settings.bannerTextTip"),
-    home_banner_sub: t("settings.bannerSubTip"),
-    home_banner_opacity: t("settings.bannerOpacityTip"),
     close_action: t("s.a22a5eeab1"),
     telemetry_opt_in: t("s.a97cbce3c5"),
   };

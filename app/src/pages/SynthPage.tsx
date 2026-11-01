@@ -799,7 +799,6 @@ export function SynthPage() {
     <PagePad fill>
       <PageHead
         title={t("synth.title")}
-        sub={t("synth.subtitle")}
         actions={
           <div className="flex items-center gap-2">
             {!isTauri() ? (
