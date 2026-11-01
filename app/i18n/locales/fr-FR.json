@@ -896,7 +896,12 @@
     "metaProgress": "Progression : {v0} %",
     "metaVersion": "Version : {v0}",
     "metaSize": "Taille : {v0}",
-    "gpuIndexed": "GPU {v0} : {v1}"
+    "gpuIndexed": "GPU {v0} : {v1}",
+    "valueLoading": "Chargement",
+    "valueFailed": "Lecture impossible",
+    "valueUnknown": "Inconnu",
+    "sizeUnknown": "Taille inconnue",
+    "notDetected": "Non détecté"
   },
   "extras": {
     "engineTitle": "Ressources moteur",

@@ -896,7 +896,12 @@
     "metaProgress": "Прогресс: {v0}%",
     "metaVersion": "Версия: {v0}",
     "metaSize": "Размер: {v0}",
-    "gpuIndexed": "GPU {v0}: {v1}"
+    "gpuIndexed": "GPU {v0}: {v1}",
+    "valueLoading": "Загрузка",
+    "valueFailed": "Не удалось прочитать",
+    "valueUnknown": "Неизвестно",
+    "sizeUnknown": "Размер неизвестен",
+    "notDetected": "Не обнаружено"
   },
   "extras": {
     "engineTitle": "Ресурсы движка",

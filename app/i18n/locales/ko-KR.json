@@ -896,7 +896,12 @@
     "metaProgress": "진행률: {v0}%",
     "metaVersion": "버전: {v0}",
     "metaSize": "크기: {v0}",
-    "gpuIndexed": "GPU {v0}: {v1}"
+    "gpuIndexed": "GPU {v0}: {v1}",
+    "valueLoading": "불러오는 중",
+    "valueFailed": "읽지 못했습니다",
+    "valueUnknown": "알 수 없음",
+    "sizeUnknown": "크기 알 수 없음",
+    "notDetected": "감지되지 않음"
   },
   "extras": {
     "engineTitle": "엔진 리소스",

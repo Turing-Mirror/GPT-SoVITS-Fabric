@@ -8,7 +8,7 @@ import { openTool } from "../components/ToolWindow";
 import { pickPath } from "../lib/nativeDialog";
 import { askConfirm, askPrompt } from "../lib/webDialog";
 import { onHandoff, take, trainWith } from "../lib/intent";
-import { Pager, SearchBox, usePaged } from "../trm";
+import { Pager, SearchBox, useDir, usePaged } from "../trm";
 import { Swap, stagger } from "../components/Motion";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
@@ -180,6 +180,7 @@ function AnnotPageImpl() {
   }, []);
   useEffect(loadRoleLists, [loadRoleLists]);
   const rolePaged = usePaged(roleLists, ROLE_LIST_SIZE);
+  const roleDir = useDir(rolePaged.page);
 
   /** 关掉当前文件，回到角色标注文件的列表。 */
   const close = useCallback(async () => {
@@ -283,6 +284,7 @@ function AnnotPageImpl() {
   }, [rows, query, only]);
 
   const paged = usePaged(view, PAGE_SIZE, `${path}|${query}|${only}`);
+  const pageDir = useDir(paged.page);
   const pageRows = paged.slice;
 
   const bad = useMemo(() => rows.filter((r) => r.issues.length > 0).length, [rows]);
@@ -374,7 +376,7 @@ function AnnotPageImpl() {
 
         {!path && roleLists.length ? (
           <Block title={t("s.annot.roleListsTitle")} note={String(roleLists.length)}>
-            <Swap k={String(rolePaged.page)}>
+            <Swap k={String(rolePaged.page)} dir={roleDir}>
               <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-1">
                 {rolePaged.slice.map((l, i) => (
                   <div key={l.key} className="rise flex items-center gap-3 py-3" style={stagger(i)}>
@@ -447,7 +449,7 @@ function AnnotPageImpl() {
                 </span>
               </div>
 
-              <Swap k={String(paged.page)}>
+              <Swap k={String(paged.page)} dir={pageDir}>
               <div className="overflow-x-auto bg-[var(--group)] rounded-[var(--r)]">
                 <table className="w-full border-collapse text-[12.5px]">
                   <thead>

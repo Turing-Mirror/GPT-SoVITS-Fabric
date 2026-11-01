@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PagePad, PageHead, Btn } from "../components/ui";
 import { Swap } from "../components/Motion";
-import { Icon } from "../trm";
+import { Icon, useDir } from "../trm";
 import { Field, Select, Slider, Toggle } from "../components/controls";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -139,6 +139,7 @@ export function TrainPage() {
   const [starting, setStarting] = useState(false);
   /** 中栏显示第几步（0–3）。 */
   const [step, setStep] = useState(0);
+  const stepDir = useDir(step);
 
   const logRef = useRef<HTMLPreElement>(null);
 
@@ -611,7 +612,7 @@ export function TrainPage() {
               </span>
             ) : null}
           </div>
-          <Swap k={String(step)}>{stepBody[step]}</Swap>
+          <Swap k={String(step)} dir={stepDir}>{stepBody[step]}</Swap>
           <div className="flex-none flex items-center gap-2 mt-4">
             {step > 0 ? <Btn onClick={() => setStep(step - 1)}>{t("train.prev")}</Btn> : null}
             {step < steps.length - 1 ? (

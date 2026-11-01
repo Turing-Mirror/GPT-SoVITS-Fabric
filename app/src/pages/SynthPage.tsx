@@ -10,7 +10,7 @@ import { useConfig } from "../hooks/useConfig";
 import { t } from "../i18n/t";
 import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
 import { artOf } from "../lib/art";
-import { Icon, Pager, SearchBox, SegmentControl, usePaged } from "../trm";
+import { Icon, Pager, SearchBox, SegmentControl, useDir, usePaged } from "../trm";
 import { Swap } from "../components/Motion";
 
 /**
@@ -368,6 +368,7 @@ export function SynthPage() {
     return q ? refs.filter((r) => `${r.text} ${r.wav}`.toLowerCase().includes(q)) : refs;
   }, [refs, refQuery]);
   const refPaged = usePaged(shownRefs, REF_PAGE, `${role?.id ?? ""}|${refQuery}`);
+  const refDir = useDir(refPaged.page);
   const [durs, setDurs] = useState<Record<string, number>>({});
   const usable = useCallback((r: RefRow) => r.exists && refFits(durs[r.abs]), [durs]);
   const ref = useMemo(() => {
@@ -881,7 +882,7 @@ export function SynthPage() {
             </div>
           ) : (
             <>
-              <Swap k={`${role?.id ?? ""}|${refPaged.page}|${refQuery}`}>
+              <Swap k={`${role?.id ?? ""}|${refPaged.page}|${refQuery}`} dir={refDir}>
                 <div className="rounded-[var(--r)] overflow-hidden bg-[var(--group)]">
                   {refPaged.slice.map((row, i) => {
                     const key = keyOf(row);

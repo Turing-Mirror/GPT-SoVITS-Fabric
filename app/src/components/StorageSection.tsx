@@ -138,7 +138,7 @@ export function StorageSection() {
             (usage
               ? t("s.storageTotal", {
                   a0: human(usage.total_bytes),
-                  a1: usage.free_bytes == null ? "—" : human(usage.free_bytes),
+                  a1: usage.free_bytes == null ? t("s.valueUnknown") : human(usage.free_bytes),
                 })
               : t("s.cleanupDesc"))
           }

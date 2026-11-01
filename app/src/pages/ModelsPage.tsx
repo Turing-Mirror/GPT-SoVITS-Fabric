@@ -6,7 +6,7 @@ import { AdBanner } from "../components/AdBanner";
 import { Modal } from "../components/Modal";
 import { Leave } from "../components/Presence";
 import { Swap, stagger } from "../components/Motion";
-import { Dropdown, MoreBtn, Pager, SearchBox, Tag, useMenu, usePaged, type MenuItem } from "../trm";
+import { Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
 import { artOf } from "../lib/art";
 import { askConfirm } from "../lib/webDialog";
@@ -89,6 +89,7 @@ export function ModelsPage({
     return [...list].sort((a, b) => (sort === "refs" ? refCount(b) - refCount(a) : (a.name || a.id).localeCompare(b.name || b.id)));
   }, [roles, query, sort]);
   const paged = usePaged(shown, PAGE_SIZE, `${query}|${sort}`);
+  const pageDir = useDir(paged.page);
 
   async function importPack() {
     if (!isTauri()) {
@@ -210,7 +211,7 @@ export function ModelsPage({
         {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 selectable">{msg}</div> : null}
         {roles.length ? (
           <>
-            <Swap k={`${paged.page}|${query}|${sort}`}>
+            <Swap k={`${paged.page}|${query}|${sort}`} dir={pageDir}>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
                 {paged.slice.map((r, i) => {
                   const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";

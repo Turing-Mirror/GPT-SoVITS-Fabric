@@ -50,10 +50,13 @@ export function MorePage({
   // Where the app thinks it is installed. The row below used to only describe
   // that this is resolved automatically, without ever showing the answer —
   // which is the first thing worth knowing when a report says "找不到 Runtime".
-  const [root, setRoot] = useState("—");
+  const [root, setRoot] = useState<string | null>(null);
   const [logFile, setLogFile] = useState("");
   const [cacheMb, setCacheMb] = useState("");
-  const [version, setVersion] = useState("—");
+  const [version, setVersion] = useState<string | null>(null);
+  // 读取中写「正在读取」，读不到写「读取失败」，不用「—」占位
+  const shownValue = (v: string | null) => (v === null ? t("s.valueLoading") : v || t("s.valueFailed"));
+
   const [busyMsg, setBusyMsg] = useState("");
   const [diagOpen, setDiagOpen] = useState(false);
   // 主显卡。放在「补全运行时」旁边：装完运行时之后才谈得上用哪块卡算，
@@ -223,11 +226,11 @@ export function MorePage({
   useEffect(() => {
     let alive = true;
     invoke<string>("product_root")
-      .then((v) => alive && setRoot(v || "—"))
-      .catch(() => alive && setRoot("—"));
+      .then((v) => alive && setRoot(v || ""))
+      .catch(() => alive && setRoot(""));
     invoke<string>("shell_version")
-      .then((v) => alive && setVersion(v || "—"))
-      .catch(() => alive && setVersion("—"));
+      .then((v) => alive && setVersion(v || ""))
+      .catch(() => alive && setVersion(""));
     invoke<string | null>("log_path")
       .then((v) => alive && setLogFile(v || ""))
       .catch(() => alive && setLogFile(""));
@@ -247,7 +250,7 @@ export function MorePage({
   // 「往返延迟」那一行随实时链路一起没了：这个产品合成出来的是文件，
   // 没有音频流，也就没有延迟可报。剩下能如实说的只有「现在有没有活在跑」。
   const runState = !status
-    ? "—"
+    ? t("s.valueLoading")
     : status.runtime_ready === false
       ? t("s.moreRunStateNoRuntime")
       : status.state === "busy"
@@ -271,7 +274,7 @@ export function MorePage({
           <ListItem
             title={t("s.a8f48b775b")}
             right={
-              <span className="text-[13.5px] text-[var(--ink-muted)]">{version}</span>
+              <span className="text-[13.5px] text-[var(--ink-muted)]">{shownValue(version)}</span>
             }
           />
           <ListItem
@@ -279,9 +282,9 @@ export function MorePage({
             right={
               <span
                 className="text-[13.5px] text-[var(--ink-muted)] max-w-[300px] text-right truncate"
-                title={root}
+                title={root || undefined}
               >
-                {root}
+                {shownValue(root)}
               </span>
             }
           />
@@ -347,7 +350,7 @@ export function MorePage({
             right={
               <span className="flex items-center gap-2">
                 <span className="text-[13.5px] text-[var(--ink-muted)]">
-                  {provision?.recommended_variant || "—"}
+                  {provision?.recommended_variant || t("s.notDetected")}
                 </span>
                 {onOpenProvision ? (
                   <Btn onClick={onOpenProvision}>

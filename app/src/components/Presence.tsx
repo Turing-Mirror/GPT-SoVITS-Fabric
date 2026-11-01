@@ -23,16 +23,5 @@ export function Leave({ children, ms = EXIT_MS }: { children: ReactNode; ms?: nu
   );
 }
 
-/**
- * 展开区：高度从 0 过渡到内容高度，收起时反过来。收起后内容卸掉。
- */
-export function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
-  const { mounted } = useExit(open, 280);
-  const last = useRef<ReactNode>(null);
-  if (open) last.current = children;
-  return (
-    <div className="collapse-area" data-open={open || undefined} inert={!open}>
-      <div className="min-h-0 overflow-hidden">{mounted ? (open ? children : last.current) : null}</div>
-    </div>
-  );
-}
+/** 展开区：与 TRM UI 共用一个，展开与收起都有高度过渡，收起放完才卸下。 */
+export { Collapse } from "../trm/components/motion";
