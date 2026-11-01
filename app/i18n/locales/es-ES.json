@@ -1283,7 +1283,7 @@
     },
     "error": {
       "title": "La interfaz ha fallado",
-      "safe": "Tus archivos, ajustes y tareas en curso no se han visto afectados. Prueba primero a reintentar; si no funciona, prueba las demás opciones en orden.",
+      "safe": "Sus archivos, ajustes y tareas en curso no se ven afectados. Primero vuelva a intentarlo; si no se resuelve, pruebe los demás botones en orden.",
       "retry": "Reintentar",
       "home": "Volver al inicio",
       "reload": "Recargar",

@@ -1283,7 +1283,7 @@
     },
     "error": {
       "title": "The interface hit an error",
-      "safe": "Your files, settings and running tasks are not affected. Try again first; if that does not help, try the other options in order.",
+      "safe": "Your files, settings and running tasks are not affected. Try again first; if that does not help, try the other buttons in order.",
       "retry": "Try again",
       "home": "Back to Home",
       "reload": "Reload",

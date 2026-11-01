@@ -1283,7 +1283,7 @@
     },
     "error": {
       "title": "L’interface a rencontré une erreur",
-      "safe": "Vos fichiers, réglages et tâches en cours ne sont pas affectés. Réessayez d’abord ; si cela ne suffit pas, essayez les autres options dans l’ordre.",
+      "safe": "Vos fichiers, réglages et tâches en cours ne sont pas affectés. Réessayez d'abord ; si cela ne suffit pas, essayez les autres boutons dans l'ordre.",
       "retry": "Réessayer",
       "home": "Retour à l’accueil",
       "reload": "Recharger",
