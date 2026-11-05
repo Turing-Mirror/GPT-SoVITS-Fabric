@@ -1,8 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { logToHost } from "./trm/lib/host";
-import { trackInputModality } from "./trm/lib/inputModality";
+import { logToHost } from "./trm";
+import { trackInputModality } from "./trm";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToolWindow, toolFromHash } from "./components/ToolWindow";
 import { I18nProvider } from "./i18n";

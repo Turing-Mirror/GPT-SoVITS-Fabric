@@ -157,11 +157,14 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
 
 ## D7 UI/UX 继承 [已定]
 
-组件与设计令牌改用 TRM UI（`Turing-Mirror/TRM-UI`），复制到 `app/src/trm/`：
+组件与设计令牌改用 TRM UI（`Turing-Mirror/TRM-UI`）的组件包 `trm-ui`，在
+`app/package.json` 中固定提交版本（2026-11-05 起，此前为复制进 `app/src/trm/` 的源码）。
 `components/` 下的 ui / controls / SegmentControl / Tooltip / ErrorBoundary 是对
-`../trm/components/*` 的转出；i18n 的语言状态由 TRM 的 `I18nProvider` 持有，产品侧只
-补 Tauri 存储、`tMsg` 与术语表；`index.css` 取 TRM 的令牌，颜色一律走令牌。更新 TRM UI
-时整目录覆盖 `app/src/trm/`。ErrorNote、TitleBar 仍是产品自有版本。
+`../trm` 的转出，`app/src/trm/index.ts` 转出组件包；`app/src/trm/i18n/` 保留产品自己的
+语言包加载，并用组件包的 `I18nScope` 把语言状态交给共享组件，产品侧只补 Tauri 存储、
+`tMsg` 与术语表。`index.css` 引入 `trm-ui/styles.css`，只写产品自己的样式，颜色一律走
+令牌。更新 TRM UI 时升级 `trm-ui` 的固定版本，再运行构建与测试。ErrorNote、TitleBar
+仍是产品自有版本。
 
 与 RVC Fabric 当前界面对齐的部分（2026-10-31）：
 

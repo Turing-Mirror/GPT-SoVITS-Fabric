@@ -21,6 +21,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { I18nScope } from "trm-ui";
 import { fallbackPack, packOf, translate } from "./dict";
 import {
   DEFAULT_LOCALE,
@@ -139,7 +140,7 @@ export function I18nProvider({
   // 那样做等于换个语言就把整棵树连同所有状态一起拆掉重建：正在进行的任务、
   // 已经填好的表单、滚动位置全没了。换语言不是重启。
   // 文案靠 context 刷新（组件用 useI18n 订阅），静态调用方靠 setTLocale。
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}><I18nScope value={value}>{children}</I18nScope></Ctx.Provider>;
 }
 
 export function useI18n(): I18nCtx {

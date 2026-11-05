@@ -1,8 +1,8 @@
 /** 组件实现在 TRM UI（vendor: ../trm）。产品侧只经这里引用，换实现时页面不用改。 */
 import type { ReactNode } from "react";
-import { PagePad as TrmPagePad } from "../trm/components/ui";
+import { PagePad as TrmPagePad } from "../trm";
 
-export { PageHead, Block, Group, Btn, ListItem, HelpMark, type AccordionItem, AccordionGroup } from "../trm/components/ui";
+export { PageHead, Block, Group, Btn, ListItem, HelpMark, type AccordionItem, AccordionGroup } from "../trm";
 
 /**
  * 页面内边距。`fill` 同 RVC Fabric 的音频页：宽度够时整页卡死成面板高度，

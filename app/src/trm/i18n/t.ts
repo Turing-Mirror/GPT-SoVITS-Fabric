@@ -7,6 +7,7 @@
  * 注意它**不会触发重渲染** —— 组件里显示的文案请用 `useI18n().t`，
  * 否则换语言时那几行字会停在旧语言上，直到别的原因导致重渲染。
  */
+import { setTLocale as setSharedLocale } from "trm-ui";
 import { fallbackPack, packOf, translate } from "./dict";
 import { DEFAULT_LOCALE, type LocaleCode, type TVars } from "./types";
 
@@ -14,6 +15,7 @@ let _locale: LocaleCode = DEFAULT_LOCALE;
 
 export function setTLocale(code: LocaleCode) {
   _locale = code;
+  setSharedLocale(code);
 }
 
 export function getTLocale(): LocaleCode {

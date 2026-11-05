@@ -2,7 +2,7 @@
 import { Dropdown } from "../trm";
 import { t } from "../i18n";
 
-export { Field, RangeBar, Slider, Toggle } from "../trm/components/controls";
+export { Field, RangeBar, Slider, Toggle } from "../trm";
 
 /** 下拉选择。用 TRM 的 Dropdown 代替原生 select，与 RVC Fabric 一致。
  *  已保存的值不在列表里时保留并注明，空列表时显示占位项。 */
