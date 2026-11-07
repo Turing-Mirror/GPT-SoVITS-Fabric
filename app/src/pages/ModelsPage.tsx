@@ -226,8 +226,7 @@ export function ModelsPage({
                   render={(r) => {
                     const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
                     return (
-                      <ModelCard id={r.id} name={r.name || r.id} cover={cover}
-                        onOpen={() => synthWithRole(r.id)}>
+                      <ModelCard id={r.id} name={r.name || r.id} cover={cover}>
                         <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
                           {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
                         </div>
