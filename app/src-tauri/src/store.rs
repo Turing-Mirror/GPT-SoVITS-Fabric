@@ -220,6 +220,7 @@ fn parse_voice_entry(d: &Value, force_official: Option<bool>) -> Option<Value> {
         "sha256": d.get("sha256").and_then(|v| v.as_str()).unwrap_or(""),
         "description": d.get("description").or_else(|| d.get("desc")).and_then(|v| v.as_str()).unwrap_or(""),
         "author": author,
+        "authors": d.get("authors").filter(|v| v.is_array()).cloned().unwrap_or_else(|| json!([])),
         "author_url": d.get("author_url").or_else(|| d.get("author_link")).and_then(|v| v.as_str()).unwrap_or(""),
         "date": d.get("date").or_else(|| d.get("released")).and_then(|v| v.as_str()).unwrap_or(""),
         "series": series,
@@ -1048,6 +1049,7 @@ mod tests {
             &json!({
                 "id": "tp-x",
                 "name": "某某",
+                "authors": [{ "name": "First", "url": "https://example.invalid/first" }, { "name": "Second" }],
                 "pth_url": "https://example.invalid/a.pth",
                 "author_url": "https://example.invalid/u/someone",
                 "repo_url": "https://example.invalid/someone/voices",
@@ -1059,6 +1061,8 @@ mod tests {
             v.get("author_url").and_then(|x| x.as_str()),
             Some("https://example.invalid/u/someone"),
         );
+        assert_eq!(v["authors"].as_array().unwrap().len(), 2);
+        assert_eq!(v["authors"][0]["url"], "https://example.invalid/first");
         // `repo_url` 是第三方手写 YAML 里的常见叫法，得认成 source_url。
         assert_eq!(
             v.get("source_url").and_then(|x| x.as_str()),

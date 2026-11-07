@@ -355,7 +355,7 @@
     "58a0882f6f": "Extraction done",
     "5abed96e7d": "Not ready (setup required)",
     "5b254c438b": "Back to Plaza",
-    "5b422f44dd": "Base models and companion resources for training. Complete the engine resources above first, then download as needed.",
+    "5b422f44dd": "Base models and resources for training.",
     "5ca337dd03": "Invalid sha256 format",
     "5ca65185f2": "This character has no download URL configured",
     "5d5815647c": "Collapse",
@@ -369,7 +369,7 @@
     "63bb17a9d2": "Settings changed. They take effect on the next synthesis.",
     "63d89cdb5c": "When several NVIDIA GPUs are installed, choose the one used for computation. Without a choice, the first GPU in order is used, which is not necessarily the fastest.",
     "63e829016e": "Complete it via the launcher",
-    "63fa37071e": "For cleaning training material, download “Vocal extraction” first; pick others as your use case requires. Models marked “Advanced” are large and rarely needed for everyday use.",
+    "63fa37071e": "Extract vocals and remove accompaniment.",
     "6462f5c407": "No replaceable interface folder was found, so this installation cannot update the interface online",
     "65188d08a2": "Downloading…",
     "65fc81e161": "Open",
@@ -427,7 +427,7 @@
     "7feea73fa3": "Author: {v0}",
     "800d82ff2e": "Plaza ad",
     "80b25fdbcd": "Delete failed: {e}",
-    "83bc4b2a5f": "No characters listed. Check the network, then hit Refresh at the top right.",
+    "83bc4b2a5f": "No matching characters.",
     "84ccf9394c": "Xiaohongshu ID: TuringMirror",
     "85b3f0512b": "Uninstalled only",
     "87c1bc6fe6": "Updating",
@@ -636,7 +636,6 @@
     "fa2f7e5279": "Used {v0}",
     "2a4fa38f1e": "No new data received for {v0}.",
     "9d38fc19bb": "View all {v0} items",
-    "40a021ed44": "Page {v0} of {v1}, {v2} in total",
     "0b38f69017": "Submitted by {v0}",
     "c8542337dc": "{v0} items, {v1}",
     "6ff3d83b8f": "The vocal separation component (pymss_core) is missing. Reinstall or update the app.",
@@ -851,7 +850,7 @@
     "rolePackPickTitle": "Choose a character pack to import",
     "rolePackCancelled": "No character pack was chosen.",
     "extraCatOther": "Other",
-    "extraBlurbOther": "Additional resources that do not fall into the categories above.",
+    "extraBlurbOther": "Additional models and resources.",
     "extraEmptyOther": "No resources are available right now.",
     "trainVersionUnsupported": "Unsupported version: {a0}",
     "trainEpochRange": "Epoch count is out of the accepted range: {a0}",
@@ -885,14 +884,69 @@
     "valueFailed": "Could not be read",
     "valueUnknown": "Unknown",
     "sizeUnknown": "Size unknown",
-    "notDetected": "Not detected"
+    "notDetected": "Not detected",
+    "authorsPickTitle": "Which author's page?",
+    "authorsPickHint": "This voice lists multiple authors. Choose whose page to open.",
+    "pagerLabel": "Pages"
   },
   "extras": {
     "engineTitle": "Engine resources",
-    "engineDesc": "Chinese HuBERT, Chinese RoBERTa and the GPT-SoVITS base models. Both synthesis and training need them. The first setup downloads only the runtime environment; these arrive when something needs them.",
-    "missingList": " Missing: {list}",
+    "engineDesc": "Base models for synthesis and training.",
     "countItems": "{n} items",
-    "items": {}
+    "items": {
+      "pymss-vocal": {
+        "label": "Vocal extraction",
+        "notes": "First choice for cleaning training material. Extracts dry vocals from songs."
+      },
+      "pymss-denoise": {
+        "label": "Denoise",
+        "notes": "Removes background noise and electrical hum. Download when dry vocal material is noisy."
+      },
+      "pymss-deecho": {
+        "label": "De-echo",
+        "notes": "Removes room echo and delay tails. Useful in spacious recording environments."
+      },
+      "pymss-dereverb": {
+        "label": "De-reverb",
+        "notes": "Suppresses reverb for a drier vocal."
+      },
+      "pymss-inst": {
+        "label": "Instrumental extract",
+        "notes": "Extracts the accompaniment track (the opposite of vocal extraction)."
+      },
+      "pymss-karaoke": {
+        "label": "Karaoke (remove vocal)",
+        "notes": "Removes the lead vocal while keeping the accompaniment, for backing tracks."
+      },
+      "pymss-bve": {
+        "label": "Background vocals (advanced)",
+        "notes": "Separates background harmony tracks. Rarely needed for training material."
+      },
+      "pymss-harmonic": {
+        "label": "Harmonic/noise (advanced)",
+        "notes": "Separate harmonics and noise. Advanced use."
+      },
+      "pymss-hp2": {
+        "label": "HP2 high quality (advanced)",
+        "notes": "The larger HP2 series offers higher quality but needs more space (about 1.5 GB). “Vocal extraction” is enough for daily use."
+      },
+      "pymss-mgm": {
+        "label": "MGM fusion (advanced)",
+        "notes": "MGM v4 multi-band fusion model. Advanced use."
+      },
+      "pymss-sp": {
+        "label": "SP spectrum series (advanced)",
+        "notes": "SP spectral series. Large download; only needed for special cases."
+      },
+      "pymss-wind": {
+        "label": "Orchestral/wind (advanced)",
+        "notes": "Separates orchestral/wind accompaniment. Rarely needed."
+      },
+      "gsv-v5": {
+        "label": "V5 base models",
+        "notes": "For V5 characters and zero-shot synthesis."
+      }
+    }
   },
   "onboarding": {
     "languageTitle": "Choose language",

@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { PagePad as TrmPagePad } from "../trm";
 
-export { PageHead, Block, Group, Btn, ListItem, HelpMark, type AccordionItem, AccordionGroup } from "../trm";
+export { Warn, PageHead, Block, Group, Btn, ListItem, HelpMark, type AccordionItem, AccordionGroup } from "../trm";
 
 /**
  * 页面内边距。`fill` 同 RVC Fabric 的音频页：宽度够时整页卡死成面板高度，

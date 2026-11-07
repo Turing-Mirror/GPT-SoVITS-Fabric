@@ -355,7 +355,7 @@
     "58a0882f6f": "Extraction terminée",
     "5abed96e7d": "Pas prêt (installation requise)",
     "5b254c438b": "Retour à la Place",
-    "5b422f44dd": "Modèles de base et ressources pour l'entraînement. Complétez d'abord les ressources du moteur ci-dessus, puis téléchargez au besoin.",
+    "5b422f44dd": "Modèles de base et ressources pour l’entraînement.",
     "5ca337dd03": "Format sha256 invalide",
     "5ca65185f2": "Aucune URL de téléchargement configurée pour cette voix",
     "5d5815647c": "Replier",
@@ -369,7 +369,7 @@
     "63bb17a9d2": "Réglages modifiés. Ils prendront effet à la prochaine synthèse.",
     "63d89cdb5c": "Avec plusieurs GPU NVIDIA, choisissez celle utilisée pour le calcul. Sans choix, la première est utilisée, ce qui n’est pas forcément la plus rapide.",
     "63e829016e": "Terminez l'installation via le launcher",
-    "63fa37071e": "Pour nettoyer le matériau d'entraînement, téléchargez d'abord « Extraction vocale » ; choisissez le reste selon vos besoins. Les modèles marqués « Avancé » sont volumineux et rarement utiles au quotidien.",
+    "63fa37071e": "Extraire les voix et supprimer l’accompagnement.",
     "6462f5c407": "Aucun dossier d'interface remplaçable n'a été trouvé ; cette installation ne peut pas mettre à jour l'interface en ligne",
     "65188d08a2": "Téléchargement…",
     "65fc81e161": "Ouvrir",
@@ -427,7 +427,7 @@
     "7feea73fa3": "Auteur : {v0}",
     "800d82ff2e": "Annonce de la Place",
     "80b25fdbcd": "Échec de la suppression : {e}",
-    "83bc4b2a5f": "Aucune voix listée pour l'instant. Vérifiez le réseau et cliquez sur « Actualiser » en haut à droite.",
+    "83bc4b2a5f": "Aucun personnage correspondant.",
     "84ccf9394c": "ID Xiaohongshu : TuringMirror",
     "85b3f0512b": "Non installées uniquement",
     "87c1bc6fe6": "Mise à jour",
@@ -636,7 +636,6 @@
     "fa2f7e5279": "{v0} utilisé",
     "2a4fa38f1e": "Aucune nouvelle donnée reçue depuis {v0}.",
     "9d38fc19bb": "Voir les {v0} éléments",
-    "40a021ed44": "Page {v0} sur {v1}, {v2} au total",
     "0b38f69017": "Fourni par {v0}",
     "c8542337dc": "{v0} éléments, {v1}",
     "6ff3d83b8f": "Le composant de séparation vocale (pymss_core) est absent. Réinstallez ou mettez à jour l'application.",
@@ -851,7 +850,7 @@
     "rolePackPickTitle": "Choisissez le pack de personnage à importer",
     "rolePackCancelled": "Aucun pack de personnage n’a été choisi.",
     "extraCatOther": "Autres",
-    "extraBlurbOther": "Ressources supplémentaires n'entrant dans aucune des catégories ci-dessus.",
+    "extraBlurbOther": "Modèles et ressources supplémentaires.",
     "extraEmptyOther": "Aucune ressource n'est disponible pour l'instant.",
     "trainVersionUnsupported": "Version non prise en charge : {a0}",
     "trainEpochRange": "Le nombre d'époques est hors de la plage admise : {a0}",
@@ -885,14 +884,69 @@
     "valueFailed": "Lecture impossible",
     "valueUnknown": "Inconnu",
     "sizeUnknown": "Taille inconnue",
-    "notDetected": "Non détecté"
+    "notDetected": "Non détecté",
+    "authorsPickTitle": "Quelle page d'auteur ouvrir ?",
+    "authorsPickHint": "Cette voix liste plusieurs auteurs. Choisissez la page à ouvrir.",
+    "pagerLabel": "Pages"
   },
   "extras": {
     "engineTitle": "Ressources moteur",
-    "engineDesc": "HuBERT chinois, RoBERTa chinois et les modèles de base GPT-SoVITS. Nécessaires à la synthèse comme à l’entraînement. L’installation initiale ne télécharge que l’environnement d’exécution ; ces fichiers arrivent lorsqu’ils deviennent nécessaires.",
-    "missingList": " Manque : {list}",
+    "engineDesc": "Modèles de base pour la synthèse et l’entraînement.",
     "countItems": "{n} éléments",
-    "items": {}
+    "items": {
+      "pymss-vocal": {
+        "label": "Extraction vocale",
+        "notes": "Premier choix pour nettoyer le matériau d'entraînement. Extrait les voix sèches des chansons."
+      },
+      "pymss-denoise": {
+        "label": "Débruitage",
+        "notes": "Supprime le bruit de fond et le ronflement électrique. À télécharger quand les voix sèches sont bruitées."
+      },
+      "pymss-deecho": {
+        "label": "Anti-écho",
+        "notes": "Supprime l'écho de pièce et les queues de retard. Utile dans les environnements d'enregistrement spacieux."
+      },
+      "pymss-dereverb": {
+        "label": "Déréverbération",
+        "notes": "Supprime la réverbération pour une voix plus sèche."
+      },
+      "pymss-inst": {
+        "label": "Extraction instrumentale",
+        "notes": "Extrait la piste d'accompagnement (l'inverse de l'extraction vocale)."
+      },
+      "pymss-karaoke": {
+        "label": "Karaoké (retirer voix)",
+        "notes": "Retire la voix principale en gardant l'accompagnement, pour des playback."
+      },
+      "pymss-bve": {
+        "label": "Chœurs de fond (avancé)",
+        "notes": "Sépare les pistes d'harmonie d'accompagnement. Rarement nécessaire pour le matériau d'entraînement."
+      },
+      "pymss-harmonic": {
+        "label": "Harmonique/bruit (avancé)",
+        "notes": "Sépare harmoniques et bruit. Usage avancé."
+      },
+      "pymss-hp2": {
+        "label": "HP2 haute qualité (avancé)",
+        "notes": "La série HP2, plus grande, offre une meilleure qualité mais occupe plus de place (environ 1,5 Go). Au quotidien, « Extraction vocale » suffit."
+      },
+      "pymss-mgm": {
+        "label": "Fusion MGM (avancé)",
+        "notes": "Modèle de fusion multi-bandes MGM v4. Usage avancé."
+      },
+      "pymss-sp": {
+        "label": "Série spectre SP (avancé)",
+        "notes": "Série spectre SP. Volumineuse ; cas particuliers seulement."
+      },
+      "pymss-wind": {
+        "label": "Orchestre/vents (avancé)",
+        "notes": "Sépare l'accompagnement orchestral/à vent. Rarement nécessaire."
+      },
+      "gsv-v5": {
+        "label": "Modèles de base V5",
+        "notes": "Pour les personnages V5 et la synthèse sans entraînement préalable."
+      }
+    }
   },
   "onboarding": {
     "languageTitle": "Choisir la langue",

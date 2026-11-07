@@ -1,19 +1,29 @@
-import { Modal } from "./Modal";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { Btn } from "./ui";
+import { Btn, Warn } from "./ui";
+import { categoriesOf, groupOf, type Category } from "../lib/extraGroups";
+import { Pager } from "./Pager";
 import { SegmentControl } from "./SegmentControl";
 import { askConfirm } from "../lib/webDialog";
 import { t } from "../i18n/t";
-import { categoriesOf, groupOf, type Category } from "../lib/extraGroups";
+import {
+  localizedTextValue,
+} from "../lib/voiceDisplay";
 import {
   getAssetsStatus,
   type AssetsStatus,
 } from "../lib/downloadModels";
+import {
+  startEngineCoreDownload,
+  startExtraDownload,
+  useExtraJobs,
+  type ExtraProgress,
+} from "../lib/extraJobs";
+import { useI18n } from "../i18n";
+import { Modal } from "./Modal";
 import { joinClauses } from "../lib/text";
 
-export type ExtraGroup = Category;
+export type ExtraGroup = "train" | "separate" | "other";
 
 type Item = {
   key: string;
@@ -23,6 +33,8 @@ type Item = {
   recommended?: boolean;
   order?: number;
   notes?: string;
+  label_i18n?: Record<string, string>;
+  notes_i18n?: Record<string, string>;
   size_bytes: number;
   files: string[];
   installed: boolean;
@@ -34,28 +46,13 @@ type List = {
   busy?: boolean;
 };
 
-type Progress = {
-  key: string;
-  phase: "run" | "done" | "error";
-  done?: number;
-  total?: number;
-  message?: string;
-};
-
-type ProvProgress = {
-  phase?: string;
-  done?: number;
-  total?: number;
-  percent?: number;
-  message?: string;
-  speed_label?: string;
-};
-
 /** 打开下载弹窗时预选哪一类；弹窗内仍可切换。 */
 export type ExtrasFilter = "all" | ExtraGroup;
 
 /** 单页条数。和广场更新日志一样固定 5，不做无限滚。 */
 const PER_PAGE = 5;
+
+
 
 function mb(n: number) {
   if (!n) return "";
@@ -64,40 +61,25 @@ function mb(n: number) {
     : `${Math.round(n / 1024 / 1024)} MB`;
 }
 
-/** 页签文案。清单里没出现过的组别不会被画出来，所以这张表只要覆盖全集。 */
 function categoryLabel(cat: Category): string {
-  if (cat === "separate") return t("s.8fd038283b");
-  if (cat === "train") return t("s.ba65bd5595");
-  return t("s.extraCatOther");
+  return cat === "separate" ? t("s.8fd038283b") : cat === "train" ? t("s.ba65bd5595") : t("s.extraCatOther");
 }
 
-/** Prefer locale pack extras.items.<key>; fall back to catalog Chinese with prefix strip. */
-function extraLabel(it: Item, cat: Category): string {
+/** Prefer the locale pack, then the catalog's locale map, then its primary value. */
+function extraLabel(it: Item): string {
   const localized = t(`extras.items.${it.key}.label`);
   if (localized && !localized.startsWith("extras.items.")) return localized;
-  let l = it.label || it.key;
-  if (cat === "separate") l = l.replace(/^人声分离\s*[·•]\s*/, "");
-  if (cat === "train") l = l.replace(/^训练音色\s*[·•]\s*/, "");
-  return l;
+  return localizedTextValue(it.label_i18n) || it.label || it.key;
 }
 
 function extraNotes(it: Item): string {
   const localized = t(`extras.items.${it.key}.notes`);
   if (localized && !localized.startsWith("extras.items.")) return localized;
-  return (it.notes || "").trim();
+  return localizedTextValue(it.notes_i18n) || (it.notes || "").trim();
 }
 
 function categoryBlurb(cat: Category): string {
-  if (cat === "separate") return t("s.63fa37071e");
-  if (cat === "train") return t("s.5b422f44dd");
-  return t("s.extraBlurbOther");
-}
-
-/** 某一类下面一条都没有时说的话。 */
-function categoryEmpty(cat: Category): string {
-  if (cat === "separate") return t("s.7e9782377b");
-  if (cat === "train") return t("s.2b9ddc0b69");
-  return t("s.extraEmptyOther");
+  return cat === "separate" ? t("s.63fa37071e") : cat === "train" ? t("s.5b422f44dd") : t("s.extraBlurbOther");
 }
 
 /**
@@ -117,6 +99,7 @@ export function ExtrasPanel({
   title,
   reason,
   onBusyChange,
+  reloadToken = 0,
 }: {
   /** 给了才画「关闭」按钮。嵌在页面里时没有可关的东西。 */
   onClose?: () => void;
@@ -127,22 +110,19 @@ export function ExtrasPanel({
   reason?: string;
   /** 正在下载时告诉外面的弹窗别让点空白关掉。 */
   onBusyChange?: (busy: boolean) => void;
+  reloadToken?: number;
 }) {
+  useI18n();
+  const jobs = useExtraJobs();
+  const { busyKeys, coreBusy, progByKey, coreProg } = jobs;
   const [list, setList] = useState<List | null>(null);
   const [assets, setAssets] = useState<AssetsStatus | null>(null);
-  const [prog, setProg] = useState<Progress | null>(null);
-  const [coreProg, setCoreProg] = useState<ProvProgress | null>(null);
   const [msg, setMsg] = useState("");
-  const [busyKey, setBusyKey] = useState("");
   const [removeKey, setRemoveKey] = useState("");
-  const [coreBusy, setCoreBusy] = useState(false);
-  // 初值只是个占位：清单还没拉回来，谁都不知道有哪些类。真正的落点在
-  // 下面那个 effect 里 —— 清单到手之后按「有内容的类」纠正一次。
   const [category, setCategory] = useState<Category>(
-    filter && filter !== "all" ? filter : "train",
+    filter !== "all" ? filter : "separate",
   );
   const [page, setPage] = useState(0);
-  const busyRef = useRef(false);
 
   /** null = 还在查；false = 缺引擎资源；true = 已就绪 */
   const engineReady: boolean | null =
@@ -167,50 +147,29 @@ export function ExtrasPanel({
     setList(null);
     setAssets(null);
     setPage(0);
-    setCategory(filter && filter !== "all" ? filter : "train");
-    setCoreProg(null);
+    setCategory(filter !== "all" ? filter : "separate");
     void load();
-    let disposed = false;
-    const unsubs: Array<() => void> = [];
-    void listen<Progress>("extra-progress", (ev) => {
-      setProg(ev.payload);
-      if (ev.payload.phase === "error") setMsg(ev.payload.message || t("s.e0dab22b1a"));
-    }).then((fn) => {
-      if (disposed) fn();
-      else unsubs.push(fn);
-    });
-    // 引擎资源下载复用 provision-progress（phase=engine-core）
-    void listen<ProvProgress>("provision-progress", (ev) => {
-      if (ev.payload?.phase === "engine-core" || String(ev.payload?.phase || "").includes("engine")) {
-        setCoreProg(ev.payload);
-      }
-    }).then((fn) => {
-      if (disposed) fn();
-      else unsubs.push(fn);
-    });
-    return () => {
-      disposed = true;
-      unsubs.forEach((f) => f());
-    };
     // `load` 每次渲染都是新函数，列进依赖会变成「渲染一次拉一次清单」。
     // 这个 effect 要的是「挂载时拉一次，filter 变了再拉一次」。
-  }, [filter]);
+  }, [filter, reloadToken]);
 
-  /** 清单里真正出现过的类，按 CATEGORY_ORDER 排。空清单时是空数组。 */
-  const categories = useMemo(() => categoriesOf(list?.items || []), [list]);
-
-  // 清单回来之后把页签落到一个真有内容的类上。写死页签会让落在别的组别里的
-  // 资源在界面上彻底消失 —— SVC 那边就是这么丢掉四条推理必需模型的。
   useEffect(() => {
-    if (!categories.length || categories.includes(category)) return;
-    setCategory(categories[0]);
-    setPage(0);
+    if (jobs.generation === 0) return;
+    void load();
+  }, [jobs.generation]);
+
+  const categories = useMemo(() => categoriesOf(list?.items || []), [list]);
+  useEffect(() => {
+    if (categories.length && !categories.includes(category)) {
+      setCategory(categories[0]);
+      setPage(0);
+    }
   }, [categories, category]);
 
-  const filtered = useMemo(
-    () => (list?.items || []).filter((i) => groupOf(i) === category),
-    [list, category],
-  );
+  const filtered = useMemo(() => {
+    const all = list?.items || [];
+    return all.filter((i) => groupOf(i) === category);
+  }, [list, category]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE) || 1);
   const pageClamped = Math.min(page, totalPages - 1);
@@ -219,52 +178,12 @@ export function ExtrasPanel({
     pageClamped * PER_PAGE + PER_PAGE,
   );
 
-  const downloadEngineCore = async () => {
-    if (busyRef.current || coreBusy) return;
-    busyRef.current = true;
-    setCoreBusy(true);
-    setMsg("");
-    setCoreProg({
-      phase: "engine-core",
-      done: 0,
-      total: 1,
-      percent: 0,
-      message: t("s.c7ea0cf156"),
-    });
-    try {
-      await invoke("assets_ensure_engine_core");
-      setMsg(t("s.33dadd8dd6"));
-      setAssets(await getAssetsStatus());
-      setCoreProg(null);
-    } catch (e) {
-      setMsg(String(e));
-    } finally {
-      busyRef.current = false;
-      setCoreBusy(false);
-    }
+  const downloadEngineCore = () => {
+    startEngineCoreDownload();
   };
 
-  const start = async (key: string) => {
-    if (busyRef.current || coreBusy) return;
-    if (engineReady === false) {
-      setMsg(t("s.e8a77f003d"));
-      return;
-    }
-    busyRef.current = true;
-    setBusyKey(key);
-    setMsg("");
-    setProg(null);
-    try {
-      await invoke("extra_download", { key });
-      // 同上：`load` 开头清 msg，先刷新再报「下载完成」，否则这句永远看不见。
-      await load();
-      setMsg(t("s.4bbcf94739"));
-    } catch (e) {
-      setMsg(String(e));
-    } finally {
-      busyRef.current = false;
-      setBusyKey("");
-    }
+  const start = (key: string) => {
+    startExtraDownload(key, engineReady);
   };
 
   /**
@@ -274,18 +193,16 @@ export function ExtrasPanel({
    * 点错一下的代价太大。确认框里把体积写出来，别让用户去猜删的是什么。
    */
   const remove = async (it: Item) => {
-    if (busyRef.current || coreBusy || removeKey) return;
+    if (coreBusy || removeKey || Object.keys(busyKeys).length) return;
     const ok = await askConfirm(
       t("s.extraRemoveConfirm", {
-        v0: extraLabel(it, category),
+        v0: extraLabel(it),
         v1: mb(it.size_bytes) || t("s.2b9d013177"),
       }),
     );
     if (!ok) return;
-    busyRef.current = true;
     setRemoveKey(it.key);
     setMsg("");
-    setProg(null);
     try {
       const r = await invoke<{ freed_bytes?: number }>("extra_remove", {
         key: it.key,
@@ -296,12 +213,11 @@ export function ExtrasPanel({
     } catch (e) {
       setMsg(String(e));
     } finally {
-      busyRef.current = false;
       setRemoveKey("");
     }
   };
 
-  const pct = prog?.total ? Math.round(((prog.done ?? 0) / prog.total) * 100) : 0;
+  const downloading = Object.keys(busyKeys);
   const corePct =
     coreProg?.percent != null
       ? Math.min(100, Math.max(0, Number(coreProg.percent)))
@@ -310,10 +226,14 @@ export function ExtrasPanel({
         : 0;
 
   const emptyHint =
-    list?.available === false ? t("s.122abe360d") : categoryEmpty(category);
+    list?.available === false
+      ? t("s.122abe360d")
+      : category === "train"
+        ? t("s.2b9ddc0b69")
+        : category === "separate" ? t("s.7e9782377b") : t("s.extraEmptyOther");
 
   const locked = engineReady === false;
-  const anyBusy = !!busyKey || !!removeKey || coreBusy;
+  const anyBusy = downloading.length > 0 || !!removeKey || coreBusy;
   useEffect(() => {
     onBusyChange?.(anyBusy);
   }, [anyBusy, onBusyChange]);
@@ -324,26 +244,22 @@ export function ExtrasPanel({
           {title ? (
             <h3 className="m-0 text-[17px] font-semibold">{title}</h3>
           ) : null}
-          {categories.length > 1 ? (
-            <SegmentControl<Category>
-              className={title ? "" : "ml-auto"}
-              value={category}
-              onChange={(v) => {
-                setCategory(v);
-                setPage(0);
-              }}
-              options={categories.map((c) => ({ id: c, label: categoryLabel(c) }))}
-            />
-          ) : null}
+          {categories.length > 1 ? <SegmentControl<Category>
+            className={title ? "" : "ml-auto"}
+            value={category}
+            onChange={(v) => {
+              setCategory(v);
+              setPage(0);
+            }}
+            options={categories.map((id) => ({ id, label: categoryLabel(id) }))}
+          /> : null}
         </div>
         <p className="m-0 mb-3 text-[12.5px] text-[var(--ink-muted)] leading-snug">
           {categoryBlurb(category)}
         </p>
 
         {reason ? (
-          <p className="m-0 mb-3 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--notify)_14%,transparent)] px-3 py-2 text-[12.5px] text-[var(--ink-muted)] leading-relaxed">
-            {reason}
-          </p>
+          <Warn className="mb-3">{reason}</Warn>
         ) : null}
 
         {/* 引擎资源前置卡：CNB engine-core，约 720MB */}
@@ -369,11 +285,7 @@ export function ExtrasPanel({
               </div>
               <p className="m-0 mt-1 text-[12.5px] text-[var(--help)] leading-relaxed">
                 {t("extras.engineDesc")}
-                {assets?.engine_core_missing?.length
-                  ? t("extras.missingList", {
-                      list: assets.engine_core_missing.join("、"),
-                    })
-                  : ""}
+
               </p>
               {coreBusy && coreProg ? (
                 <div className="mt-2">
@@ -397,7 +309,7 @@ export function ExtrasPanel({
               <Btn
                 primary
                 className="shrink-0"
-                disabled={coreBusy || !!busyKey}
+                disabled={coreBusy || downloading.length > 0}
                 onClick={() => void downloadEngineCore()}
               >
                 {coreBusy ? t("s.65188d08a2") : t("s.cbf7f4dada")}
@@ -409,28 +321,28 @@ export function ExtrasPanel({
         </div>
 
         {locked ? (
-          <div className="min-h-[200px] flex items-center">
+          <div className="flex items-center">
             <p className="m-0 py-4 text-[13px] text-[var(--ink-muted)] leading-relaxed">{t("s.70927369db")}</p>
           </div>
         ) : list === null ? (
-          <div className="min-h-[200px] flex items-center">
+          <div className="flex items-center">
             <p className="m-0 py-4 text-[13px] text-[var(--meta)]">{t("s.cd178d24a2")}</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="min-h-[200px] flex items-center">
+          <div className="flex items-center">
             <p className="m-0 py-4 text-[13px] text-[var(--ink-muted)]">{emptyHint}</p>
           </div>
         ) : (
-          <div className="min-h-[200px] flex flex-col border-t border-[var(--hairline)]">
+          <div className="flex flex-col">
             <div className="flex-1">
               {pageItems.map((it) => (
                 <ItemRow
                   key={it.key}
                   it={it}
-                  category={category}
-                  busyKey={busyKey}
+                  busy={!!busyKeys[it.key]}
+                  progress={progByKey[it.key]}
                   removeKey={removeKey}
-                  disabled={coreBusy}
+                  disabled={coreBusy || downloading.length > 0 || !!removeKey}
                   onStart={start}
                   onRemove={remove}
                 />
@@ -438,19 +350,7 @@ export function ExtrasPanel({
             </div>
 
             {totalPages > 1 ? (
-              <div className="flex items-center justify-center gap-3 pt-4 pb-1">
-                <Btn
-                  disabled={pageClamped <= 0 || anyBusy}
-                  onClick={() => setPage(pageClamped - 1)}
-                >{t("s.b41561d807")}</Btn>
-                <span className="text-[12.5px] text-[var(--meta)] tabular-nums min-w-[72px] text-center">
-                  {pageClamped + 1} / {totalPages}
-                </span>
-                <Btn
-                  disabled={pageClamped >= totalPages - 1 || anyBusy}
-                  onClick={() => setPage(pageClamped + 1)}
-                >{t("s.67a246a344")}</Btn>
-              </div>
+              <Pager className="pt-4 pb-1" page={pageClamped + 1} pages={totalPages} onChange={(value) => setPage(value - 1)} />
             ) : (
               <p className="m-0 pt-3 text-[12px] text-[var(--meta)] text-center tabular-nums">
                 {t("extras.countItems", { n: filtered.length })}
@@ -459,31 +359,17 @@ export function ExtrasPanel({
           </div>
         )}
 
-        {busyKey && prog ? (
-          <div className="mt-4">
-            <div className="h-1 w-full overflow-hidden rounded bg-[color-mix(in_srgb,var(--ink)_10%,transparent)]">
-              <div
-                className="h-full bg-[var(--accent)] transition-[width] duration-200"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <p className="m-0 mt-2 text-[12px] text-[var(--meta)]">
-              {prog.message} {pct}%
-            </p>
-          </div>
-        ) : null}
-
-        {msg ? (
+        {msg || jobs.msg ? (
           // 下载失败现在是多行的（一句人话 + 试过的源 + 怎么办 + 技术细节），
           // 不换行的话整段挤成一坨，等于白写。
           <p className="m-0 mt-3 text-[12.5px] text-[var(--ink-muted)] leading-relaxed whitespace-pre-line break-words">
-            {msg}
+            {msg || jobs.msg}
           </p>
         ) : null}
 
-        {busyKey || onClose ? (
+        {downloading.length > 0 || onClose ? (
           <div className="mt-5 flex justify-end gap-2.5">
-            {busyKey ? (
+            {downloading.length > 0 ? (
               <Btn onClick={() => void invoke("extra_cancel")}>{t("s.7115f2e29d")}</Btn>
             ) : onClose ? (
               <Btn onClick={onClose} disabled={coreBusy || !!removeKey}>{t("s.6c14bd7f6f")}</Btn>
@@ -541,66 +427,84 @@ export function ExtrasDialog({
 
 function ItemRow({
   it,
-  category,
-  busyKey,
+  busy,
+  progress,
   removeKey,
   disabled,
   onStart,
   onRemove,
 }: {
   it: Item;
-  category: Category;
-  busyKey: string;
+  busy: boolean;
+  progress?: ExtraProgress;
   removeKey: string;
   disabled?: boolean;
   onStart: (key: string) => void;
   onRemove: (it: Item) => void;
 }) {
   const removing = removeKey === it.key;
+  const pct = progress?.total
+    ? Math.round(((progress.done ?? 0) / Math.max(progress.total, 1)) * 100)
+    : 0;
   return (
-    <div className="flex items-center gap-4 border-b border-[var(--hairline)] py-3.5">
-      <span className="min-w-0 flex-1">
-        <span className="block text-[14px] leading-snug">
-          {extraLabel(it, category)}
-          {it.recommended ? (
-            <span className="ml-1.5 text-[11px] text-[var(--accent)] font-medium">{t("s.62b46f24ae")}</span>
-          ) : null}
-        </span>
-        {extraNotes(it) ? (
-          <span className="block mt-1 text-[12.5px] text-[var(--meta)] leading-snug">
-            {extraNotes(it)}
+    <div className="py-3.5">
+      <div className="flex items-center gap-4">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] leading-snug">
+            {extraLabel(it)}
+            {it.recommended ? (
+              <span className="ml-1.5 text-[11px] text-[var(--accent)] font-medium">{t("s.62b46f24ae")}</span>
+            ) : null}
           </span>
-        ) : null}
-        <span className="block mt-1 text-[12px] text-[var(--meta)] tabular-nums">
-          {joinClauses([
-            mb(it.size_bytes),
-            !!it.files?.length && t("s.8e7dddc185", { v0: it.files.length }),
-            it.installed && t("s.f7b11922f6"),
-          ])}
+          {extraNotes(it) ? (
+            <span className="block mt-1 text-[12.5px] text-[var(--meta)] leading-snug">
+              {extraNotes(it)}
+            </span>
+          ) : null}
+          <span className="block mt-1 text-[12px] text-[var(--meta)] tabular-nums">
+            {joinClauses([
+              mb(it.size_bytes),
+              !!it.files?.length && t("s.8e7dddc185", { v0: it.files.length }),
+              it.installed && t("s.f7b11922f6"),
+            ])}
+          </span>
         </span>
-      </span>
-      {it.installed ? (
-        // 已装好的给一个卸载口子：模型动辄几百 MB，试过不合用就该能删掉，
-        // 不然只能让用户自己去 assets 里翻文件。
-        <span className="shrink-0 flex items-center gap-2">
-          <span className="text-[13px] text-[var(--ink-muted)] px-1">{t("s.eb88ff57c9")}</span>
+        {it.installed ? (
+          // 已装好的给一个卸载口子：模型动辄几百 MB，试过不合用就该能删掉，
+          // 不然只能让用户自己去 assets 里翻文件。
+          <span className="shrink-0 flex items-center gap-2">
+            <span className="text-[13px] text-[var(--ink-muted)] px-1">{t("s.eb88ff57c9")}</span>
+            <Btn
+              className="min-w-[72px]"
+              disabled={busy || !!removeKey || !!disabled}
+              onClick={() => void onRemove(it)}
+            >
+              {removing ? t("s.extraRemoving") : t("s.extraRemove")}
+            </Btn>
+          </span>
+        ) : (
           <Btn
-            className="min-w-[72px]"
-            disabled={!!busyKey || !!removeKey || !!disabled}
-            onClick={() => void onRemove(it)}
+            className="shrink-0 min-w-[72px]"
+            disabled={busy || !!removeKey || !!disabled}
+            onClick={() => void onStart(it.key)}
           >
-            {removing ? t("s.extraRemoving") : t("s.extraRemove")}
+            {busy ? t("s.65188d08a2") : t("s.2b9d013177")}
           </Btn>
-        </span>
-      ) : (
-        <Btn
-          className="shrink-0 min-w-[72px]"
-          disabled={!!busyKey || !!removeKey || !!disabled}
-          onClick={() => void onStart(it.key)}
-        >
-          {busyKey === it.key ? t("s.65188d08a2") : t("s.2b9d013177")}
-        </Btn>
-      )}
+        )}
+      </div>
+      {busy && progress ? (
+        <div className="mt-2">
+          <div className="h-1 w-full overflow-hidden rounded bg-[color-mix(in_srgb,var(--ink)_10%,transparent)]">
+            <div
+              className="h-full bg-[var(--accent)] transition-[width] duration-200"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="m-0 mt-1.5 text-[12px] text-[var(--meta)]">
+            {progress.message} {pct > 0 ? ` ${pct}%` : ""}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

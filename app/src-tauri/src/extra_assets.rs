@@ -65,6 +65,7 @@ impl ExtraFile {
 pub struct ExtraSpec {
     pub key: String,
     pub label: String,
+    pub label_i18n: Value,
     pub dest: String,
     /// 客户端分组：`train` 训练音色 / `separate` 人声分离 / `other`。
     pub group: String,
@@ -74,6 +75,7 @@ pub struct ExtraSpec {
     pub order: i32,
     /// 给用户看的用途说明，不是路径。
     pub notes: String,
+    pub notes_i18n: Value,
     pub files: Vec<ExtraFile>,
 }
 
@@ -254,6 +256,8 @@ pub fn parse_spec(key: &str, blob: &Value) -> Option<ExtraSpec> {
     Some(ExtraSpec {
         key: key.to_string(),
         label,
+        label_i18n: blob.get("label_i18n").filter(|v| v.is_object()).cloned().unwrap_or_else(|| json!({})),
+        notes_i18n: blob.get("notes_i18n").filter(|v| v.is_object()).cloned().unwrap_or_else(|| json!({})),
         dest,
         group,
         recommended,
@@ -340,6 +344,8 @@ pub fn list(root: &Path) -> Value {
             json!({
                 "key": s.key,
                 "label": s.label,
+                "label_i18n": s.label_i18n,
+                "notes_i18n": s.notes_i18n,
                 "dest": s.dest,
                 "group": s.group,
                 "recommended": s.recommended,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, memo } from "react";
-import { Block, Btn, Group, PageHead, PagePad } from "../components/ui";
+import { Block, Btn, Group, PageHead, PagePad, Warn } from "../components/ui";
 import { StoreSection } from "../components/StoreSection";
+import { Pager } from "../components/Pager";
 import { ExtrasPanel, type ExtrasFilter } from "../components/ExtrasDialog";
 import { PinnedRow } from "../components/PinnedRow";
 import { t } from "../i18n/t";
@@ -11,28 +12,10 @@ import {
   type PlazaFeed,
   type PlazaItem,
 } from "../lib/plaza";
+import { formatLocalizedList } from "../lib/voiceDisplay";
+import { useI18n } from "../i18n";
 
-/**
- * 广场：社区音色、投放、下载模型、更新日志，从上往下就是这个顺序。
- *
- * 社区音色排第一，因为这是用户主动进广场的唯一理由 —— 投放和更新日志是我们
- * 想让他看的，音色是他想看的。把想让人看的东西摆在人想看的东西前面，结果是
- * 两个都没人看。
- *
- * 投放卡片**不可关闭**：承载投放正是这一页存在的意义。可关闭的是模型页顶部
- * 那一条横幅，在那边单独处理。
- *
- * 刷新只有一个：右上角那个。一次点击把三块内容全刷了 —— 音色清单走
- * StoreSection 的 reloadToken，投放和更新日志走 onReload。三个各自的刷新
- * 按钮只会让人猜「我该点哪个」。
- *
- * 「下载模型」排在投放下面：它和社区音色是同一类事（都是往本机装东西），
- * 但用户主动来找它的次数少得多 —— 一台机器装一次引擎资源就完了。所以不跟
- * 社区音色抢第一屏，但也不能压到更新日志后面去。
- *
- * 它原来是「其他」页上弹出来的一个框。「其他」页现在只留一个入口，点了跳
- * 到这儿来 —— 和「模型」页的「社区音色」是一样的处理。
- */
+/** Community voices, notices, model resources and release notes, matching RVC Fabric. */
 /** 更新日志二级页每页几条。够看又不至于把滚动条拉成一条线。 */
 const PER_PAGE = 5;
 
@@ -54,6 +37,7 @@ function PlazaPageImpl({
   /** 加一就滚到「下载模型」。用计数而不是布尔：连着跳两次也得再滚一次。 */
   scrollToDownloads?: number;
 }) {
+  useI18n();
   // 「查看全部」进的是独立一页，不是在原地展开一条长列表 —— 版本多了以后
   // 原地展开会把「投放」挤到看不见的地方，而且没有尽头。
   const [showAll, setShowAll] = useState(false);
@@ -67,7 +51,12 @@ function PlazaPageImpl({
   const extrasRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!scrollToDownloads) return;
-    extrasRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setShowAll(false);
+    const frame = requestAnimationFrame(() => {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      extrasRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [scrollToDownloads]);
   useEffect(
     () => () => {
@@ -125,15 +114,7 @@ function PlazaPageImpl({
             )}
           </Group>
         </Block>
-        {total > 1 ? (
-          <div className="flex items-center justify-center gap-3 py-5">
-            <Btn disabled={cur <= 0} onClick={() => setPageNo(cur - 1)}>{t("s.b41561d807")}</Btn>
-            <span className="text-[12.5px] text-[var(--meta)] tabular-nums min-w-[72px] text-center">
-              {cur + 1} / {total}
-            </span>
-            <Btn disabled={cur >= total - 1} onClick={() => setPageNo(cur + 1)}>{t("s.67a246a344")}</Btn>
-          </div>
-        ) : null}
+        <Pager className="py-5" page={cur + 1} pages={total} onChange={(p) => setPageNo(p - 1)} />
       </PagePad>
     );
   }
@@ -158,9 +139,7 @@ function PlazaPageImpl({
       />
 
       {feed?.errors?.length ? (
-        <p className="text-[12.5px] text-[var(--notify)] m-0 mb-4">
-          {feed.errors.join("；")}
-        </p>
+        <Warn className="mb-4">{formatLocalizedList(feed.errors)}</Warn>
       ) : null}
 
       {/* 置顶排在社区音色之上。它只有一排卡片高，压不住下面的东西，而它指向的
@@ -192,7 +171,7 @@ function PlazaPageImpl({
 
       <Block title={t("s.1252c81119")}>
         <div id="download-models" ref={extrasRef} className="scroll-mt-4">
-          <ExtrasPanel filter={extrasFilter} reason={downloadReason} />
+          <ExtrasPanel filter={extrasFilter} reason={downloadReason} reloadToken={reloadToken} />
         </div>
       </Block>
 
@@ -301,9 +280,7 @@ function Feed({
           onError={() => setImgFailed(true)}
           className="w-[104px] h-16 rounded-[var(--rs)] flex-none object-cover max-[720px]:w-[76px] max-[720px]:h-[50px]"
         />
-      ) : (
-        <div className="w-[104px] h-16 rounded-[var(--rs)] flex-none bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] max-[720px]:w-[76px] max-[720px]:h-[50px]" />
-      )}
+      ) : null}
       <div>
         <h4 className="m-0 mb-1.5 text-[14.5px] font-semibold flex items-center gap-2 flex-wrap">
           {item.title}

@@ -355,7 +355,7 @@
     "58a0882f6f": "Descompresión completada",
     "5abed96e7d": "No listo (requiere instalación)",
     "5b254c438b": "Volver a la Plaza",
-    "5b422f44dd": "Modelos base y recursos de apoyo para el entrenamiento. Complete primero los recursos del motor de arriba y luego descargue lo necesario.",
+    "5b422f44dd": "Modelos base y recursos para el entrenamiento.",
     "5ca337dd03": "Formato sha256 no válido",
     "5ca65185f2": "Esta voz no tiene URL de descarga configurada",
     "5d5815647c": "Contraer",
@@ -369,7 +369,7 @@
     "63bb17a9d2": "Ajustes modificados. Se aplicarán en la próxima síntesis.",
     "63d89cdb5c": "Con varias GPU NVIDIA, elija la que se usa para calcular. Si no elige, se usa la primera, que no es necesariamente la más rápida.",
     "63e829016e": "Completa la instalación con el launcher",
-    "63fa37071e": "Para limpiar material de entrenamiento, descargue primero «Extracción de voz»; elija el resto según sus necesidades. Los modelos marcados como «Avanzado» son grandes y rara vez se necesitan a diario.",
+    "63fa37071e": "Extraiga voces y elimine el acompañamiento.",
     "6462f5c407": "No se encontró una carpeta de interfaz reemplazable; esta instalación no puede actualizar la interfaz en línea",
     "65188d08a2": "Descargando…",
     "65fc81e161": "Abrir",
@@ -427,7 +427,7 @@
     "7feea73fa3": "Autor: {v0}",
     "800d82ff2e": "Anuncio de la plaza",
     "80b25fdbcd": "Error al eliminar: {e}",
-    "83bc4b2a5f": "Aún no hay voces listadas. Revisa la red y pulsa «Actualizar» arriba a la derecha.",
+    "83bc4b2a5f": "No hay personajes coincidentes.",
     "84ccf9394c": "ID de Xiaohongshu: TuringMirror",
     "85b3f0512b": "Solo no instaladas",
     "87c1bc6fe6": "Actualizando",
@@ -636,7 +636,6 @@
     "fa2f7e5279": "{v0} usado",
     "2a4fa38f1e": "No se han recibido nuevos datos durante {v0}.",
     "9d38fc19bb": "Ver todos los {v0}",
-    "40a021ed44": "Página {v0} de {v1}, {v2} en total",
     "0b38f69017": "Distribuido por {v0}",
     "c8542337dc": "{v0} elementos, {v1}",
     "6ff3d83b8f": "Falta el componente de separación vocal (pymss_core). Reinstala o actualiza la aplicación.",
@@ -851,7 +850,7 @@
     "rolePackPickTitle": "Elija el paquete de personaje que desea importar",
     "rolePackCancelled": "No se ha elegido ningún paquete de personaje.",
     "extraCatOther": "Otros",
-    "extraBlurbOther": "Recursos adicionales que no entran en las categorías anteriores.",
+    "extraBlurbOther": "Modelos y recursos adicionales.",
     "extraEmptyOther": "Por ahora no hay recursos disponibles.",
     "trainVersionUnsupported": "Versión no admitida: {a0}",
     "trainEpochRange": "El número de épocas está fuera del rango admitido: {a0}",
@@ -885,14 +884,69 @@
     "valueFailed": "No se pudo leer",
     "valueUnknown": "Desconocido",
     "sizeUnknown": "Tamaño desconocido",
-    "notDetected": "No detectado"
+    "notDetected": "No detectado",
+    "authorsPickTitle": "¿Qué página de autor abrir?",
+    "authorsPickHint": "Esta voz lista varios autores: elige qué página abrir.",
+    "pagerLabel": "Páginas"
   },
   "extras": {
     "engineTitle": "Recursos del motor",
-    "engineDesc": "HuBERT en chino, RoBERTa en chino y los modelos base de GPT-SoVITS. Hacen falta tanto para sintetizar como para entrenar. La instalación inicial solo descarga el entorno de ejecución; estos llegan cuando algo los necesita.",
-    "missingList": " Falta: {list}",
+    "engineDesc": "Modelos base para síntesis y entrenamiento.",
     "countItems": "{n} elementos",
-    "items": {}
+    "items": {
+      "pymss-vocal": {
+        "label": "Extracción de voz",
+        "notes": "Primera opción para limpiar material de entrenamiento: extrae voces secas de las canciones."
+      },
+      "pymss-denoise": {
+        "label": "Reducción de ruido",
+        "notes": "Elimina el ruido de fondo y el zumbido eléctrico. Descárguelo cuando el material seco sea ruidoso."
+      },
+      "pymss-deecho": {
+        "label": "Quitar eco",
+        "notes": "Elimina el eco de sala y las colas de retardo. Útil en entornos de grabación amplios."
+      },
+      "pymss-dereverb": {
+        "label": "Quitar reverb",
+        "notes": "Suprime la reverberación para una voz más seca."
+      },
+      "pymss-inst": {
+        "label": "Extraer instrumental",
+        "notes": "Extrae la pista de acompañamiento (lo contrario de la extracción de voz)."
+      },
+      "pymss-karaoke": {
+        "label": "Karaoke (quitar voz)",
+        "notes": "Elimina la voz principal conservando el acompañamiento, para pistas de fondo."
+      },
+      "pymss-bve": {
+        "label": "Coros de fondo (avanzado)",
+        "notes": "Separa las pistas de armonía de fondo. Rara vez necesario para material de entrenamiento."
+      },
+      "pymss-harmonic": {
+        "label": "Armónico/ruido (avanzado)",
+        "notes": "Separa armónicos y ruido. Uso avanzado."
+      },
+      "pymss-hp2": {
+        "label": "HP2 alta calidad (avanzado)",
+        "notes": "La serie HP2, más grande, ofrece mayor calidad pero ocupa más espacio (unos 1,5 GB). Para el uso diario basta «Extracción de voz»."
+      },
+      "pymss-mgm": {
+        "label": "Fusión MGM (avanzado)",
+        "notes": "Modelo de fusión multibanda MGM v4. Uso avanzado."
+      },
+      "pymss-sp": {
+        "label": "Serie espectro SP (avanzado)",
+        "notes": "Serie de espectro SP. Grande; solo casos especiales."
+      },
+      "pymss-wind": {
+        "label": "Orquesta/viento (avanzado)",
+        "notes": "Separa el acompañamiento orquestal/de viento. Rara vez necesario."
+      },
+      "gsv-v5": {
+        "label": "Modelos base V5",
+        "notes": "Para personajes V5 y síntesis sin entrenamiento previo."
+      }
+    }
   },
   "onboarding": {
     "languageTitle": "Elegir idioma",
