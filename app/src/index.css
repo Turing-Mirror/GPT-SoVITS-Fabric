@@ -93,3 +93,7 @@
   --storage-7: color-mix(in srgb, var(--meta) 65%, var(--surface));
   --storage-8: color-mix(in srgb, var(--meta) 25%, var(--surface));
 }
+
+/* Catalog transitions grow with their content; the surrounding page owns scrolling.
+   QueueList's default containment otherwise traps wheel/trackpad input here. */
+.trm-queue-list.catalog-transition { overscroll-behavior: auto; }

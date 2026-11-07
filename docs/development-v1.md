@@ -65,3 +65,9 @@ SVG 原稿位于 `app/src/assets/brand/`：`gsvf-main-logo.svg` 用于标题栏�
 提交 SVG 和 `app/src-tauri/icons/` 的生成产物。窗口、托盘和安装器共用此图标集，安装器直接使用 `icons/icon.ico`。图标嵌入原生程序，更新后须重新编译 Rust 并重启；仅替换前端不足以更新系统图标。
 
 生成工具：[Tauri 应用图标](https://v2.tauri.app/develop/icons/)。
+
+## 设置页滚动修复
+
+2026-11-07：`CatalogTransition` 用自然高度的 `QueueList` 承载分类内容，实际滚动归外层 `PageHost`。QueueList 默认的 `overscroll-behavior: contain` 将鼠标滚轮留在自身，即使其内容没有溢出，也阻断外层页面滚动。修复仅对产品的 `.catalog-transition` 设置 `overscroll-behavior: auto`，保留队列组件原有的独立滚动规则和左右切换动画。
+
+复查时将指针放在设置卡片正文上，验证滚轮上下、连续小幅滚动、滚至末项、分类切换后滚动，以及离开设置再返回。覆盖默认和最小窗口尺寸，并在父组件持续刷新时确认滚动位置不复位。不要只检查 `scrollHeight` 或程序设置 `scrollTop`，这两者不能证明真实滚轮事件可以传给外层页面。
