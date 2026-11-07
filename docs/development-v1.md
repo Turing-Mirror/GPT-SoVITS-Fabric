@@ -47,3 +47,11 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 本次恢复验证：`npm run build` 和 `cargo build --locked --bins -j 1` 均通过；新编译的桌面程序成功挂载页面，窗口可见且有响应，首页读取到了现有角色与合成记录。此次恢复未修改 Rust 源码或依赖锁文件。
 
 参考：[Rust E0463](https://doc.rust-lang.org/error_codes/E0463.html)、[Cargo 构建选项](https://doc.rust-lang.org/cargo/commands/cargo-build.html)。
+
+## 引擎资源就绪检查
+
+2026-11-07 开发目录的五组底模已安装完整，但程序将 `s1v3.ckpt` 和 `s2Dv2ProPlus.pth` 误判为缺失。原检测要求两者至少 200,000,000 字节；公开发布包中的完整文件实际分别为 155,284,856 与 126,432,639 字节。SoVITS 生成器与判别器不能共用这个下限。
+
+修复将 GPT 与判别器的最小合理体积设为 100,000,000 字节，生成器保留原下限。此处是快速就绪判断；下载完整性仍由发布包 SHA-256 校验负责。增加以真实发布文件长度为样本的回归，同时验证截断文件仍被判定为缺失。
+
+本次五个本地资源包的 SHA-256 与最新公开清单一致，开发目录中的全部包内文件逐一比对一致。修复前通过真实程序的 `assets_status` 重现两项误报，RVCF 同一接口已报告就绪。资源模块 12 项测试通过，重编译并重启后再次读取实际程序状态，确认 GSVF 的缺失列表为空、引擎资源就绪。

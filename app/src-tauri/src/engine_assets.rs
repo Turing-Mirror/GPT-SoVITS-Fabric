@@ -119,13 +119,14 @@ fn catalog_size_for(root: &Path, cache_name: &str) -> u64 {
 // engine-core（GSV 底模）
 // ---------------------------------------------------------------------------
 
-/// 各底模的最小合法体积。按上游发布体积估，制品发布后校准：
-/// cnhubert ~100MB、roberta ~500MB、s1v3 ~200MB、v2ProPlus s2 各 ~200MB、
-/// sv ~50MB、g2pw onnx ~100MB。
+/// 快速就绪检查的最小合理体积；下载完整性由包的 SHA-256 校验负责。
+/// 已核验发布权重：cnhubert ~189MB、roberta ~651MB、s1v3 ~155MB、
+/// v2ProPlus G ~200MB / D ~126MB、sv ~108MB、g2pw onnx ~635MB。
 const MIN_HUBERT_BYTES: u64 = 100_000_000;
 const MIN_BERT_BYTES: u64 = 500_000_000;
-const MIN_S1V3_BYTES: u64 = 200_000_000;
-const MIN_S2_BYTES: u64 = 200_000_000;
+const MIN_S1V3_BYTES: u64 = 100_000_000;
+const MIN_S2G_BYTES: u64 = 200_000_000;
+const MIN_S2D_BYTES: u64 = 100_000_000;
 const MIN_SV_BYTES: u64 = 10_000_000;
 const MIN_G2PW_BYTES: u64 = 10_000_000;
 /// fast_langdetect 的 lid.176.bin 约 126MB。
@@ -191,11 +192,11 @@ fn engine_core_files() -> Vec<(&'static str, u64)> {
         ("GPT_SoVITS/pretrained_models/s1v3.ckpt", MIN_S1V3_BYTES),
         (
             "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
-            MIN_S2_BYTES,
+            MIN_S2G_BYTES,
         ),
         (
             "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2ProPlus.pth",
-            MIN_S2_BYTES,
+            MIN_S2D_BYTES,
         ),
         (
             "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
@@ -525,6 +526,29 @@ mod tests {
             engine_core_files().len() + 1
         );
         assert!(!engine_core_ready(&tmp));
+    }
+
+    #[test]
+    fn published_gpt_and_sovits_sizes_are_recognized() {
+        let root = crate::testutil::scratch("published-core-sizes");
+        // Uncompressed lengths in the SHA-256 verified GSV-engine-core packages.
+        let published = [
+            ("GPT_SoVITS/pretrained_models/s1v3.ckpt", 155_284_856),
+            ("GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth", 200_125_741),
+            ("GPT_SoVITS/pretrained_models/v2Pro/s2Dv2ProPlus.pth", 126_432_639),
+        ];
+        for (rel, size) in published {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::File::create(path).unwrap().set_len(size).unwrap();
+        }
+        let missing = engine_core_missing(&root);
+        for (rel, _) in published {
+            assert!(!missing.iter().any(|item| item == rel), "complete model rejected: {rel}");
+            std::fs::File::create(root.join(rel)).unwrap().set_len(1024).unwrap();
+            assert!(engine_core_missing(&root).iter().any(|item| item == rel), "truncated model accepted: {rel}");
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
