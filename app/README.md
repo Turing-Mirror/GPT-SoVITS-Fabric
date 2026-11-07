@@ -13,29 +13,18 @@ worker stays on Python under `Runtime\pythonw.exe`.
 - Visual Studio Build Tools with “Desktop development with C++” (`link.exe`)
 - Windows WebView2
 
-## Dev
+## Dev and build
 
-```bat
-cd app
-npm install
-npm run tauri:dev
-```
+See [Windows development v1](../docs/development-v1.md) for the native build,
+product-root setup, restart procedure, and dependency build troubleshooting.
+Run commands from a Visual Studio developer shell with the C++ tools available.
 
-UI-only (browser, no native window chrome):
+For a browser-only preview, run `npm run dev` from `app/`.
+The desktop window loads the built `frontend/` directory next to its executable,
+including in debug builds; a running Vite server does not replace that directory.
 
-```bat
-npm run dev
-```
-
-## Build
-
-```bat
-cd app
-npm run tauri:build
-```
-
-Vite writes static assets to `app/frontend/`.  
-`tauri.conf.json` sets `frontendDist` to that folder so the UI pack can be shipped and updated separately from the Rust binary.
+For an installer, run `npm run tauri:build` from `app/`.
+Vite writes assets to `app/frontend/`, which Tauri copies as a bundled resource.
 
 ## Layout
 
@@ -51,15 +40,6 @@ Product behaviour and decisions: see internal `docs/项目白皮书.md` (gitigno
 
 The shell spawns `Runtime\\pythonw.exe tools\\synth_worker.py --resident` and talks
 JSON lines over stdin/stdout; training and separation are one-shot child workers.
-On Windows use the F: MSVC
-env when building the native host:
-
-```bat
-call F:\VS2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat
-set CARGO_TARGET_DIR=F:\VS2022\cargo-target
-cd /d path\to\repo\app
-npm run tauri:dev
-```
 
 ## Voice catalog & community store
 

@@ -1,0 +1,49 @@
+# Windows 开发 v1
+
+## 环境
+
+安装 Node.js 20 或更新版本、Rust MSVC 工具链、Visual Studio 的 C++ 桌面开发组件及 WebView2。
+在 Visual Studio 的 Developer PowerShell 中执行以下命令。不要把某台机器的 Visual Studio 安装路径或共享 Cargo 产物目录写入项目配置。
+
+开发产品根由仓库根目录下的 `scripts/dev_root.py` 组装，包含运行环境、引擎和用户数据。已有的 `data/dev-root` 可以继续使用。模型与运行环境的准备方式见根目录 README。
+
+## 构建并启动
+
+从仓库根目录进入 `app`，安装锁定的前端依赖，再构建页面：
+
+```powershell
+Set-Location app
+npm ci
+npm run build
+```
+
+依赖已安装且锁文件未变时可省略 `npm ci`。前端检查或构建失败时，先处理错误再继续。
+
+关闭该开发目录启动的旧桌面程序和后台 API 实例，以便替换可执行文件。在 `app` 中执行：
+
+```powershell
+$productRoot = (Resolve-Path ../data/dev-root).Path
+Set-Location src-tauri
+cargo build --locked --bins -j 1
+```
+
+等待 Cargo 输出 `Finished` 后再启动。默认产物目录为 `app/src-tauri/target/debug`；如果自行设置了 `CARGO_TARGET_DIR`，以下路径应使用对应产物目录。
+
+```powershell
+Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
+./target/debug/gpt-sovits-fabric.exe --product-root $productRoot
+```
+
+原生窗口使用可执行文件旁的 `frontend`，因此只启动 Vite 或只重建前端不足以更新正在运行的桌面程序。修改 Rust 后必须退出旧进程，再启动新产物。`--headless` 用于后台 API，不用于查看界面。
+
+## 依赖编译失败
+
+`E0463: can't find crate` 表示编译器未能加载依赖，不足以证明需要修改 `Cargo.toml`。先保留完整错误信息，并确认使用锁文件和正确的 MSVC 开发环境。
+
+2026 年 11 月 7 日本地构建先后出现 `zerofrom`、`tokio` 的 E0463。详细日志同时报告多项缓存的源码路径已改变。改为单任务构建后，这些依赖通过，但随后捕获到 `schemars_derive` 过程宏 DLL 的 `LoadLibraryExW` 错误，Windows 返回文件被占用（错误码 32）。该 DLL 恢复可加载后可继续构建。现有证据尚不能确定占用文件的进程，也不能证明两类错误具有相同原因。
+
+遇到文件占用时，先结束相关构建并确认文件恢复可用，再重试 `cargo build --locked --bins -j 1`。不要修改依赖版本来绕过文件锁。保留日志在已忽略的 `data/` 下；不要清除包含用户数据的整个开发目录。
+
+本次恢复验证：`npm run build` 和 `cargo build --locked --bins -j 1` 均通过；新编译的桌面程序成功挂载页面，窗口可见且有响应，首页读取到了现有角色与合成记录。此次恢复未修改 Rust 源码或依赖锁文件。
+
+参考：[Rust E0463](https://doc.rust-lang.org/error_codes/E0463.html)、[Cargo 构建选项](https://doc.rust-lang.org/cargo/commands/cargo-build.html)。

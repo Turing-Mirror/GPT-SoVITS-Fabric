@@ -21,9 +21,9 @@ Runtime\pythonw.exe tools\synth_worker.py --resident
 
 ## 开发
 
-见 `docs/DECISIONS.md`（设计决策记录）。
+见 [设计决策记录](docs/DECISIONS.md) 与 [Windows 开发 v1](docs/development-v1.md)。
 
-`cd app && npm run tauri:dev` 起的是壳。壳需要 `TM_VOICE_ROOT` 指到一个
+桌面壳加载构建后的 `frontend/`。壳需要 `TM_VOICE_ROOT` 指到一个
 组装好的产品根（`Runtime/` + `tools/` + `GPT_SoVITS/` + `setup_package.json`，
 内容来自 `app/src-tauri/engine-payload/` 加发布的 Runtime/engine-core 包）；
 没指的话壳会退到 cwd，页面能看、合成/训练/分离跑不起来。
