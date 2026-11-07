@@ -1283,7 +1283,7 @@
     "cancel": "キャンセル",
     "save": "保存",
     "resetCover": "カバーをリセット",
-    "manageAssets": "モデルと注釈",
+    "manageAssets": "注釈",
     "modelFiles": "モデルファイル",
     "replaceWeight": "ファイルを変更",
     "missingFile": "ファイルがありません",

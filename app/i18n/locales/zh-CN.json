@@ -1283,7 +1283,7 @@
     "cancel": "取消",
     "save": "保存",
     "resetCover": "恢复默认封面",
-    "manageAssets": "模型与标注",
+    "manageAssets": "标注",
     "modelFiles": "模型文件",
     "replaceWeight": "更换文件",
     "missingFile": "文件缺失",

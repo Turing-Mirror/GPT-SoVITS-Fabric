@@ -1283,7 +1283,7 @@
     "cancel": "취소",
     "save": "저장",
     "resetCover": "커버 초기화",
-    "manageAssets": "모델 및 주석",
+    "manageAssets": "주석",
     "modelFiles": "모델 파일",
     "replaceWeight": "파일 교체",
     "missingFile": "파일 없음",

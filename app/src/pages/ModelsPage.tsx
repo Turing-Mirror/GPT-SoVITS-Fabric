@@ -7,13 +7,13 @@ import { AdBanner } from "../components/AdBanner";
 import { Modal } from "../components/Modal";
 import { Leave } from "../components/Presence";
 import { CatalogTransition } from "../components/CatalogTransition";
-import { FlowList, Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
+import { FlowList, Dropdown, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
 import { ModelCard } from "../components/ModelCard";
 import { RoleAssetsDialog } from "../components/RoleAssetsDialog";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 import { askConfirm } from "../lib/webDialog";
-import { goTo, openInAnnot, synthWithRole } from "../lib/intent";
+import { goTo, synthWithRole } from "../lib/intent";
 import { t } from "../i18n/t";
 import { joinClauses } from "../lib/text";
 
@@ -135,19 +135,7 @@ export function ModelsPage({
   };
 
   const itemsFor = (r: Role): MenuItem[] => {
-    const lists = r.lists ?? [];
     return [
-      { id: "synth", label: t("library.useInSynth"), icon: "play", onSelect: () => synthWithRole(r.id) },
-      lists.length > 1
-        ? {
-            id: "annot",
-            label: t("library.editList"),
-            icon: "note",
-            items: lists.map((l) => ({ id: l.file, label: l.file, onSelect: () => openInAnnot(`${r.dir}/${l.file}`) })),
-          }
-        : { id: "annot", label: t("library.editList"), icon: "note", disabled: !lists.length, onSelect: () => openInAnnot(`${r.dir}/${lists[0].file}`) },
-      { id: "assets", label: t("library.manageAssets"), icon: "folder", onSelect: () => setManaging(r) },
-      { id: "g1", gap: true },
       { id: "edit", label: t("library.editInfo"), icon: "edit", onSelect: () => setEditing(r) },
       {
         id: "cover",
@@ -239,17 +227,17 @@ export function ModelsPage({
                     const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
                     return (
                       <ModelCard id={r.id} name={r.name || r.id} cover={cover}
-                        onOpen={() => synthWithRole(r.id)}
-                        onContextMenu={event => menu.open(event, itemsFor(r))}
-                        actions={<MoreBtn onOpen={element => menu.open(element, itemsFor(r))} />}>
+                        onOpen={() => synthWithRole(r.id)}>
                         <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
                           {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
                         </div>
                         <div className="mt-1.5">
                           <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
                         </div>
-                        <div className="mt-2 flex justify-end" onClick={event => event.stopPropagation()}>
-                          <Btn className="text-[12px]" onClick={() => setManaging(r)}>{t("library.manageAssets")}</Btn>
+                        <div className="mt-2.5 flex items-center gap-1.5" onClick={event => event.stopPropagation()}>
+                          <Btn className="flex-1 min-w-0" onClick={() => synthWithRole(r.id)}><span className="block truncate" title={t("nav.synth")}>{t("nav.synth")}</span></Btn>
+                          <Btn className="flex-1 min-w-0" onClick={() => setManaging(r)}><span className="block truncate" title={t("library.manageAssets")}>{t("library.manageAssets")}</span></Btn>
+                          <Btn className="shrink-0 px-2.5" ariaLabel={t("ui.common.more")} onClick={event => menu.open(event.currentTarget, itemsFor(r))}>⋯</Btn>
                         </div>
                       </ModelCard>
                     );

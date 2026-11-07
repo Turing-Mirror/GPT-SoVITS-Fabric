@@ -1,15 +1,13 @@
-import type { MouseEventHandler, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { artOf } from "../lib/art";
 
 /** Shared character presentation for models and their annotation files. */
-export function ModelCard({ id, name, cover, onOpen, onContextMenu, disabled = false, actions, children }: {
+export function ModelCard({ id, name, cover, onOpen, disabled = false, children }: {
   id: string;
   name: string;
   cover?: string;
   onOpen: () => void;
-  onContextMenu?: MouseEventHandler<HTMLDivElement>;
   disabled?: boolean;
-  actions?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -23,11 +21,9 @@ export function ModelCard({ id, name, cover, onOpen, onContextMenu, disabled = f
           if (!disabled) onOpen();
         }
       }}
-      onContextMenu={onContextMenu}
     >
       <div className="w-full aspect-[4/3] rounded-[calc(var(--r)-4px)] mb-2.5 bg-center bg-cover"
         style={cover ? { backgroundImage: `url("${cover}")` } : { background: artOf(id) }} />
-      {actions ? <div className="absolute top-4 right-4" onClick={event => event.stopPropagation()}>{actions}</div> : null}
       <div className="text-[13.5px] font-medium leading-tight truncate" title={name}>{name}</div>
       {children}
     </div>
