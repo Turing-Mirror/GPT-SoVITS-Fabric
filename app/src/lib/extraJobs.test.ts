@@ -20,7 +20,7 @@ it("keeps optional-asset progress across page remounts and respects the backend 
   function Harness() { current = useExtraJobs(); return null; }
   try {
     await act(async () => root.render(createElement(Harness)));
-    await act(async () => { startExtraDownload("v5", true); startExtraDownload("separation", true); });
+    await act(async () => { startExtraDownload("v5"); startExtraDownload("separation"); });
     expect(bridge.invoke).toHaveBeenCalledTimes(1);
     await act(async () => event({ payload: { key: "v5", phase: "run", done: 40, total: 100 } }));
     await act(async () => root.unmount());
@@ -32,7 +32,7 @@ it("keeps optional-asset progress across page remounts and respects the backend 
     expect(current.busyKeys).toEqual({});
     expect(current.generation).toBe(1);
     expect(current.msg).toBeTruthy();
-    await act(async () => startExtraDownload("v5", true));
+    await act(async () => startExtraDownload("v5"));
     expect(current.progByKey.v5.done).toBe(0);
     await act(async () => finish());
   } finally {

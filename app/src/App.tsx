@@ -544,7 +544,7 @@ export default function App() {
       const f = opts?.filter;
       openDownloadModels(
         opts?.reason,
-        f === "train" || f === "separate" ? f : "all",
+        f === "train" || f === "separate" || f === "synth" || f === "other" ? f : "all",
       );
     });
     return () => registerDownloadModelsOpener(null);
@@ -560,7 +560,7 @@ export default function App() {
         const f = e.payload?.filter;
         openDownloadModels(
           e.payload?.reason || "",
-          f === "train" || f === "separate" ? f : "all",
+          f === "train" || f === "separate" || f === "synth" || f === "other" ? f : "all",
         );
       },
     ).then((f) => {

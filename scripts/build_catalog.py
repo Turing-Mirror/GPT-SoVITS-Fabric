@@ -235,10 +235,10 @@ def build_extras(src: dict, rep: Report) -> dict:
             rep.error(f"{who}: 一个文件都没有")
             continue
         group = str(ex.get("group", "other"))
-        if group not in ("train", "separate", "other"):
+        if group not in ("train", "separate", "synth", "other"):
             # 与前端 `extraGroups.ts` 的 CATEGORY_ORDER 一致。写别的值，
             # 那一条会落进「其他」分类，用户在分离页点「下载模型」就找不到它。
-            rep.error(f"{who}: group 只认 train / separate / other（拿到 {group!r}）")
+            rep.error(f"{who}: group 只认 train / separate / synth / other（拿到 {group!r}）")
         out[key] = {
             "key": key,
             "label": ex.get("label") or key,

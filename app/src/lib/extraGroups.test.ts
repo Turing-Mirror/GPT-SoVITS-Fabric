@@ -3,8 +3,6 @@ import { categoriesOf, groupOf, inferGroup } from "./extraGroups";
 
 describe("附加资源分类", () => {
   it("空清单不造出空页签", () => {
-    // GSV 的发行仓目前一条 extras 都不发（底模走 engine-core）。写死页签的
-    // 那一版会画出「人声分离 / 训练音色」两个空页签 —— 两个名字都是 RVC 的。
     expect(categoriesOf([])).toEqual([]);
   });
 
@@ -34,6 +32,11 @@ describe("附加资源分类", () => {
     // 落进一个画不出来的类，等于这条资源在界面上不存在。
     expect(groupOf({ key: "pymss-vocal", group: "brand-new" })).toBe("separate");
     expect(categoriesOf([{ key: "x", group: "brand-new" }])).toEqual(["other"]);
+  });
+
+  it("合成底模有明确分类，不落入其他", () => {
+    expect(groupOf({ key: "gsv-v5", group: "synth" })).toBe("synth");
+    expect(categoriesOf([{ key: "gsv-v5", group: "synth" }])).toEqual(["synth"]);
   });
 
   it("大小写和空白不影响分类", () => {

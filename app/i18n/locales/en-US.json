@@ -392,7 +392,6 @@
     "6ca99d2c45": "{v0} versions",
     "6e2aba9d02": "Wallpaper opacity: lower values make it fainter.",
     "703e6f531a": "Verifying and extracting large component files. Please wait…",
-    "70927369db": "Download the engine resources first; then the separation models and base models below become selectable.",
     "70f6a74f68": "Archive contains an empty path",
     "71031cc3ad": "CNB releases & artifacts",
     "7115f2e29d": "Cancel download",
@@ -535,7 +534,6 @@
     "e5c12c3be5": "Wallpaper",
     "e5d3918de2": "Extracting the runtime environment…",
     "e64959c277": "{key} missing from config::defaults()",
-    "e8a77f003d": "Download the engine resources before the actual models.",
     "e9ddef6eab": "Unable to create output directory: {e}",
     "eb033e6340": "Can be downloaded from within the app",
     "eb88ff57c9": "Installed",
@@ -564,7 +562,7 @@
     "f7acefd2d4": "View",
     "f7b11922f6": "Installed",
     "f950213ab7": "Reading…",
-    "f9cbb1e0c6": "Not installed, about 720 MB",
+    "f9cbb1e0c6": "Not installed",
     "fbb8ddd570": "Engine status",
     "fcafc66aea": "Visible",
     "fce4b463c1": "A training task is already running; please wait for it to finish",
@@ -953,7 +951,11 @@
       "base-v2proplus": "SoVITS v2ProPlus",
       "base-g2pw": "G2PW Chinese pronunciation",
       "base-langdetect": "Language detection"
-    }
+    },
+    "synthCategory": "Synthesis models",
+    "synthDescription": "Optional base models for speech synthesis.",
+    "synthEmpty": "No optional synthesis models.",
+    "modelSize": "{name}: {size}"
   },
   "onboarding": {
     "languageTitle": "Choose language",

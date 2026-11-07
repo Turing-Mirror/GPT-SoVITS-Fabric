@@ -8,7 +8,7 @@
  */
 
 /** 页签顺序。照抄 Rust 的 `group_rank`，两边排出来的次序才一致。 */
-export const CATEGORY_ORDER = ["train", "separate", "other"] as const;
+export const CATEGORY_ORDER = ["train", "separate", "synth", "other"] as const;
 
 export type Category = (typeof CATEGORY_ORDER)[number];
 

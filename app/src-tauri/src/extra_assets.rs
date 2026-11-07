@@ -67,7 +67,7 @@ pub struct ExtraSpec {
     pub label: String,
     pub label_i18n: Value,
     pub dest: String,
-    /// 客户端分组：`train` 训练音色 / `separate` 人声分离 / `other`。
+    /// 客户端分组：`train` 训练音色 / `separate` 人声分离 / `synth` 合成底模 / `other`。
     pub group: String,
     /// 对应功能的推荐项（列表里排前、标「推荐」）。
     pub recommended: bool,
@@ -88,7 +88,7 @@ impl ExtraSpec {
 /// 老清单没写 group 时按 key 兜底，避免下载列表又堆成一坨无意义名字。
 fn infer_group(key: &str, raw: &str) -> String {
     let g = raw.trim().to_ascii_lowercase();
-    if g == "train" || g == "separate" || g == "other" {
+    if g == "train" || g == "separate" || g == "synth" || g == "other" {
         return g;
     }
     if key.starts_with("pretrained") {
@@ -104,7 +104,8 @@ fn group_rank(g: &str) -> u8 {
     match g {
         "train" => 0,
         "separate" => 1,
-        _ => 2,
+        "synth" => 2,
+        _ => 3,
     }
 }
 
@@ -726,6 +727,17 @@ mod tests {
         let s = parse_spec("pymss", &blob).expect("spec");
         assert_eq!(s.files[0].urls.len(), 1);
         assert!(s.files[0].urls[0].starts_with("https://cnb.cool/"));
+    }
+
+    #[test]
+    fn synthesis_catalog_group_is_preserved() {
+        let catalog = json!({"extras": {"gsv-v5": {
+            "group": "synth", "dest": "assets/gsv", "release_tag": "GSV-engine-core",
+            "files": [{"name": "vocoder.pth", "sha256": sha('a')}]
+        }}});
+        let specs = extras_from(&catalog);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].group, "synth");
     }
 
     #[test]

@@ -23,7 +23,7 @@ import { useI18n } from "../i18n";
 import { Modal } from "./Modal";
 import { joinClauses } from "../lib/text";
 
-export type ExtraGroup = "train" | "separate" | "other";
+export type ExtraGroup = Category;
 
 type Item = {
   key: string;
@@ -62,7 +62,7 @@ function mb(n: number) {
 }
 
 function categoryLabel(cat: Category): string {
-  return cat === "separate" ? t("s.8fd038283b") : cat === "train" ? t("s.ba65bd5595") : t("s.extraCatOther");
+  return cat === "separate" ? t("s.8fd038283b") : cat === "train" ? t("s.ba65bd5595") : cat === "synth" ? t("extras.synthCategory") : t("s.extraCatOther");
 }
 
 /** Prefer the locale pack, then the catalog's locale map, then its primary value. */
@@ -79,14 +79,14 @@ function extraNotes(it: Item): string {
 }
 
 function categoryBlurb(cat: Category): string {
-  return cat === "separate" ? t("s.63fa37071e") : cat === "train" ? t("s.5b422f44dd") : t("s.extraBlurbOther");
+  return cat === "separate" ? t("s.63fa37071e") : cat === "train" ? t("s.5b422f44dd") : cat === "synth" ? t("extras.synthDescription") : t("s.extraBlurbOther");
 }
 
 /**
- * 附加资源下载：引擎资源 + 分离模型 + 训练底模。
+ * 资源下载：基础模型与清单提供的可选模型。
  *
- * 布局对齐广场「社区音色」：顶部分段切换分类（人声分离 / 训练音色），
- * 列表分页每页 5 条。引擎资源是前置依赖：未就绪时先下载它，再选模型。
+ * 布局对齐广场「社区音色」：顶部分段切换清单中的分类，
+ * 列表分页每页 5 条。浏览和下载与引擎资源的安装状态无关。
  *
  * 这里只有内容，没有弹窗那层壳。两个地方用它：
  *
@@ -183,7 +183,7 @@ export function ExtrasPanel({
   };
 
   const start = (key: string) => {
-    startExtraDownload(key, engineReady);
+    startExtraDownload(key);
   };
 
   /**
@@ -230,9 +230,9 @@ export function ExtrasPanel({
       ? t("s.122abe360d")
       : category === "train"
         ? t("s.2b9ddc0b69")
-        : category === "separate" ? t("s.7e9782377b") : t("s.extraEmptyOther");
+        : category === "separate" ? t("s.7e9782377b") : category === "synth" ? t("extras.synthEmpty") : t("s.extraEmptyOther");
 
-  const locked = engineReady === false;
+  const coreMissing = engineReady === false;
   const anyBusy = downloading.length > 0 || !!removeKey || coreBusy;
   useEffect(() => {
     onBusyChange?.(anyBusy);
@@ -266,7 +266,7 @@ export function ExtrasPanel({
         <div
           className={[
             "mb-4 rounded-[var(--rs)] px-3.5 py-3",
-            locked
+            coreMissing
               ? "bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_28%,transparent)]"
               : "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
           ].join(" ")}
@@ -292,7 +292,7 @@ export function ExtrasPanel({
                   {assets.engine_core_packs.map(pack => {
                     const key = `extras.baseModels.${pack.name.replace(/\.zip$/, "")}`;
                     const label = t(key);
-                    return <li key={pack.name}>{joinClauses([label === key ? pack.name : label, mb(pack.size_bytes)])}</li>;
+                    return <li key={pack.name}>{pack.size_bytes ? t("extras.modelSize", { name: label === key ? pack.name : label, size: mb(pack.size_bytes) }) : label === key ? pack.name : label}</li>;
                   })}
                 </ul>
               ) : null}
@@ -329,11 +329,7 @@ export function ExtrasPanel({
           </div>
         </div>
 
-        {locked ? (
-          <div className="flex items-center">
-            <p className="m-0 py-4 text-[13px] text-[var(--ink-muted)] leading-relaxed">{t("s.70927369db")}</p>
-          </div>
-        ) : list === null ? (
+        {list === null ? (
           <div className="flex items-center">
             <p className="m-0 py-4 text-[13px] text-[var(--meta)]">{t("s.cd178d24a2")}</p>
           </div>

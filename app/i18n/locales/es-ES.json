@@ -392,7 +392,6 @@
     "6ca99d2c45": "{v0} versiones",
     "6e2aba9d02": "Opacidad del fondo; más baja, más tenue.",
     "703e6f531a": "Verificando y extrayendo archivos de componentes grandes. Espere…",
-    "70927369db": "Descarga primero los recursos del motor; luego podrás elegir los modelos de separación y las bases de entrenamiento de abajo.",
     "70f6a74f68": "El archivo contiene una ruta vacía",
     "71031cc3ad": "Lanzamientos y artefactos CNB",
     "7115f2e29d": "Cancelar descarga",
@@ -535,7 +534,6 @@
     "e5c12c3be5": "Fondo",
     "e5d3918de2": "Descomprimiendo el entorno de ejecución…",
     "e64959c277": "Falta {key} en config::defaults()",
-    "e8a77f003d": "Descarga primero los recursos del motor y luego los modelos concretos.",
     "e9ddef6eab": "No se puede crear la carpeta de salida: {e}",
     "eb033e6340": "Se puede descargar e instalar desde el programa",
     "eb88ff57c9": "Instalado",
@@ -564,7 +562,7 @@
     "f7acefd2d4": "Ver",
     "f7b11922f6": "Instalado",
     "f950213ab7": "Leyendo…",
-    "f9cbb1e0c6": "No instalado, unos 720 MB",
+    "f9cbb1e0c6": "Sin instalar",
     "fbb8ddd570": "Estado del motor",
     "fcafc66aea": "Visible",
     "fce4b463c1": "Ya hay una tarea de entrenamiento en curso; espere a que termine",
@@ -953,7 +951,11 @@
       "base-v2proplus": "SoVITS v2ProPlus",
       "base-g2pw": "Pronunciación china G2PW",
       "base-langdetect": "Detección de idioma"
-    }
+    },
+    "synthCategory": "Modelos de síntesis",
+    "synthDescription": "Modelos base opcionales para síntesis de voz.",
+    "synthEmpty": "No hay modelos de síntesis opcionales.",
+    "modelSize": "{name}: {size}"
   },
   "onboarding": {
     "languageTitle": "Elegir idioma",

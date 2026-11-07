@@ -78,7 +78,7 @@
       "label": "V5 底模",
       "dest": "GPT_SoVITS/pretrained_models/gsv-v5-pretrained",
       "notes": "V5 角色与零样本合成需要。",
-      "group": "other",
+      "group": "synth",
       "recommended": false,
       "order": 50,
       "release_tag": "GSV-engine-core",
