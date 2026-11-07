@@ -882,7 +882,13 @@
     "notDetected": "未检测到",
     "authorsPickTitle": "打开哪位作者的主页？",
     "authorsPickHint": "这个音色标注了多位作者，请选择要打开的一位。",
-    "pagerLabel": "翻页"
+    "pagerLabel": "翻页",
+    "roleErrWeightType": "请选择对应的 GPT（.ckpt）或 SoVITS（.pth）模型文件。",
+    "roleErrListInvalid": "请选择有效的 .list 标注文件。",
+    "roleErrListAudio": "标注中的音频文件缺失，请修正路径后重试。",
+    "roleWeightPickTitle": "选择模型文件",
+    "roleListPickTitle": "关联标注文件",
+    "roleErrVersion": "请选择支持的模型版本。"
   },
   "extras": {
     "engineTitle": "引擎资源",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "每步从概率最高的 k 个候选中采样。值越小输出越稳定，越大越发散。",
     "pTopP": "top_p",
     "pTopPTip": "核采样阈值：仅在累计概率前 p 的候选中采样。",
-    "paramsEdited": "参数已修改，与角色包推荐值不同",
-    "paramsFromPack": "已应用角色包推荐参数",
+    "paramsEdited": "未保存",
+    "paramsFromPack": "角色推荐",
     "paramsReset": "恢复推荐值",
     "paramsTitle": "合成参数",
     "play": "试听",
@@ -1072,7 +1078,10 @@
     "textLang": "文本语言",
     "textPlaceholder": "输入要合成的文本…",
     "textTitle": "文本",
-    "title": "合成"
+    "title": "合成",
+    "paramsSave": "保存角色参数",
+    "paramsSaved": "已保存",
+    "paramsDefault": "应用默认"
   },
   "train": {
     "title": "训练",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "作者",
     "cancel": "取消",
     "save": "保存",
-    "resetCover": "恢复默认封面"
+    "resetCover": "恢复默认封面",
+    "manageAssets": "模型与标注",
+    "modelFiles": "模型文件",
+    "replaceWeight": "更换文件",
+    "missingFile": "文件缺失",
+    "newModelVersion": "新模型版本",
+    "associatedLists": "关联标注",
+    "associateList": "关联 .list",
+    "associateNote": "关联时复制标注及音频；解除关联时保留文件。",
+    "noLists": "尚未关联标注。",
+    "unlinkList": "解除关联",
+    "listRows": "{v0} 条标注",
+    "invalidList": "标注无法读取"
   },
   "sep": {
     "title": "人声分离",

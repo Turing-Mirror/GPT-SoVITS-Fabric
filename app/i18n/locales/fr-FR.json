@@ -882,7 +882,13 @@
     "notDetected": "Non détecté",
     "authorsPickTitle": "Quelle page d'auteur ouvrir ?",
     "authorsPickHint": "Cette voix liste plusieurs auteurs. Choisissez la page à ouvrir.",
-    "pagerLabel": "Pages"
+    "pagerLabel": "Pages",
+    "roleErrWeightType": "Sélectionnez le fichier GPT (.ckpt) ou SoVITS (.pth) correspondant.",
+    "roleErrListInvalid": "Sélectionnez un fichier d’annotations .list valide.",
+    "roleErrListAudio": "Des fichiers audio référencés sont introuvables. Corrigez les chemins et réessayez.",
+    "roleWeightPickTitle": "Sélectionner le fichier du modèle",
+    "roleListPickTitle": "Associer un fichier d’annotations",
+    "roleErrVersion": "Sélectionnez une version de modèle prise en charge."
   },
   "extras": {
     "engineTitle": "Ressources moteur",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "Échantillonne parmi les k candidats les plus probables. Plus petit : plus stable ; plus grand : plus varié.",
     "pTopP": "top_p",
     "pTopPTip": "Seuil d’échantillonnage nucléaire : seuls les candidats cumulant p de probabilité.",
-    "paramsEdited": "Différent des valeurs recommandées du pack",
-    "paramsFromPack": "Paramètres recommandés du pack appliqués",
+    "paramsEdited": "Non enregistré",
+    "paramsFromPack": "Recommandation du personnage",
     "paramsReset": "Rétablir les recommandations",
     "paramsTitle": "Paramètres",
     "play": "Écouter",
@@ -1072,7 +1078,10 @@
     "textLang": "Langue du texte",
     "textPlaceholder": "Saisissez le texte à synthétiser…",
     "textTitle": "Texte",
-    "title": "Synthèse"
+    "title": "Synthèse",
+    "paramsSave": "Enregistrer les paramètres du personnage",
+    "paramsSaved": "Enregistré",
+    "paramsDefault": "Paramètres par défaut"
   },
   "train": {
     "title": "Entraînement",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "Auteur",
     "cancel": "Annuler",
     "save": "Enregistrer",
-    "resetCover": "Rétablir la couverture"
+    "resetCover": "Rétablir la couverture",
+    "manageAssets": "Modèles et annotations",
+    "modelFiles": "Fichiers du modèle",
+    "replaceWeight": "Remplacer le fichier",
+    "missingFile": "Fichier introuvable",
+    "newModelVersion": "Version du nouveau modèle",
+    "associatedLists": "Annotations associées",
+    "associateList": "Associer un .list",
+    "associateNote": "L’association copie les annotations et l’audio. La dissociation conserve les fichiers.",
+    "noLists": "Aucune annotation associée.",
+    "unlinkList": "Dissocier",
+    "listRows": "{v0} annotations",
+    "invalidList": "Impossible de lire les annotations"
   },
   "sep": {
     "title": "Séparation de la voix",

@@ -882,7 +882,13 @@
     "notDetected": "Not detected",
     "authorsPickTitle": "Which author's page?",
     "authorsPickHint": "This voice lists multiple authors. Choose whose page to open.",
-    "pagerLabel": "Pages"
+    "pagerLabel": "Pages",
+    "roleErrWeightType": "Select the matching GPT (.ckpt) or SoVITS (.pth) model file.",
+    "roleErrListInvalid": "Select a valid .list annotation file.",
+    "roleErrListAudio": "Audio files referenced by the annotations are missing. Correct the paths and try again.",
+    "roleWeightPickTitle": "Select model file",
+    "roleListPickTitle": "Link annotation file",
+    "roleErrVersion": "Select a supported model version."
   },
   "extras": {
     "engineTitle": "Engine resources",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "Sample from the top-k candidates each step. Lower is more stable; higher is more diverse.",
     "pTopP": "top_p",
     "pTopPTip": "Nucleus sampling threshold.",
-    "paramsEdited": "Modified from the pack recommendation",
-    "paramsFromPack": "Pack-recommended parameters applied",
+    "paramsEdited": "Unsaved",
+    "paramsFromPack": "Role recommendation",
     "paramsReset": "Reset to recommended",
     "paramsTitle": "Parameters",
     "play": "Play",
@@ -1072,7 +1078,10 @@
     "textLang": "Text language",
     "textPlaceholder": "Enter text to synthesize…",
     "textTitle": "Text",
-    "title": "Synthesize"
+    "title": "Synthesize",
+    "paramsSave": "Save role parameters",
+    "paramsSaved": "Saved",
+    "paramsDefault": "Application defaults"
   },
   "train": {
     "title": "Train",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "Author",
     "cancel": "Cancel",
     "save": "Save",
-    "resetCover": "Reset cover"
+    "resetCover": "Reset cover",
+    "manageAssets": "Models and annotations",
+    "modelFiles": "Model files",
+    "replaceWeight": "Replace file",
+    "missingFile": "File missing",
+    "newModelVersion": "New model version",
+    "associatedLists": "Linked annotations",
+    "associateList": "Link .list",
+    "associateNote": "Linking copies the annotations and audio. Unlinking keeps the files.",
+    "noLists": "No annotations linked.",
+    "unlinkList": "Unlink",
+    "listRows": "{v0} annotations",
+    "invalidList": "Cannot read annotations"
   },
   "sep": {
     "title": "Vocal separation",

@@ -7,6 +7,8 @@ import { Collapse } from "../components/Presence";
 import { SynthResults, type OutFormat, type SynthRecord } from "../components/SynthResults";
 import { ErrorNote } from "../components/ErrorNote";
 import { useConfig } from "../hooks/useConfig";
+import { useRoleParams } from "../hooks/useRoleParams";
+import { SYNTH_DEFAULTS, type SynthParams } from "../lib/synthRoleParams";
 import { t } from "../i18n/t";
 import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
 import { artOf } from "../lib/art";
@@ -27,8 +29,7 @@ import { CatalogTransition } from "../components/CatalogTransition";
  *    已生成几段、第一段和全部各用了多少秒。
  * 2. **文件不在的参考行不能选。** `.list` 里指向的 wav 缺失是常事（数据集
  *    搬过目录）。让它可选，用户点下去只会拿到一句引擎的报错。
- * 3. **换角色就回到该角色包的推荐参数。** 参数是作者随包给的，跨角色沿用
- *    上一个角色的 temperature 没有意义。
+ * 3. **参数按角色保存。** 已保存的个人参数优先于角色推荐；未保存的调整只用于当前合成。
  *
  * 浏览器预览模式（无 Tauri 外壳）下用内置样例数据，只为看排版，合成不可用。
  */
@@ -61,7 +62,7 @@ type Role = {
   version: string;
   cover: string;
   cover_exists: boolean;
-  params: RoleParams;
+  params: Partial<SynthParams>;
   lists: ListFile[];
   dir: string;
 };
@@ -74,15 +75,6 @@ type Params = Required<RoleParams>;
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
-
-/** 上游没给推荐值时的兜底。和 synth_worker.py 的默认值一致。 */
-const FALLBACK: Params = {
-  speed: 1.0,
-  top_k: 15,
-  top_p: 1.0,
-  temperature: 1.0,
-  repetition_penalty: 1.35,
-};
 
 /** 上游 TTS.py 的硬性范围（16 kHz 下 48000–160000 采样）：超出直接报错。 */
 const REF_SEC = { min: 3, max: 10 };
@@ -118,18 +110,6 @@ function refLangKey(lang: string): string | null {
 
 /** 参考音频每页几条。 */
 const REF_PAGE = 10;
-
-function recommendedOf(role: Role | null): Params {
-  const p = role?.params ?? {};
-  return {
-    speed: typeof p.speed === "number" ? p.speed : FALLBACK.speed,
-    top_k: typeof p.top_k === "number" ? p.top_k : FALLBACK.top_k,
-    top_p: typeof p.top_p === "number" ? p.top_p : FALLBACK.top_p,
-    temperature: typeof p.temperature === "number" ? p.temperature : FALLBACK.temperature,
-    repetition_penalty:
-      typeof p.repetition_penalty === "number" ? p.repetition_penalty : FALLBACK.repetition_penalty,
-  };
-}
 
 function refsOf(role: Role | null): RefRow[] {
   if (!role) return [];
@@ -206,27 +186,7 @@ type Adv = {
   batch_size: number;
 };
 
-const ADV_DEFAULT: Adv = {
-  text_lang: "auto",
-  text_split_method: "",
-  fragment_interval: 0.3,
-  seed: -1,
-  seedFixed: false,
-  sample_steps: "",
-  super_sampling: false,
-  batch_size: 1,
-};
-
-const ADV_CFG: Record<keyof Adv, string> = {
-  text_lang: "synth_text_lang",
-  text_split_method: "synth_split",
-  fragment_interval: "synth_fragment_interval",
-  seed: "synth_seed",
-  seedFixed: "synth_seed_fixed",
-  sample_steps: "synth_sample_steps",
-  super_sampling: "synth_super_sampling",
-  batch_size: "synth_batch_size",
-};
+const ADV_DEFAULT: Adv = { ...SYNTH_DEFAULTS, batch_size: 1 };
 
 /** 上游 dict_language_v2 的取值；v1 没有粤语和韩语。 */
 const TEXT_LANGS = ["auto", "auto_yue", "all_zh", "zh", "en", "all_ja", "ja", "all_yue", "yue", "all_ko", "ko"];
@@ -309,8 +269,7 @@ export function SynthPage() {
 
   const [mode, setMode] = useState<Mode>("single");
   const [text, setText] = useState("");
-  const [params, setParams] = useState<Params>(FALLBACK);
-  const [adv, setAdv] = useState<Adv>(ADV_DEFAULT);
+  const [batchSize, setBatchSize] = useState(ADV_DEFAULT.batch_size);
   const [advOpen, setAdvOpen] = useState(false);
   const [streaming, setStreaming] = useState(true);
   const [format, setFormat] = useState<OutFormat>("wav");
@@ -336,6 +295,15 @@ export function SynthPage() {
   /** 配置只在第一次读到时灌进来一次，之后以界面为准，免得写盘回声把滑块拽回去。 */
   const seeded = useRef(false);
 
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    let off: (() => void) | undefined;
+    void listen("roles-changed", () => { if (alive) setReloadTick((n) => n + 1); })
+      .then((fn) => { if (alive) off = fn; else fn(); }).catch(() => {});
+    return () => { alive = false; off?.(); };
+  }, []);
+
   // —— 角色库 ——
   useEffect(() => {
     let alive = true;
@@ -356,10 +324,17 @@ export function SynthPage() {
   }, [reloadTick]);
 
   const role = useMemo(
-    () => (roles ?? []).find((r) => r.id === roleId) ?? (roles ?? [])[0] ?? null,
-    [roles, roleId],
+    () => (roles ?? []).find((r) => r.id === (roleId || c.str("synth_role"))) ?? (roles ?? [])[0] ?? null,
+    [roles, roleId, c],
   );
-  const recommended = useMemo(() => recommendedOf(role), [role]);
+  const rp = useRoleParams(role, c.cfg, c.loaded);
+  const { setDraft } = rp;
+  const params: Params = useMemo(() => ({
+    speed: rp.draft.speed, top_k: rp.draft.top_k, top_p: rp.draft.top_p,
+    temperature: rp.draft.temperature, repetition_penalty: rp.draft.repetition_penalty,
+  }), [rp.draft]);
+  const adv: Adv = useMemo(() => ({ ...rp.draft, batch_size: batchSize }), [rp.draft, batchSize]);
+  const recommended = rp.recommendation;
   const refs = useMemo(() => refsOf(role), [role]);
   // 参考音频可能有上千条：可搜索、分页显示。
   const [refQuery, setRefQuery] = useState("");
@@ -420,76 +395,35 @@ export function SynthPage() {
     if (saved && roles.some((r) => r.id === saved)) setRoleId(saved);
     setStreaming(c.cfg.synth_streaming !== false);
     setFormat(c.str("synth_format") === "flac" ? "flac" : "wav");
-    setParams({
-      speed: c.num("synth_speed", FALLBACK.speed),
-      top_k: c.num("synth_top_k", FALLBACK.top_k),
-      top_p: c.num("synth_top_p", FALLBACK.top_p),
-      temperature: c.num("synth_temperature", FALLBACK.temperature),
-      repetition_penalty: c.num("synth_rep_penalty", FALLBACK.repetition_penalty),
-    });
-    const seed = Number(c.cfg.synth_seed);
-    const steps = c.cfg.synth_sample_steps;
-    const split = c.str("synth_split");
-    setAdv({
-      text_lang: c.str("synth_text_lang") || ADV_DEFAULT.text_lang,
-      text_split_method: SPLITS.includes(split) ? split : "",
-      fragment_interval: c.num("synth_fragment_interval", ADV_DEFAULT.fragment_interval),
-      seed: Number.isFinite(seed) ? seed : -1,
-      seedFixed: c.cfg.synth_seed_fixed === true,
-      sample_steps: steps == null || steps === "" ? "" : String(steps),
-      super_sampling: c.cfg.synth_super_sampling === true,
-      batch_size: c.num("synth_batch_size", ADV_DEFAULT.batch_size),
-    });
+    setBatchSize(c.num("synth_batch_size", ADV_DEFAULT.batch_size));
   }, [c, roles]);
 
-  const setParam = useCallback(
-    (key: keyof Params, cfgKey: string) => (v: number) => {
-      setParams((p) => ({ ...p, [key]: v }));
-      void c.set(cfgKey, v);
-    },
-    [c],
-  );
-
-  const setAdvKey = useCallback(
-    <K extends keyof Adv>(key: K, v: Adv[K]) => {
-      setAdv((a) => ({ ...a, [key]: v }));
-      void c.set(ADV_CFG[key], v);
-    },
-    [c],
-  );
-
-  const applyParams = useCallback(
-    (p: Params) => {
-      setParams(p);
-      void c.set("synth_speed", p.speed);
-      void c.set("synth_top_k", p.top_k);
-      void c.set("synth_top_p", p.top_p);
-      void c.set("synth_temperature", p.temperature);
-      void c.set("synth_rep_penalty", p.repetition_penalty);
-    },
-    [c],
-  );
-
-  const applyAdv = useCallback(
-    (next: Adv) => (Object.keys(next) as Array<keyof Adv>).forEach((k) => setAdvKey(k, next[k])),
-    [setAdvKey],
-  );
-
-  const pickRole = useCallback(
-    (r: Role) => {
-      setRoleId(r.id);
-      setRefKey("");
-      setAuxKeys([]);
-      // 参数随包走：作者给的推荐值才是这个角色该有的起点。
-      applyParams(recommendedOf(r));
-      void c.set("synth_role", r.id);
-    },
-    [c, applyParams],
-  );
+  const setParam = (key: keyof Params) => (v: number) => {
+    rp.setDraft((p) => ({ ...p, [key]: v }));
+  };
+  const setAdvKey = <K extends keyof Adv>(key: K, v: Adv[K]) => {
+    if (key === "batch_size") {
+      setBatchSize(v as number);
+      void c.set("synth_batch_size", v);
+    } else rp.setDraft((p) => ({ ...p, [key]: v }));
+  };
+  const applyParams = useCallback((p: Params) => setDraft((old) => ({ ...old, ...p })), [setDraft]);
+  const applyAdv = useCallback((next: Adv) => {
+    const { batch_size, ...voice } = next;
+    setDraft((old) => ({ ...old, ...voice }));
+    setBatchSize(batch_size);
+    void c.set("synth_batch_size", batch_size);
+  }, [setDraft, c]);
+  const pickRole = useCallback((r: Role) => {
+    setRoleId(r.id);
+    setRefKey("");
+    setAuxKeys([]);
+    void c.set("synth_role", r.id);
+  }, [c]);
 
   // 别的页面点了「用于合成」：选中那个角色。
   useEffect(() => {
-    if (!roles) return;
+    if (!roles || !c.loaded) return;
     const apply = () => {
       const id = take("synthRole");
       const r = id ? roles.find((x) => x.id === id) : undefined;
@@ -500,7 +434,7 @@ export function SynthPage() {
     };
     apply();
     return onHandoff(apply);
-  }, [roles, pickRole]);
+  }, [roles, pickRole, c.loaded]);
 
   // —— 引擎事件 ——
   useEffect(() => {
@@ -618,7 +552,7 @@ export function SynthPage() {
     [role, ref, adv, params, streaming, format, auxRows, showSteps, showSuper],
   );
 
-  const ready = Boolean(role && ref) && !busy;
+  const ready = Boolean(role && ref) && rp.ready && !busy;
 
   const startSingle = useCallback(async () => {
     if (!ready || !text.trim()) return;
@@ -724,15 +658,6 @@ export function SynthPage() {
     [applyParams, applyAdv, recommended, busy],
   );
 
-  const resetAll = () => {
-    applyParams(recommended);
-    applyAdv(ADV_DEFAULT);
-  };
-
-  const dirty =
-    (Object.keys(recommended) as Array<keyof Params>).some((k) => params[k] !== recommended[k]) ||
-    (Object.keys(ADV_DEFAULT) as Array<keyof Adv>).some((k) => adv[k] !== ADV_DEFAULT[k]);
-
   const empty = roles != null && roles.length === 0;
   const failed = items.map((it, i) => (it.state === "fail" ? i : -1)).filter((i) => i >= 0);
   const doneCount = items.filter((it) => it.state === "done").length;
@@ -818,7 +743,7 @@ export function SynthPage() {
         }
       />
 
-      {err ? <ErrorNote text={err} /> : null}
+      {err || rp.error || c.error ? <ErrorNote text={err || rp.error || c.error} /> : null}
 
       {/* 角色条：选择在这里，管理去模型页。 */}
       <div className="flex-none mt-[22px] flex items-center gap-3.5 rounded-[var(--r)] bg-[var(--group)] p-2.5 pr-3.5 flex-wrap">
@@ -1073,47 +998,46 @@ export function SynthPage() {
 
           </CatalogTransition>
           <div className="flex-none mt-3 rounded-[var(--r)] bg-[var(--group)] p-3.5">
-            <div className="flex items-center gap-2 mb-3 min-h-[30px]">
+            <div className="flex items-center flex-wrap gap-2 mb-3 min-h-[30px]">
               <span className="text-[13px] font-medium">{t("synth.paramsTitle")}</span>
               <span className="text-[11.5px] text-[var(--meta)]">
-                {dirty ? t("synth.paramsEdited") : t("synth.paramsFromPack")}
+                {rp.dirty ? t("synth.paramsEdited") : rp.source === "saved" ? t("synth.paramsSaved") : rp.source === "recommended" ? t("synth.paramsFromPack") : t("synth.paramsDefault")}
               </span>
-              {dirty ? (
-                <span className="ml-auto">
-                  <Btn onClick={resetAll}>{t("synth.paramsReset")}</Btn>
-                </span>
-              ) : null}
+              <span className="ml-auto flex gap-2 flex-wrap">
+                <Btn disabled={!role || !rp.ready || rp.saving || busy} onClick={() => void rp.save()}>{t("synth.paramsSave")}</Btn>
+                <Btn disabled={!role || !rp.ready || rp.saving || busy} onClick={() => void rp.restore()}>{t("synth.paramsReset")}</Btn>
+              </span>
             </div>
             <div className="grid grid-cols-1 min-[1180px]:grid-cols-2 gap-x-6 gap-y-3.5">
               <Field
                 label={t("synth.pSpeed")}
                 tip={t("synth.pSpeedTip")}
-                control={<Slider value={params.speed} min={0.5} max={2} step={0.05} defaultValue={recommended.speed} onChange={setParam("speed", "synth_speed")} format={(v) => `${v.toFixed(2)}x`} />}
+                control={<Slider value={params.speed} min={0.5} max={2} step={0.05} defaultValue={recommended.speed} onChange={setParam("speed")} format={(v) => `${v.toFixed(2)}x`} />}
               />
               <Field
                 label={t("synth.pFragment")}
                 tip={t("synth.pFragmentTip")}
-                control={<Slider value={adv.fragment_interval} min={0.01} max={1} step={0.01} defaultValue={ADV_DEFAULT.fragment_interval} onChange={(v) => setAdvKey("fragment_interval", v)} format={(v) => `${v.toFixed(2)} s`} />}
+                control={<Slider value={adv.fragment_interval} min={0.01} max={1} step={0.01} defaultValue={recommended.fragment_interval} onChange={(v) => setAdvKey("fragment_interval", v)} format={(v) => `${v.toFixed(2)} s`} />}
               />
               <Field
                 label={t("synth.pTopK")}
                 tip={t("synth.pTopKTip")}
-                control={<Slider value={params.top_k} min={1} max={100} step={1} defaultValue={recommended.top_k} onChange={setParam("top_k", "synth_top_k")} />}
+                control={<Slider value={params.top_k} min={1} max={100} step={1} defaultValue={recommended.top_k} onChange={setParam("top_k")} />}
               />
               <Field
                 label={t("synth.pTopP")}
                 tip={t("synth.pTopPTip")}
-                control={<Slider value={params.top_p} min={0} max={1} step={0.01} defaultValue={recommended.top_p} onChange={setParam("top_p", "synth_top_p")} format={(v) => v.toFixed(2)} />}
+                control={<Slider value={params.top_p} min={0} max={1} step={0.01} defaultValue={recommended.top_p} onChange={setParam("top_p")} format={(v) => v.toFixed(2)} />}
               />
               <Field
                 label={t("synth.pTemp")}
                 tip={t("synth.pTempTip")}
-                control={<Slider value={params.temperature} min={0} max={1} step={0.01} defaultValue={recommended.temperature} onChange={setParam("temperature", "synth_temperature")} format={(v) => v.toFixed(2)} />}
+                control={<Slider value={params.temperature} min={0} max={1} step={0.01} defaultValue={recommended.temperature} onChange={setParam("temperature")} format={(v) => v.toFixed(2)} />}
               />
               <Field
                 label={t("synth.pRep")}
                 tip={t("synth.pRepTip")}
-                control={<Slider value={params.repetition_penalty} min={1} max={2} step={0.01} defaultValue={recommended.repetition_penalty} onChange={setParam("repetition_penalty", "synth_rep_penalty")} format={(v) => v.toFixed(2)} />}
+                control={<Slider value={params.repetition_penalty} min={1} max={2} step={0.01} defaultValue={recommended.repetition_penalty} onChange={setParam("repetition_penalty")} format={(v) => v.toFixed(2)} />}
               />
             </div>
 

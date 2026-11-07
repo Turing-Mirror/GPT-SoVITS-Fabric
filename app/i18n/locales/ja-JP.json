@@ -882,7 +882,13 @@
     "notDetected": "検出されていません",
     "authorsPickTitle": "どの作者のページを開く？",
     "authorsPickHint": "この音声には複数の作者が登録されています。開く人を選んでください。",
-    "pagerLabel": "ページ"
+    "pagerLabel": "ページ",
+    "roleErrWeightType": "対応する GPT（.ckpt）または SoVITS（.pth）のモデルファイルを選択してください。",
+    "roleErrListInvalid": "有効な .list 注釈ファイルを選択してください。",
+    "roleErrListAudio": "注釈が参照する音声ファイルがありません。パスを修正して再試行してください。",
+    "roleWeightPickTitle": "モデルファイルを選択",
+    "roleListPickTitle": "注釈ファイルを関連付ける",
+    "roleErrVersion": "対応するモデルバージョンを選択してください。"
   },
   "extras": {
     "engineTitle": "エンジンリソース",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "各ステップで上位 k 個の候補からサンプリング。小さいほど安定、大きいほど多様。",
     "pTopP": "top_p",
     "pTopPTip": "核サンプリングのしきい値。累積確率上位 p の候補のみ対象。",
-    "paramsEdited": "パック推奨値から変更されています",
-    "paramsFromPack": "パック推奨パラメータを適用済み",
+    "paramsEdited": "未保存",
+    "paramsFromPack": "キャラクターの推奨設定",
     "paramsReset": "推奨値に戻す",
     "paramsTitle": "合成パラメータ",
     "play": "再生",
@@ -1072,7 +1078,10 @@
     "textLang": "テキスト言語",
     "textPlaceholder": "合成するテキストを入力…",
     "textTitle": "テキスト",
-    "title": "合成ステーション"
+    "title": "合成ステーション",
+    "paramsSave": "キャラクターの設定を保存",
+    "paramsSaved": "保存済み",
+    "paramsDefault": "アプリの既定値"
   },
   "train": {
     "title": "トレーニング",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "作者",
     "cancel": "キャンセル",
     "save": "保存",
-    "resetCover": "カバーをリセット"
+    "resetCover": "カバーをリセット",
+    "manageAssets": "モデルと注釈",
+    "modelFiles": "モデルファイル",
+    "replaceWeight": "ファイルを変更",
+    "missingFile": "ファイルがありません",
+    "newModelVersion": "新しいモデルのバージョン",
+    "associatedLists": "関連付けた注釈",
+    "associateList": ".list を関連付ける",
+    "associateNote": "関連付け時に注釈と音声をコピーします。解除してもファイルは残ります。",
+    "noLists": "関連付けられた注釈はありません。",
+    "unlinkList": "関連付けを解除",
+    "listRows": "注釈 {v0} 件",
+    "invalidList": "注釈を読み込めません"
   },
   "sep": {
     "title": "ボーカル分離",

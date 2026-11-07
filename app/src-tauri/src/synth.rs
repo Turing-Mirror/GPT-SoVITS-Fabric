@@ -384,6 +384,17 @@ pub fn shutdown() {
     }
 }
 
+/// Hold the synthesis admission lock while changing role files.
+pub(crate) fn while_idle<T>(edit: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    edit_when_idle(&BUSY, edit)
+}
+
+fn edit_when_idle<T>(admission: &Mutex<bool>, edit: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let busy = admission.lock().unwrap_or_else(|e| e.into_inner());
+    if *busy { return Err(crate::i18n::t("s.synthErrBusy")); }
+    edit()
+}
+
 pub fn is_busy() -> bool {
     *BUSY.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -736,6 +747,18 @@ fn synthesize_inner(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn role_edits_require_idle_synthesis_and_hold_admission() {
+        let admission = std::sync::Mutex::new(true);
+        assert!(super::edit_when_idle(&admission, || -> Result<(),String> { panic!("busy engine must not edit weights"); }).is_err());
+        *admission.lock().unwrap() = false;
+        super::edit_when_idle(&admission, || {
+            assert!(admission.try_lock().is_err(), "synthesis cannot enter during a file edit");
+            Ok(())
+        }).unwrap();
+        assert!(admission.try_lock().is_ok());
+    }
+
     use super::*;
 
     /// 角色扫描遇到坏包要跳过而不是整页报错 —— 用户手改 config.json 写坏一个

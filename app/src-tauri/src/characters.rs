@@ -248,7 +248,7 @@ pub fn pick_pack(win: Option<&tauri::WebviewWindow>) -> Vec<PathBuf> {
 const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
 
 /// 已装角色的目录。id 必须原样就是清洗过的目录名，不能借它指到别处。
-fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
+pub(crate) fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
     if id.is_empty() || safe_id(id) != id {
         return Err(crate::i18n::t("s.roleErrNotFound"));
     }
@@ -259,14 +259,14 @@ fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn read_cfg(dir: &Path) -> Result<Value, String> {
+pub(crate) fn read_cfg(dir: &Path) -> Result<Value, String> {
     let raw = std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))
 }
 
-fn write_cfg(dir: &Path, cfg: &Value) -> Result<(), String> {
+pub(crate) fn write_cfg(dir: &Path, cfg: &Value) -> Result<(), String> {
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("config.json"), text).map_err(|e| e.to_string())
+    crate::config::write_atomic(&dir.join("config.json"), &text).map_err(|e| e.to_string())
 }
 
 /// 改名称与作者。只动这两项，其余字段原样保留。

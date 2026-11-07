@@ -10,6 +10,7 @@ import { CatalogTransition } from "../components/CatalogTransition";
 import { FlowList, Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
 import { ModelCard } from "../components/ModelCard";
+import { RoleAssetsDialog } from "../components/RoleAssetsDialog";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 import { askConfirm } from "../lib/webDialog";
 import { goTo, openInAnnot, synthWithRole } from "../lib/intent";
@@ -65,6 +66,7 @@ export function ModelsPage({
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [editing, setEditing] = useState<Role | null>(null);
+  const [managing, setManaging] = useState<Role | null>(null);
   // 封面换过之后浏览器会按旧地址缓存，地址上带一个版本号
   const [coverVer, setCoverVer] = useState(0);
   const [coverEdit, setCoverEdit] = useState<Role | null>(null);
@@ -83,7 +85,7 @@ export function ModelsPage({
 
   useEffect(() => {
     if (active) reload();
-    else { setEditing(null); setCoverEdit(null); }
+    else { setEditing(null); setCoverEdit(null); setManaging(null); }
     const counter = loadRequest;
     return () => { counter.current++; };
   }, [active, reload]);
@@ -144,6 +146,7 @@ export function ModelsPage({
             items: lists.map((l) => ({ id: l.file, label: l.file, onSelect: () => openInAnnot(`${r.dir}/${l.file}`) })),
           }
         : { id: "annot", label: t("library.editList"), icon: "note", disabled: !lists.length, onSelect: () => openInAnnot(`${r.dir}/${lists[0].file}`) },
+      { id: "assets", label: t("library.manageAssets"), icon: "folder", onSelect: () => setManaging(r) },
       { id: "g1", gap: true },
       { id: "edit", label: t("library.editInfo"), icon: "edit", onSelect: () => setEditing(r) },
       {
@@ -245,6 +248,9 @@ export function ModelsPage({
                         <div className="mt-1.5">
                           <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
                         </div>
+                        <div className="mt-2 flex justify-end" onClick={event => event.stopPropagation()}>
+                          <Btn className="text-[12px]" onClick={() => setManaging(r)}>{t("library.manageAssets")}</Btn>
+                        </div>
                       </ModelCard>
                     );
                   }} />
@@ -266,6 +272,7 @@ export function ModelsPage({
       </Block>
 
       {menu.node}
+      <Leave>{managing ? <RoleAssetsDialog key={managing.id} role={managing} onClose={() => setManaging(null)} onChanged={reload} /> : null}</Leave>
       <Leave>{coverEdit ? (
         <CropCoverDialog key={coverEdit.id} model={coverEdit}
           onClose={() => setCoverEdit(null)}

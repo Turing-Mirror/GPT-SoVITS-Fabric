@@ -7,6 +7,7 @@ mod asset_scope;
 mod autostart;
 pub mod catalog;
 mod characters;
+mod role_assets;
 mod config;
 mod crash;
 mod download;
@@ -939,6 +940,48 @@ async fn role_import_pack(
 }
 
 #[tauri::command]
+fn role_assets_get(state: State<'_, Mutex<AppState>>, id: String) -> Result<Value, String> {
+    role_assets::details(&root_clone(&state)?, &id)
+}
+
+#[tauri::command]
+async fn role_weight_replace(window: tauri::WebviewWindow, app: tauri::AppHandle, state: State<'_, Mutex<AppState>>, id: String, kind: String, src: Option<String>, version: Option<String>) -> Result<Option<Value>, String> {
+    let root = root_clone(&state)?;
+    let ext = role_assets::weight_extension(&kind)?;
+    let source = match src.filter(|p| !p.trim().is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => match crate::shell_extras::dialog_on(Some(&window)).set_title(&crate::i18n::t("s.roleWeightPickTitle")).add_filter(&kind, &[ext]).pick_file() {
+            Some(p) => p, None => return Ok(None),
+        },
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || role_assets::replace_weight(&root,&id,&kind,&source,version.as_deref())).await.map_err(|e|e.to_string())??;
+    let _ = app.emit("roles-changed", ());
+    Ok(Some(result))
+}
+
+#[tauri::command]
+async fn role_list_associate(window: tauri::WebviewWindow, app: tauri::AppHandle, state: State<'_, Mutex<AppState>>, id: String, src: Option<String>) -> Result<Option<Value>, String> {
+    let root = root_clone(&state)?;
+    let source = match src.filter(|p| !p.trim().is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => match crate::shell_extras::dialog_on(Some(&window)).set_title(&crate::i18n::t("s.roleListPickTitle")).add_filter(".list", &["list"]).pick_file() {
+            Some(p) => p, None => return Ok(None),
+        },
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || role_assets::associate(&root,&id,&source)).await.map_err(|e|e.to_string())??;
+    let _ = app.emit("roles-changed", ());
+    Ok(Some(result))
+}
+
+#[tauri::command]
+async fn role_list_unlink(app: tauri::AppHandle, state: State<'_, Mutex<AppState>>, id: String, index: usize, file: Option<String>) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    let result = tauri::async_runtime::spawn_blocking(move || role_assets::unlink(&root,&id,index,file.as_deref())).await.map_err(|e|e.to_string())??;
+    let _ = app.emit("roles-changed", ());
+    Ok(result)
+}
+
+#[tauri::command]
 fn role_update(
     state: State<'_, Mutex<AppState>>,
     id: String,
@@ -1496,6 +1539,10 @@ pub fn run() {
             annot_load,
             annot_save,
             role_import_pack,
+            role_assets_get,
+            role_weight_replace,
+            role_list_associate,
+            role_list_unlink,
             role_update,
             role_delete,
             role_set_cover,

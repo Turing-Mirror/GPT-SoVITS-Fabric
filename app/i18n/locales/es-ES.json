@@ -882,7 +882,13 @@
     "notDetected": "No detectado",
     "authorsPickTitle": "¿Qué página de autor abrir?",
     "authorsPickHint": "Esta voz lista varios autores: elige qué página abrir.",
-    "pagerLabel": "Páginas"
+    "pagerLabel": "Páginas",
+    "roleErrWeightType": "Seleccione el archivo correspondiente de GPT (.ckpt) o SoVITS (.pth).",
+    "roleErrListInvalid": "Seleccione un archivo de anotaciones .list válido.",
+    "roleErrListAudio": "Faltan archivos de audio referenciados. Corrija las rutas y vuelva a intentarlo.",
+    "roleWeightPickTitle": "Seleccionar archivo del modelo",
+    "roleListPickTitle": "Vincular archivo de anotaciones",
+    "roleErrVersion": "Seleccione una versión de modelo compatible."
   },
   "extras": {
     "engineTitle": "Recursos del motor",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "Muestrea entre los k candidatos más probables. Menor: más estable; mayor: más variado.",
     "pTopP": "top_p",
     "pTopPTip": "Umbral de muestreo nuclear: solo candidatos con probabilidad acumulada p.",
-    "paramsEdited": "Modificado respecto a la recomendación del paquete",
-    "paramsFromPack": "Parámetros recomendados del paquete aplicados",
+    "paramsEdited": "Sin guardar",
+    "paramsFromPack": "Recomendación del personaje",
     "paramsReset": "Restaurar recomendados",
     "paramsTitle": "Parámetros",
     "play": "Reproducir",
@@ -1072,7 +1078,10 @@
     "textLang": "Idioma del texto",
     "textPlaceholder": "Escribe el texto a sintetizar…",
     "textTitle": "Texto",
-    "title": "Síntesis"
+    "title": "Síntesis",
+    "paramsSave": "Guardar parámetros del personaje",
+    "paramsSaved": "Guardado",
+    "paramsDefault": "Valores predeterminados"
   },
   "train": {
     "title": "Entrenamiento",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "Autor",
     "cancel": "Cancelar",
     "save": "Guardar",
-    "resetCover": "Restaurar portada"
+    "resetCover": "Restaurar portada",
+    "manageAssets": "Modelos y anotaciones",
+    "modelFiles": "Archivos del modelo",
+    "replaceWeight": "Cambiar archivo",
+    "missingFile": "Falta el archivo",
+    "newModelVersion": "Versión del nuevo modelo",
+    "associatedLists": "Anotaciones vinculadas",
+    "associateList": "Vincular .list",
+    "associateNote": "Al vincular se copian las anotaciones y el audio. Al desvincular se conservan los archivos.",
+    "noLists": "No hay anotaciones vinculadas.",
+    "unlinkList": "Desvincular",
+    "listRows": "{v0} anotaciones",
+    "invalidList": "No se pueden leer las anotaciones"
   },
   "sep": {
     "title": "Separación de voz",

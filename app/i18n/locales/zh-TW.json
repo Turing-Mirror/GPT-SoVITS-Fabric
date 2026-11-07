@@ -882,7 +882,13 @@
     "notDetected": "未偵測到",
     "authorsPickTitle": "開啟哪位作者的主頁？",
     "authorsPickHint": "這個音色標註了多位作者，請選擇要開啟的一位。",
-    "pagerLabel": "翻頁"
+    "pagerLabel": "翻頁",
+    "roleErrWeightType": "請選擇對應的 GPT（.ckpt）或 SoVITS（.pth）模型檔案。",
+    "roleErrListInvalid": "請選擇有效的 .list 標註檔案。",
+    "roleErrListAudio": "標註中的音訊檔案遺失，請修正路徑後重試。",
+    "roleWeightPickTitle": "選擇模型檔案",
+    "roleListPickTitle": "關聯標註檔案",
+    "roleErrVersion": "請選擇支援的模型版本。"
   },
   "extras": {
     "engineTitle": "引擎資源",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "每步從機率最高的 k 個候選中取樣。數值越小輸出越穩定，越大越發散。",
     "pTopP": "top_p",
     "pTopPTip": "核取樣樣閾值：僅在累計機率前 p 的候選中取樣。",
-    "paramsEdited": "參數已修改，與角色包建議值不同",
-    "paramsFromPack": "已套用角色包建議參數",
+    "paramsEdited": "未儲存",
+    "paramsFromPack": "角色推薦",
     "paramsReset": "恢復建議值",
     "paramsTitle": "合成參數",
     "play": "試聽",
@@ -1072,7 +1078,10 @@
     "textLang": "文字語言",
     "textPlaceholder": "輸入要合成的文字…",
     "textTitle": "文字",
-    "title": "合成"
+    "title": "合成",
+    "paramsSave": "儲存角色參數",
+    "paramsSaved": "已儲存",
+    "paramsDefault": "應用程式預設"
   },
   "train": {
     "title": "訓練",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "作者",
     "cancel": "取消",
     "save": "儲存",
-    "resetCover": "恢復預設封面"
+    "resetCover": "恢復預設封面",
+    "manageAssets": "模型與標註",
+    "modelFiles": "模型檔案",
+    "replaceWeight": "更換檔案",
+    "missingFile": "檔案遺失",
+    "newModelVersion": "新模型版本",
+    "associatedLists": "關聯標註",
+    "associateList": "關聯 .list",
+    "associateNote": "關聯時複製標註及音訊；解除關聯時保留檔案。",
+    "noLists": "尚未關聯標註。",
+    "unlinkList": "解除關聯",
+    "listRows": "{v0} 條標註",
+    "invalidList": "無法讀取標註"
   },
   "sep": {
     "title": "人聲分離",

@@ -882,7 +882,13 @@
     "notDetected": "감지되지 않음",
     "authorsPickTitle": "어느 작성자의 페이지를 열까요?",
     "authorsPickHint": "이 보이스에는 여러 작성자가 표시되어 있습니다. 열 페이지의 작성자를 선택하세요.",
-    "pagerLabel": "페이지"
+    "pagerLabel": "페이지",
+    "roleErrWeightType": "해당 GPT(.ckpt) 또는 SoVITS(.pth) 모델 파일을 선택하세요.",
+    "roleErrListInvalid": "유효한 .list 주석 파일을 선택하세요.",
+    "roleErrListAudio": "주석에서 참조하는 오디오 파일이 없습니다. 경로를 수정한 후 다시 시도하세요.",
+    "roleWeightPickTitle": "모델 파일 선택",
+    "roleListPickTitle": "주석 파일 연결",
+    "roleErrVersion": "지원되는 모델 버전을 선택하세요."
   },
   "extras": {
     "engineTitle": "엔진 리소스",
@@ -1022,8 +1028,8 @@
     "pTopKTip": "각 단계에서 확률 상위 k개 후보에서 샘플링합니다. 작을수록 안정적이고 클수록 다양합니다.",
     "pTopP": "top_p",
     "pTopPTip": "핵 샘플링 임계값: 누적 확률 상위 p 후보만 대상으로 합니다.",
-    "paramsEdited": "팩 권장값과 다르게 수정되었습니다",
-    "paramsFromPack": "팩 권장 파라미터가 적용되었습니다",
+    "paramsEdited": "저장되지 않음",
+    "paramsFromPack": "캐릭터 권장값",
     "paramsReset": "권장값으로 되돌리기",
     "paramsTitle": "합성 파라미터",
     "play": "재생",
@@ -1072,7 +1078,10 @@
     "textLang": "텍스트 언어",
     "textPlaceholder": "합성할 텍스트를 입력하세요…",
     "textTitle": "텍스트",
-    "title": "합성 스테이션"
+    "title": "합성 스테이션",
+    "paramsSave": "캐릭터 설정 저장",
+    "paramsSaved": "저장됨",
+    "paramsDefault": "앱 기본값"
   },
   "train": {
     "title": "학습 스테이션",
@@ -1273,7 +1282,19 @@
     "fieldAuthor": "작성자",
     "cancel": "취소",
     "save": "저장",
-    "resetCover": "커버 초기화"
+    "resetCover": "커버 초기화",
+    "manageAssets": "모델 및 주석",
+    "modelFiles": "모델 파일",
+    "replaceWeight": "파일 교체",
+    "missingFile": "파일 없음",
+    "newModelVersion": "새 모델 버전",
+    "associatedLists": "연결된 주석",
+    "associateList": ".list 연결",
+    "associateNote": "연결하면 주석과 오디오를 복사합니다. 연결을 해제해도 파일은 유지됩니다.",
+    "noLists": "연결된 주석이 없습니다.",
+    "unlinkList": "연결 해제",
+    "listRows": "주석 {v0}개",
+    "invalidList": "주석을 읽을 수 없습니다"
   },
   "sep": {
     "title": "보컬 분리",
