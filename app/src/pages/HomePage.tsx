@@ -9,6 +9,7 @@ import { artOf } from "../lib/art";
 import { FittedItems } from "../components/FittedItems";
 import { listen } from "@tauri-apps/api/event";
 import { getConfig, onConfigPatch } from "../lib/config";
+import emblem from "../assets/brand/gsvf-main-logo.svg";
 
 /**
  * 首页。
@@ -141,6 +142,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
           {current ? current.name || current.id : t("home.noRole")}
         </p>
         {banner.sub ? <p className="home-sub" title={banner.sub}>{banner.sub}</p> : null}
+        <img src={emblem} alt="" aria-hidden draggable={false} className="home-emblem" />
       </div>
       <div className="home-content">
         <div className="home-shortcuts">
