@@ -61,7 +61,7 @@
         ],
         "displayLanguageSelector": false,
         "installMode": "currentUser",
-        "installerIcon": "../../assets/brand/app.ico",
+        "installerIcon": "icons/icon.ico",
         "installerHooks": "installer-hooks.nsh"
       }
     },

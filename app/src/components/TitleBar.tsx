@@ -4,6 +4,7 @@ import { SegmentControl } from "./SegmentControl";
 import { navPages, type PageId } from "../lib/nav";
 import { useI18n } from "../i18n";
 import wordmark from "../assets/logo_wordmark.png";
+import logo from "../assets/brand/gsvf-main-logo.svg";
 
 type Props = {
   page: PageId;
@@ -51,6 +52,13 @@ export function TitleBar({
       className="flex-none h-[60px] flex items-center pl-[22px] pr-2"
       data-tauri-drag-region
     >
+      <img
+        src={logo}
+        alt=""
+        draggable={false}
+        data-tauri-drag-region
+        className="h-8 w-8 mr-2 select-none flex-none"
+      />
       <img
         src={wordmark}
         alt="GPT-SoVITS Fabric"

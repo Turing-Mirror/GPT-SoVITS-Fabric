@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "brand:icons": "node scripts/generate_icons.mjs",
     "dev": "vite --config vite.config.ts",
     "lint": "eslint .",
     "test": "vitest run",

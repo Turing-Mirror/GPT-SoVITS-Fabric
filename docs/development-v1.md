@@ -55,3 +55,13 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 修复将 GPT 与判别器的最小合理体积设为 100,000,000 字节，生成器保留原下限。此处是快速就绪判断；下载完整性仍由发布包 SHA-256 校验负责。增加以真实发布文件长度为样本的回归，同时验证截断文件仍被判定为缺失。
 
 本次五个本地资源包的 SHA-256 与最新公开清单一致，开发目录中的全部包内文件逐一比对一致。修复前通过真实程序的 `assets_status` 重现两项误报，RVCF 同一接口已报告就绪。资源模块 12 项测试通过，重编译并重启后再次读取实际程序状态，确认 GSVF 的缺失列表为空、引擎资源就绪。
+
+## 品牌素材
+
+SVG 原稿位于 `app/src/assets/brand/`：`gsvf-main-logo.svg` 用于标题栏，保留现有产品名称字标；`gsvf-main-icon.svg` 用于应用与网页图标。原稿保留透明背景和原始配色。
+
+修改 Icon 后，在 `app` 下执行 `npm run brand:icons`。脚本通过 Tauri CLI 生成桌面 PNG、ICO 和 ICNS，并保留已有的 64px 与 256px 文件名。临时产物写入已忽略的 `data/brand-icons/`，无需提交移动端图标。可在命令末尾通过 `-- <SVG 路径>` 指定其他源文件。
+
+提交 SVG 和 `app/src-tauri/icons/` 的生成产物。窗口、托盘和安装器共用此图标集，安装器直接使用 `icons/icon.ico`。图标嵌入原生程序，更新后须重新编译 Rust 并重启；仅替换前端不足以更新系统图标。
+
+生成工具：[Tauri 应用图标](https://v2.tauri.app/develop/icons/)。
