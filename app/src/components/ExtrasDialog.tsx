@@ -4,6 +4,8 @@ import { Btn, Warn } from "./ui";
 import { categoriesOf, groupOf, type Category } from "../lib/extraGroups";
 import { Pager } from "./Pager";
 import { SegmentControl } from "./SegmentControl";
+import { CatalogTransition } from "./CatalogTransition";
+import { Roll } from "trm-ui";
 import { askConfirm } from "../lib/webDialog";
 import { t } from "../i18n/t";
 import {
@@ -255,7 +257,7 @@ export function ExtrasPanel({
           /> : null}
         </div>
         <p className="m-0 mb-3 text-[12.5px] text-[var(--ink-muted)] leading-snug">
-          {categoryBlurb(category)}
+          <Roll value={categoryBlurb(category)} />
         </p>
 
         {reason ? (
@@ -329,31 +331,36 @@ export function ExtrasPanel({
           </div>
         </div>
 
-        {list === null ? (
-          <div className="flex items-center">
-            <p className="m-0 py-4 text-[13px] text-[var(--meta)]">{t("s.cd178d24a2")}</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex items-center">
-            <p className="m-0 py-4 text-[13px] text-[var(--ink-muted)]">{emptyHint}</p>
-          </div>
-        ) : (
-          <div className="flex flex-col">
-            <div className="flex-1">
-              {pageItems.map((it) => (
-                <ItemRow
-                  key={it.key}
-                  it={it}
-                  busy={!!busyKeys[it.key]}
-                  progress={progByKey[it.key]}
-                  removeKey={removeKey}
-                  disabled={coreBusy || downloading.length > 0 || !!removeKey}
-                  onStart={start}
-                  onRemove={remove}
-                />
-              ))}
+        <CatalogTransition scope={category} page={pageClamped + 1} order={categories}>
+          {list === null ? (
+            <div className="flex items-center">
+              <p className="m-0 py-4 text-[13px] text-[var(--meta)]">{t("s.cd178d24a2")}</p>
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex items-center">
+              <p className="m-0 py-4 text-[13px] text-[var(--ink-muted)]">{emptyHint}</p>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <div className="flex-1">
+                {pageItems.map((it) => (
+                  <ItemRow
+                    key={it.key}
+                    it={it}
+                    busy={!!busyKeys[it.key]}
+                    progress={progByKey[it.key]}
+                    removeKey={removeKey}
+                    disabled={coreBusy || downloading.length > 0 || !!removeKey}
+                    onStart={start}
+                    onRemove={remove}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
+        </CatalogTransition>
+        {list && filtered.length > 0 ? <>
             {totalPages > 1 ? (
               <Pager className="pt-4 pb-1" page={pageClamped + 1} pages={totalPages} onChange={(value) => setPage(value - 1)} />
             ) : (
@@ -361,8 +368,7 @@ export function ExtrasPanel({
                 {t("extras.countItems", { n: filtered.length })}
               </p>
             )}
-          </div>
-        )}
+        </> : null}
 
         {msg || jobs.msg ? (
           // 下载失败现在是多行的（一句人话 + 试过的源 + 怎么办 + 技术细节），
