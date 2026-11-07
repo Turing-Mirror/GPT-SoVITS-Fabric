@@ -112,7 +112,7 @@ function SettingsPageImpl({
       {/* 「联系社区」跟标签栏同一行，卡住的人不会先想到
           去翻「其他」页，得让求助的路在他正卡着的那一页上就看得见。 */}
       <div className="pt-4 flex items-center gap-3 flex-wrap">
-        <div className="min-w-0 overflow-x-auto">
+        <div className="min-w-0">
           <SegmentControl
             options={TAB_KEYS.map((k) => ({ id: k, label: tabLabels[k] }))}
             value={tab}
