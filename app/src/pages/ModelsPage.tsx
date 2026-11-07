@@ -9,7 +9,8 @@ import { Leave } from "../components/Presence";
 import { Swap } from "../components/Motion";
 import { FlowList, Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
-import { artOf } from "../lib/art";
+import { ModelCard } from "../components/ModelCard";
+import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 import { askConfirm } from "../lib/webDialog";
 import { goTo, openInAnnot, synthWithRole } from "../lib/intent";
 import { t } from "../i18n/t";
@@ -44,9 +45,6 @@ type Role = {
 };
 
 type Sort = "name" | "refs";
-
-/** 每页几张卡。 */
-const PAGE_SIZE = 12;
 
 const refCount = (r: Role) => (r.lists ?? []).reduce((n, l) => n + (l.rows?.length ?? 0), 0);
 
@@ -102,7 +100,8 @@ export function ModelsPage({
     const list = q ? roles.filter((r) => `${r.name} ${r.author ?? ""} ${r.id}`.toLowerCase().includes(q)) : roles;
     return [...list].sort((a, b) => (sort === "refs" ? refCount(b) - refCount(a) : (a.name || a.id).localeCompare(b.name || b.id)));
   }, [roles, query, sort]);
-  const paged = usePaged(shown, PAGE_SIZE, `${query}|${sort}`);
+  const grid = useModelGrid();
+  const paged = usePaged(shown, grid.pageSize, `${query}|${sort}`);
   const pageDir = useDir(paged.page);
 
   async function importPack() {
@@ -229,39 +228,28 @@ export function ModelsPage({
         {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 selectable">{msg}</div> : null}
         {roles.length ? (
           <>
-            <Swap k={String(paged.page)} dir={pageDir}>
-              <FlowList layout="grid" items={paged.slice} keyOf={(r) => r.id}
-                className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3"
-                render={(r) => {
-                  const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
-                  return (
-                    <div
-                      key={r.id}
-                      className="group relative rounded-[var(--r)] bg-[var(--group)] p-2.5 cursor-pointer transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]"
-                      onClick={() => synthWithRole(r.id)}
-                      role="button" tabIndex={0}
-                      aria-label={r.name || r.id}
-                      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); synthWithRole(r.id); } }}
-                      onContextMenu={(e) => menu.open(e, itemsFor(r))}
-                    >
-                      <div
-                        className="w-full aspect-[4/3] rounded-[calc(var(--r)-4px)] mb-2.5 bg-center bg-cover"
-                        style={cover ? { backgroundImage: `url("${cover}")` } : { background: artOf(r.id) }}
-                      />
-                      <div className="absolute top-4 right-4" onClick={(e) => e.stopPropagation()}>
-                        <MoreBtn onOpen={(el) => menu.open(el, itemsFor(r))} />
-                      </div>
-                      <div className="text-[13.5px] font-medium leading-tight truncate">{r.name || r.id}</div>
-                      <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
-                        {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
-                      </div>
-                      <div className="mt-1.5">
-                        <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
-                      </div>
-                    </div>
-                  );
-                }} />
-            </Swap>
+            <div ref={grid.ref} style={grid.style}>
+              <Swap k={String(paged.page)} dir={pageDir}>
+                <FlowList layout="grid" items={paged.slice} keyOf={(r) => r.id}
+                  className={MODEL_GRID_CLASS}
+                  render={(r) => {
+                    const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
+                    return (
+                      <ModelCard id={r.id} name={r.name || r.id} cover={cover}
+                        onOpen={() => synthWithRole(r.id)}
+                        onContextMenu={event => menu.open(event, itemsFor(r))}
+                        actions={<MoreBtn onOpen={element => menu.open(element, itemsFor(r))} />}>
+                        <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
+                          {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
+                        </div>
+                        <div className="mt-1.5">
+                          <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
+                        </div>
+                      </ModelCard>
+                    );
+                  }} />
+              </Swap>
+            </div>
             {shown.length === 0 ? <p className="text-[13px] text-[var(--ink-muted)] m-0">{t("library.noHit")}</p> : null}
             <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />
           </>

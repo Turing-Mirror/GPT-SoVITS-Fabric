@@ -205,7 +205,7 @@ function HelpPageImpl({
   }, [focus, focusNonce]);
 
   return (
-    <PagePad>
+    <PagePad width="read">
       <PageHead
         title={t("help.title")}
         sub={t("help.subtitle")}
@@ -229,6 +229,7 @@ function HelpPageImpl({
         <Block
           key={s.anchor}
           id={`help-${s.anchor}`}
+          className="!mt-6"
           title={s.title}
           note={note(s.shown, s.items)}
           action={s.anchor === "firstrun" && onStartGuide ? <Btn primary onClick={() => onStartGuide()}>{t("help.guideStart")}</Btn> : undefined}
@@ -246,7 +247,7 @@ function HelpPageImpl({
       })}
 
       {shownGlossary.length ? (
-        <Block id="help-glossary" title={glossaryTitle} note={note(shownGlossary, glossaryItems)}>
+        <Block id="help-glossary" className="!mt-6" title={glossaryTitle} note={note(shownGlossary, glossaryItems)}>
           <AccordionGroup
             items={shownGlossary}
             openId={openTerm}

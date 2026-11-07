@@ -9,9 +9,11 @@ import { pickPath } from "../lib/nativeDialog";
 import { askConfirm, askPrompt } from "../lib/webDialog";
 import { onHandoff, take, trainWith } from "../lib/intent";
 import { Pager, SearchBox, useDir, usePaged } from "../trm";
-import { Swap, stagger } from "../components/Motion";
+import { Swap } from "../components/Motion";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
+import { ModelCard } from "../components/ModelCard";
+import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
 /**
  * `.list` 标注管理。
@@ -57,11 +59,9 @@ type Loaded = {
 const LANGS = ["zh", "ja", "en", "ko", "yue", "all_zh", "all_ja", "all_ko", "auto"];
 
 const PAGE_SIZE = 60;
-/** 未打开文件时，角色标注列表每页几条。 */
-const ROLE_LIST_SIZE = 8;
 
 /** 角色包里的一份标注。 */
-type RoleList = { key: string; role: string; file: string; path: string; rows: number };
+type RoleList = { key: string; roleId: string; role: string; cover?: string; file: string; path: string; rows: number };
 
 /** 文件所在的目录。 */
 function dirOf(path: string): string {
@@ -162,13 +162,15 @@ function AnnotPageImpl() {
   const [roleLists, setRoleLists] = useState<RoleList[]>([]);
   const loadRoleLists = useCallback(() => {
     if (!isTauri()) return;
-    void invoke<{ roles?: { id: string; name: string; dir: string; lists?: { file: string; rows?: unknown[] }[] }[] }>("synth_characters")
+    void invoke<{ roles?: { id: string; name: string; dir: string; cover?: string; cover_exists?: boolean; lists?: { file: string; rows?: unknown[] }[] }[] }>("synth_characters")
       .then((r) =>
         setRoleLists(
           (r?.roles ?? []).flatMap((role) =>
             (role.lists ?? []).map((l) => ({
               key: `${role.id}/${l.file}`,
+              roleId: role.id,
               role: role.name || role.id,
+              cover: role.cover_exists && role.cover ? convertFileSrc(`${role.dir}/${role.cover}`) : undefined,
               file: l.file,
               path: `${role.dir}/${l.file}`,
               rows: l.rows?.length ?? 0,
@@ -179,7 +181,8 @@ function AnnotPageImpl() {
       .catch(() => setRoleLists([]));
   }, []);
   useEffect(loadRoleLists, [loadRoleLists]);
-  const rolePaged = usePaged(roleLists, ROLE_LIST_SIZE);
+  const roleGrid = useModelGrid();
+  const rolePaged = usePaged(roleLists, roleGrid.pageSize);
   const roleDir = useDir(rolePaged.page);
 
   /** 关掉当前文件，回到角色标注文件的列表。 */
@@ -344,7 +347,7 @@ function AnnotPageImpl() {
                   {t("s.annot.openWindow")}
                 </Btn>
               ) : null}
-              <Btn onClick={() => void open()} busy={busy && !path}>
+              <Btn primary={!path} onClick={() => void open()} busy={busy && !path}>
                 {t("s.annot.open")}
               </Btn>
               {path ? (
@@ -376,38 +379,25 @@ function AnnotPageImpl() {
 
         {!path && roleLists.length ? (
           <Block title={t("s.annot.roleListsTitle")} note={String(roleLists.length)}>
-            <Swap k={String(rolePaged.page)} dir={roleDir}>
-              <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-1">
-                {rolePaged.slice.map((l, i) => (
-                  <div key={l.key} className="rise flex items-center gap-3 py-3" style={stagger(i)}>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] text-[var(--ink)] truncate">{l.role}</div>
-                      <div className="text-[12px] text-[var(--meta)] truncate">
-                        {t("s.annot.roleListMeta", { v0: l.file, v1: l.rows })}
+            <div ref={roleGrid.ref} style={roleGrid.style}>
+              <Swap k={String(rolePaged.page)} dir={roleDir}>
+                <div className={MODEL_GRID_CLASS}>
+                  {rolePaged.slice.map(list => (
+                    <ModelCard key={list.key} id={list.roleId} name={list.role} cover={list.cover}
+                      disabled={busy} onOpen={() => void openPath(list.path)}>
+                      <div className="text-[11.5px] text-[var(--meta)] mt-1 leading-relaxed break-words">
+                        {t("s.annot.roleListMeta", { v0: list.file, v1: list.rows })}
                       </div>
-                    </div>
-                    <Btn onClick={() => void openPath(l.path)}>{t("s.annot.openThis")}</Btn>
-                  </div>
-                ))}
-              </div>
-            </Swap>
+                    </ModelCard>
+                  ))}
+                </div>
+              </Swap>
+            </div>
             <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
           </Block>
         ) : null}
 
-        {!path ? (
-          <Block title={t("s.annot.emptyTitle")}>
-            <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-6 text-[13px] text-[var(--help)] leading-relaxed">
-              <p className="m-0 mb-3">{t("s.annot.emptyBody")}</p>
-              <pre className="m-0 mb-4 font-mono text-[12px] text-[var(--meta)] overflow-x-auto">
-                audios/0001.wav|爱丽丝|ja|ブルーアーカイブ
-              </pre>
-              <Btn primary onClick={() => void open()}>
-                {t("s.annot.open")}
-              </Btn>
-            </div>
-          </Block>
-        ) : (
+        {path ? (
           <>
             <Block
               title={t("s.annot.fileTitle")}
@@ -588,7 +578,7 @@ function AnnotPageImpl() {
               <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />
             </Block>
           </>
-        )}
+        ) : null}
       </PagePad>
     </div>
   );
