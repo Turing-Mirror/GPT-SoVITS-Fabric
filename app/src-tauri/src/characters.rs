@@ -245,7 +245,7 @@ pub fn pick_pack(win: Option<&tauri::WebviewWindow>) -> Vec<PathBuf> {
 // --- 角色管理：改名、删除、导出、换封面 ------------------------------------
 
 /// 封面接受的图片格式。
-const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
 
 /// 已装角色的目录。id 必须原样就是清洗过的目录名，不能借它指到别处。
 fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
@@ -290,27 +290,71 @@ pub fn delete(root: &Path, id: &str) -> Result<(), String> {
     std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))
 }
 
-/// 换封面：复制成 `cover.<扩展名>`，旧封面文件一并去掉。
-pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
+/// Local image bytes are shared with wallpaper sampling so canvas stays same-origin.
+pub fn cover_data_url(src: &str) -> Result<String, String> {
+    crate::wallpaper::data_url(src).map_err(|_| crate::i18n::t("s.roleErrCoverType"))
+}
+
+const CUSTOM_COVER_PREFIX: &str = "cover-custom-";
+const MAX_COVER_BYTES: usize = 16 * 1024 * 1024;
+
+/// Preserve the package cover; edits are separate content-addressed files.
+pub fn save_cover(root: &Path, id: &str, data_url: &str) -> Result<Value, String> {
+    use sha2::{Digest, Sha256};
     let dir = role_dir(root, id)?;
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .filter(|e| COVER_EXTS.contains(&e.as_str()))
-        .ok_or_else(|| crate::i18n::t("s.roleErrCoverType"))?;
+    let invalid = || crate::i18n::t("s.roleErrCoverType");
+    let (header, encoded) = data_url.split_once(',').ok_or_else(invalid)?;
+    if !["data:image/png;base64", "data:image/jpeg;base64", "data:image/webp;base64", "data:image/bmp;base64"].contains(&header)
+        || encoded.len() > MAX_COVER_BYTES.div_ceil(3) * 4 {
+        return Err(invalid());
+    }
+    let bytes = crate::shell_extras::base64_decode(encoded).ok_or_else(invalid)?;
+    let ext = match crate::wallpaper::sniff_mime(&bytes) {
+        Some("image/png") => "png",
+        Some("image/jpeg") => "jpg",
+        Some("image/webp") => "webp",
+        Some("image/bmp") => "bmp",
+        _ => return Err(invalid()),
+    };
+    if bytes.len() > MAX_COVER_BYTES { return Err(invalid()); }
+    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let name = format!("{CUSTOM_COVER_PREFIX}{}.{ext}", &digest[..16]);
     let mut cfg = read_cfg(&dir)?;
-    let old = str_field(&cfg, "cover");
-    let name = format!("cover.{ext}");
-    std::fs::copy(src, dir.join(&name)).map_err(|e| e.to_string())?;
-    if !old.is_empty() && old != name && check_entry_path(&old).is_ok() {
-        let _ = std::fs::remove_file(dir.join(&old));
+    let previous = str_field(&cfg, "cover");
+    let obj = cfg.as_object_mut().ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    if !obj.contains_key("original_cover") {
+        obj.insert("original_cover".into(), json!(previous));
     }
-    if let Some(obj) = cfg.as_object_mut() {
-        obj.insert("cover".into(), json!(name));
-    }
+    std::fs::write(dir.join(&name), bytes).map_err(|e| e.to_string())?;
+    obj.insert("cover".into(), json!(name));
     write_cfg(&dir, &cfg)?;
-    Ok(json!({ "id": id, "cover": name }))
+    if previous != name && previous != str_field(&cfg, "original_cover") && previous.starts_with(CUSTOM_COVER_PREFIX) && check_entry_path(&previous).is_ok() {
+        let _ = std::fs::remove_file(dir.join(previous));
+    }
+    Ok(json!({"id": id, "cover": name}))
+}
+
+pub fn reset_cover(root: &Path, id: &str) -> Result<Value, String> {
+    let dir = role_dir(root, id)?;
+    let mut cfg = read_cfg(&dir)?;
+    let current = str_field(&cfg, "cover");
+    let Some(original) = cfg.get("original_cover").and_then(Value::as_str).map(str::to_string) else {
+        return Ok(json!({"id":id,"cover":current}));
+    };
+    let obj = cfg.as_object_mut().ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    obj.insert("cover".into(), json!(original));
+    obj.remove("original_cover");
+    write_cfg(&dir, &cfg)?;
+    if current != original && current.starts_with(CUSTOM_COVER_PREFIX) && check_entry_path(&current).is_ok() {
+        let _ = std::fs::remove_file(dir.join(current));
+    }
+    Ok(json!({"id":id,"cover":original}))
+}
+
+/// Compatibility entry point for callers that already have a local image path.
+pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
+    let data = cover_data_url(&src.to_string_lossy())?;
+    save_cover(root, id, &data)
 }
 
 /// 把角色目录打成角色包，格式与导入时一致（无包装目录）。
@@ -532,4 +576,55 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&root);
     }
+    #[test]
+    fn cover_edits_preserve_original_and_change_the_asset_url() {
+        let root = crate::testutil::scratch("cover-reset");
+        let dir = root.join("User_Data/characters/voice");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.json"), r#"{"name":"Voice","cover":"original.png"}"#).unwrap();
+        std::fs::write(dir.join("original.png"), b"original").unwrap();
+        let first = save_cover(&root, "voice", "data:image/png;base64,iVBORw0KGgoAAAAAAAAAAA==").unwrap();
+        let second = save_cover(&root, "voice", "data:image/png;base64,iVBORw0KGgoBAAAAAAAAAA==").unwrap();
+        assert_ne!(first["cover"], second["cover"]);
+        assert!(!dir.join(first["cover"].as_str().unwrap()).exists());
+        assert_eq!(read_cfg(&dir).unwrap()["original_cover"], "original.png");
+        assert_eq!(reset_cover(&root,"voice").unwrap()["cover"], "original.png");
+        assert_eq!(std::fs::read(dir.join("original.png")).unwrap(), b"original");
+        assert!(!dir.join(second["cover"].as_str().unwrap()).exists());
+        assert_eq!(reset_cover(&root,"voice").unwrap()["cover"], "original.png");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_cover_does_not_change_the_role() {
+        let root = crate::testutil::scratch("cover-invalid");
+        let dir = root.join("User_Data/characters/voice");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = r#"{"name":"Voice","cover":"original.png"}"#;
+        std::fs::write(dir.join("config.json"), config).unwrap();
+        assert!(save_cover(&root,"voice","data:image/png;base64,bm90IGFuIGltYWdl").is_err());
+        assert_eq!(std::fs::read_to_string(dir.join("config.json")).unwrap(), config);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn imported_custom_named_default_cover_survives_edit_and_reset() {
+        let root = crate::testutil::scratch("cover-custom-default");
+        let dir = root.join("User_Data/characters/voice");
+        std::fs::create_dir_all(&dir).unwrap();
+        let original = "cover-custom-imported.jpg";
+        std::fs::write(dir.join("config.json"), json!({"name":"Voice", "cover":original}).to_string()).unwrap();
+        std::fs::write(dir.join(original), b"original").unwrap();
+        let edited = save_cover(&root, "voice", "data:image/png;base64,iVBORw0KGgoAAAAAAAAAAA==").unwrap();
+        assert_eq!(std::fs::read(dir.join(original)).unwrap(), b"original");
+        assert_eq!(reset_cover(&root, "voice").unwrap()["cover"], original);
+        assert!(dir.join(original).is_file());
+        assert!(!dir.join(edited["cover"].as_str().unwrap()).exists());
+        // A package may already store the default as both fields.
+        std::fs::write(dir.join("config.json"), json!({"cover":original, "original_cover":original}).to_string()).unwrap();
+        reset_cover(&root, "voice").unwrap();
+        assert!(dir.join(original).is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

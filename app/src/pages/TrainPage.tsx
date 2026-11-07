@@ -4,7 +4,8 @@ import { Swap } from "../components/Motion";
 import { Icon, useDir } from "../trm";
 import { Field, Select, Slider, Toggle } from "../components/controls";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { activeJob, latestExperimentJob, trainPercent, useTrainingQueue } from "../lib/trainQueue";
+import { TrainingQueue } from "../components/TrainingQueue";
 import { openTool } from "../components/ToolWindow";
 import { ErrorNote } from "../components/ErrorNote";
 import { t } from "../i18n/t";
@@ -19,8 +20,8 @@ import { goTo, onHandoff, take } from "../lib/intent";
  *
  * **这一页曾经是纯形状**：按钮禁用、四个阶段常年 idle、进度恒为 0。更早一版
  * 更糟 —— 「开始训练」走的是一个定时器，进度条爬到 100%、四个阶段依次打勾、
- * 日志打出「训练完成」，一个字节都没算过。现在接的是真的：`train_start`
- * 起 worker，`train-progress` 事件逐行回传，阶段与轮数都来自它。
+ * 日志打出「训练完成」，一个字节都没算过。现在由 Rust 持久队列串行调用
+ * 原有 worker，任务进度来自其阶段与轮数。
  *
  * 版本列表、每个版本缺哪些底模、默认参数，都取自 `train_status()`：Rust 读
  * 随包的上游版本表（`configs/upstream_versions.json`）与默认值
@@ -88,17 +89,6 @@ type Inspect = {
   mean_volume_db?: number;
 };
 
-/** worker 的一行。`text` 是 Rust 侧翻好的，界面不再拼文案。 */
-type Line = {
-  phase?: string;
-  stage?: Stage;
-  done?: number;
-  total?: number;
-  text?: string;
-  message?: string;
-  message_code?: string;
-};
-
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -130,18 +120,18 @@ export function TrainPage() {
   const [loraRank, setLoraRank] = useState(32);
   const [resume, setResume] = useState(true);
 
-  const [stage, setStage] = useState<Stage | null>(null);
-  const [doneStages, setDoneStages] = useState<Stage[]>([]);
-  const [progress, setProgress] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
+  const queue = useTrainingQueue();
+  const refreshQueue = queue.refresh;
+  const running = activeJob(queue.jobs);
+  const stage = running?.progress?.stage ?? null;
+  const doneStages = stage ? STAGES.slice(0, STAGES.indexOf(stage)) : [];
+  const progress = trainPercent(running);
   const [err, setErr] = useState("");
-  const [errCode, setErrCode] = useState("");
   const [starting, setStarting] = useState(false);
   /** 中栏显示第几步（0–3）。 */
   const [step, setStep] = useState(0);
   const stepDir = useDir(step);
 
-  const logRef = useRef<HTMLPreElement>(null);
 
   const refresh = useCallback(async () => {
     if (!isTauri()) return;
@@ -185,54 +175,11 @@ export function TrainPage() {
     return () => window.clearInterval(id);
   }, [refresh, st.busy]);
 
-  useEffect(() => {
-    if (!isTauri()) return;
-    const un = listen<Line>("train-progress", (ev) => {
-      const v = ev.payload || {};
-      const text = v.text || v.message || "";
-      if (text) {
-        setLog((l) => [...l.slice(-199), text]);
-      }
-      if (v.stage && STAGES.includes(v.stage)) {
-        setStage(v.stage);
-        setDoneStages((d) => {
-          const i = STAGES.indexOf(v.stage!);
-          const before = STAGES.slice(0, i);
-          return Array.from(new Set([...d, ...before]));
-        });
-      }
-      if (typeof v.done === "number" && typeof v.total === "number" && v.total > 0) {
-        // 每阶段自己 0→100，四阶段各占四分之一。
-        const i = v.stage ? STAGES.indexOf(v.stage) : 0;
-        const within = Math.min(1, v.done / v.total);
-        setProgress(Math.round(((Math.max(0, i) + within) / STAGES.length) * 100));
-      }
-      if (v.phase === "error") {
-        setErr(text);
-        setErrCode(v.message_code || "");
-        setStage(null);
-      }
-      if (v.phase === "done") {
-        setDoneStages([...STAGES]);
-        setStage(null);
-        setProgress(100);
-      }
-    });
-    return () => {
-      void un.then((f) => f());
-    };
-  }, []);
-
-  useEffect(() => {
-    const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [log]);
-
   const applyDataset = useCallback(async (p: string) => {
     setDataset(p);
     // 角色包的数据集在 <角色>/dataset 下：实验名取角色目录名，不取「dataset」。
     const parts = p.split(/[\\/]/).filter(Boolean);
-    const last = parts.pop() || "";
+    const last = (parts.pop() || "").replace(/\.list$/i, "");
     setExp((e) => e || (last.toLowerCase() === "dataset" ? parts.pop() || last : last));
     setScan(await invoke<Scan>("train_scan_dataset", { path: p }).catch(() => null));
     setInspect(await invoke<Inspect>("train_inspect_dataset", { path: p }).catch(() => null));
@@ -280,12 +227,9 @@ export function TrainPage() {
 
   const start = useCallback(async () => {
     setErr("");
-    setLog([]);
-    setDoneStages([]);
-    setProgress(0);
     setStarting(true);
     try {
-      await invoke("train_start", {
+      await invoke("train_queue_add", {
         req: {
           exp: exp.trim(),
           dataset,
@@ -307,18 +251,14 @@ export function TrainPage() {
     } finally {
       setStarting(false);
       void refresh();
+      void refreshQueue();
     }
-  }, [exp, dataset, version, sovits, gpt, lr, loraRank, resume, outDir, refresh]);
+  }, [exp, dataset, version, sovits, gpt, lr, loraRank, resume, outDir, refresh, refreshQueue]);
 
   const versions = st.versions ?? [];
   const missing = [...(st.engine_core_missing ?? []), ...versionMissing];
   const baseReady = !!st.engine_core_ready && versionMissing.length === 0;
-  const finished = !st.busy && doneStages.length === STAGES.length;
-
-  // 跑着的时候停在「开始训练」一步，进度和停止按钮都在那里。
-  useEffect(() => {
-    if (st.busy) setStep(3);
-  }, [st.busy]);
+  const finished = latestExperimentJob(queue.jobs, exp)?.state === "completed";
 
   const steps: { title: string; sub: string; ok: boolean }[] = [
     { title: t("train.stepVersion"), sub: version || t("train.unset"), ok: baseReady },
@@ -394,7 +334,7 @@ export function TrainPage() {
       {/* 流水线第一步的入口。素材里带伴奏就直接拿去训，出来的音色会把
           背景音一起学进去 —— 分离这一整套（separate.rs + worker + pymss）
           早就在仓库里，之前只是没有任何地方能打开它。 */}
-      <div className="flex items-center justify-between gap-3 flex-wrap py-1">
+      <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="text-[13.5px] font-medium">{t("train.sepEntry")}</div>
           <div className="text-[12px] text-[var(--help)] mt-1 leading-relaxed">{t("train.sepEntryDesc")}</div>
@@ -520,13 +460,9 @@ export function TrainPage() {
         />
       </div>
       <div className="flex items-center gap-3 mt-3 flex-wrap">
-        {st.busy ? (
-          <Btn onClick={() => void invoke("train_cancel").catch(() => {})}>{t("train.cancel")}</Btn>
-        ) : (
-          <Btn primary busy={starting} disabled={!!blocked} onClick={() => void start()}>
-            {t("train.start")}
-          </Btn>
-        )}
+        <Btn primary busy={starting} disabled={!!blocked} onClick={() => void start()}>
+          {t("train.queueAdd")}
+        </Btn>
         <span className="text-[12px] text-[var(--meta)]">
           {blocked || t("train.diskFree", { v0: gb(st.disk_free_bytes) })}
         </span>
@@ -534,7 +470,7 @@ export function TrainPage() {
       </div>
       {err ? (
         <div className="mt-3">
-          <ErrorNote text={err} code={errCode} />
+          <ErrorNote text={err} />
         </div>
       ) : null}
     </div>,
@@ -622,7 +558,7 @@ export function TrainPage() {
           </div>
         </div>
 
-        {/* 右栏：状态与日志 */}
+        {/* 右栏：状态与训练队列 */}
         <div className="min-h-[360px] min-[900px]:min-h-0 flex flex-col">
           <div className="flex-none flex items-center gap-2 mb-2.5 min-h-[30px]">
             <h3 className="text-[15.5px] font-semibold m-0">{t("train.statusTitle")}</h3>
@@ -649,16 +585,7 @@ export function TrainPage() {
               <div className="pt-1 text-[12px] leading-relaxed text-[var(--help)]">{statusHint}</div>
             ) : null}
           </div>
-          <div className="flex-none flex items-center gap-2 mt-4 mb-2.5">
-            <h3 className="text-[15.5px] font-semibold m-0">{t("train.logTitle")}</h3>
-            <span className="text-[12px] text-[var(--meta)] truncate">{t("train.logNote")}</span>
-          </div>
-          <pre
-            ref={logRef}
-            className="flex-1 min-h-[160px] rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0 whitespace-pre-wrap tabular-nums"
-          >
-            {log.length ? log.join("\n") : t("train.logEmpty")}
-          </pre>
+          <TrainingQueue jobs={queue.jobs} error={queue.error} onAction={queue.action} />
         </div>
       </div>
     </PagePad>

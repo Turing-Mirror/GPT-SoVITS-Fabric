@@ -668,7 +668,7 @@ export default function App() {
           switch (id) {
             case "home":
               return (
-                <HomePage onNavigate={setPage} />
+                <HomePage onNavigate={setPage} active={page === "home"} />
               );
             case "plaza":
               return (
@@ -683,7 +683,7 @@ export default function App() {
               );
             case "models":
               return (
-                <ModelsPage onOpenPlaza={openPlaza} banner={plaza.feed.banner} />
+                <ModelsPage onOpenPlaza={openPlaza} banner={plaza.feed.banner} active={page === "models"} />
               );
             case "synth":
               return <SynthPage />;
@@ -720,7 +720,6 @@ export default function App() {
                     setProvisionDismissed(false);
                     setShowProvision(true);
                   }}
-                  onOpenDownloadModels={openDownloadModels}
                   focusCommunityNonce={communityNonce}
                 />
               );

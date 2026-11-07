@@ -10,12 +10,19 @@ export type ConfigWrite = {
   needs_restart: string[];
 };
 
+let writes: Promise<unknown> = Promise.resolve();
+
 export async function getConfig(): Promise<Config> {
+  await writes;
   return await invoke<Config>("config_get");
 }
 
-export async function setConfig(patch: Config): Promise<ConfigWrite> {
-  return await invoke<ConfigWrite>("config_set", { patch });
+export function setConfig(patch: Config): Promise<ConfigWrite> {
+  const snapshot = { ...patch };
+  const write = writes.then(() => invoke<ConfigWrite>("config_set", { patch: snapshot }));
+  // All mounted pages share the order; a rejected write must not block later changes.
+  writes = write.catch(() => {});
+  return write;
 }
 
 /** 设置页乐观写入时立刻通知底栏等订阅方，不等 220ms 落盘。 */

@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Block, Btn, Group, ListItem } from "./ui";
 import { askConfirm } from "../lib/webDialog";
 import { t } from "../i18n/t";
+import { Ring, Pager, Swap, useDir } from "../trm";
+import { listText } from "../lib/text";
 
 type Usage = {
   items: { name: string; bytes: number }[];
@@ -24,14 +26,10 @@ const KINDS = [
 ] as const;
 
 const USAGE_LABEL: Record<string, string> = {
-  logs: "s.storageLogs",
-  weights: "s.storageWeights",
-  models: "s.storageModels",
-  update_cache: "s.storageUpdateCache",
-  diagnostics: "s.storageDiagnostics",
-  perf_reports: "s.storagePerf",
-  app_logs: "s.storageAppLogs",
-  trash: "s.storageTrash",
+  characters: "storage.characters", training: "storage.training",
+  outputs: "storage.outputs", runtime: "storage.runtime",
+  pretrained: "storage.pretrained", separation: "storage.separation",
+  cache: "storage.cache", other: "storage.other",
 };
 
 function human(n: number): string {
@@ -52,6 +50,7 @@ function human(n: number): string {
  * 一次就是不可挽回的信任损失，而它省下的只是几次点击。
  */
 export function StorageSection() {
+  const request = useRef(0);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,29 +70,36 @@ export function StorageSection() {
   );
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const pageClamped = Math.min(page, totalPages);
+  const pageDir = useDir(pageClamped);
   const pageRows = sorted.slice(
     (pageClamped - 1) * PAGE_SIZE,
     pageClamped * PAGE_SIZE,
   );
 
   const scan = async () => {
+    const current = ++request.current;
     setBusy(true);
     setMsg("");
-    try {
-      const [u, r] = await Promise.all([
-        invoke<Usage>("storage_usage"),
-        invoke<Row[]>("train_cleanup_scan"),
-      ]);
-      setUsage(u);
-      setRows(Array.isArray(r) ? r : []);
+    const [u, r] = await Promise.allSettled([
+      invoke<Usage>("storage_usage"), invoke<Row[]>("train_cleanup_scan"),
+    ]);
+    if (current !== request.current) return;
+    if (u.status === "fulfilled") setUsage(u.value);
+    if (r.status === "fulfilled") {
+      setRows(Array.isArray(r.value) ? r.value : []);
       setPicked({});
       setPage(1);
-    } catch (e) {
-      setMsg(String(e));
-    } finally {
-      setBusy(false);
     }
+    const failure = [u, r].find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") setMsg(String(failure.reason));
+    setBusy(false);
   };
+
+  useEffect(() => {
+    if ("__TAURI_INTERNALS__" in window) void scan();
+    const counter = request;
+    return () => { counter.current++; };
+  }, []);
 
   const toggle = (exp: string, kind: string) => {
     setPicked((prev) => {
@@ -109,9 +115,7 @@ export function StorageSection() {
   const apply = async (row: Row) => {
     const kinds = [...(picked[row.exp] ?? [])];
     if (kinds.length === 0 || busy) return;
-    const names = kinds
-      .map((k) => t(KINDS.find((x) => x.id === k)?.labelKey ?? k))
-      .join("、");
+    const names = listText(kinds.map((k) => t(KINDS.find((x) => x.id === k)?.labelKey ?? k)));
     if (!(await askConfirm(t("s.cleanupConfirm", { a0: row.exp, a1: names })))) return;
     setBusy(true);
     try {
@@ -119,8 +123,8 @@ export function StorageSection() {
         exp: row.exp,
         kinds,
       });
-      setMsg(t("s.cleanupDone", { v0: human(r?.freed_bytes ?? 0) }));
       await scan();
+      setMsg(t("s.cleanupDone", { v0: human(r?.freed_bytes ?? 0) }));
     } catch (e) {
       setMsg(String(e));
     } finally {
@@ -129,44 +133,24 @@ export function StorageSection() {
   };
 
   return (
-    <Block title={t("s.storageTitle")}>
+    <Block title={t("s.storageTitle")} action={
+      <Btn onClick={() => void scan()} busy={busy}>{t("s.storageScan")}</Btn>
+    }>
       <Group>
-        <ListItem
-          title={t("s.storageTitle")}
-          desc={
-            msg ||
-            (usage
-              ? t("s.storageTotal", {
-                  a0: human(usage.total_bytes),
-                  a1: usage.free_bytes == null ? t("s.valueUnknown") : human(usage.free_bytes),
-                })
-              : t("s.cleanupDesc"))
-          }
-          right={
-            <Btn onClick={() => void scan()} disabled={busy} busy={busy}>
-              {busy ? t("s.storageScanning") : t("s.storageScan")}
-            </Btn>
-          }
-        />
+        {msg ? <p role="status" className="px-4 pt-3 m-0 text-[12.5px] text-[var(--help)]">{msg}</p> : null}
         {usage ? (
-          <div className="px-4 py-3">
-            <ul className="m-0 list-none p-0">
-              {usage.items.map((it) => (
-                <li
-                  key={it.name}
-                  className="flex justify-between gap-3 text-[12.5px] leading-relaxed"
-                >
-                  <span className="text-[var(--ink-muted)]">
-                    {t(USAGE_LABEL[it.name] ?? it.name)}
-                  </span>
-                  <span className="font-mono text-[11.5px] text-[var(--meta)] tabular-nums">
-                    {human(it.bytes)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <div className="px-4 py-4">
+            <Ring center={human(usage.total_bytes)}
+              segments={usage.items.map((item, index) => ({
+                id: item.name, label: t(USAGE_LABEL[item.name] ?? "storage.other"),
+                value: item.bytes, note: human(item.bytes),
+                color: `var(--storage-${index + 1}, var(--accent))`,
+              })).filter((item) => item.value > 0)} />
+            <p className="m-0 mt-3 text-[12px] text-[var(--meta)]">
+              {t("storage.free", { size: usage.free_bytes == null ? t("s.valueUnknown") : human(usage.free_bytes) })}
+            </p>
           </div>
-        ) : null}
+        ) : <p className="m-0 px-4 py-3 text-[12.5px] text-[var(--help)]">{busy ? t("s.valueLoading") : t("s.cleanupDesc")}</p>}
         {rows && rows.length === 0 ? (
           <ListItem title={t("s.cleanupTitle")} desc={t("s.cleanupNothing")} />
         ) : null}
@@ -183,6 +167,7 @@ export function StorageSection() {
             <p className="m-0 mb-3 text-[12px] text-[var(--meta)] leading-relaxed">
               {t("s.cleanupDesc")}
             </p>
+            <Swap k={String(pageClamped)} dir={pageDir}>
             <ul className="m-0 list-none p-0">
               {pageRows.map((row, i) => (
                 <li key={row.exp} className="relative py-3 first:pt-0">
@@ -241,29 +226,8 @@ export function StorageSection() {
                 </li>
               ))}
             </ul>
-            {totalPages > 1 ? (
-              <div className="flex items-center justify-center gap-3 pt-4 text-[12.5px] text-[var(--meta)]">
-                <Btn
-                  disabled={pageClamped <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  {t("s.b41561d807")}
-                </Btn>
-                <span className="tabular-nums">
-                  {t("s.40a021ed44", {
-                    v0: pageClamped,
-                    v1: totalPages,
-                    v2: sorted.length,
-                  })}
-                </span>
-                <Btn
-                  disabled={pageClamped >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  {t("s.67a246a344")}
-                </Btn>
-              </div>
-            ) : null}
+            </Swap>
+            <Pager page={pageClamped} pages={totalPages} onChange={setPage} />
           </div>
         ) : null}
       </Group>

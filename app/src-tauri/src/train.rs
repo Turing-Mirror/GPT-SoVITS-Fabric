@@ -78,6 +78,8 @@ static BUSY: Mutex<bool> = Mutex::new(false);
 static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 /// 训练子进程本身会再 fork 出 worker 进程，光靠 cancel 标志杀不干净，得留句柄。
 static CHILD: Mutex<Option<u32>> = Mutex::new(None);
+/// Queue cancellation must never target a concurrent direct/API request.
+static QUEUE_JOB: Mutex<Option<String>> = Mutex::new(None);
 
 /// 上游版本表：`configs/upstream_versions.json`，打包时由
 /// `scripts/prepare_engine_payload.py` 从随包上游源码生成。可训练哪些版本、
@@ -418,7 +420,27 @@ pub fn inspect_dataset(root: &Path, dir: &Path) -> Value {
     out
 }
 
+/// Explicit annotation selection inspects its referenced audio, not every file
+/// in the parent directory (which can contain other speakers' datasets).
+fn annotation_audio(path: &Path) -> Option<Vec<PathBuf>> {
+    if !path.is_file() || !path.extension().and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("list")) { return None; }
+    let data = crate::annot::load(&path.to_string_lossy()).ok()?;
+    let mut files: Vec<PathBuf> = data["rows"].as_array()?.iter()
+        .filter(|row| row["exists"].as_bool() == Some(true))
+        .filter_map(|row| row["abs"].as_str().map(PathBuf::from))
+        .filter(|file| file.extension().and_then(|s| s.to_str())
+            .is_some_and(|s| DATASET_AUDIO_EXT.contains(&s.to_ascii_lowercase().as_str())))
+        .collect();
+    files.sort();
+    files.dedup();
+    Some(files)
+}
+
 fn collect_audio(dir: &Path, out: &mut Vec<PathBuf>, depth: u32) {
+    if depth == 0 {
+        if let Some(files) = annotation_audio(dir) { out.extend(files); return; }
+    }
     if depth > 6 || out.len() > 20_000 {
         return;
     }
@@ -755,6 +777,17 @@ pub const DATASET_AUDIO_EXT: [&str; 8] =
 ///
 /// 递归扫子目录，跟 preprocess.py 的 os.walk 一致：用户按歌手分文件夹是常态。
 pub fn scan_dataset(dir: &Path) -> Value {
+    if let Some(audio) = annotation_audio(dir) {
+        let mut by_ext: std::collections::BTreeMap<String, u64> = Default::default();
+        let mut bytes = 0;
+        for file in &audio {
+            let ext = file.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+            *by_ext.entry(ext).or_insert(0) += 1;
+            bytes += std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+        }
+        return json!({"files":audio.len(),"other_files":0,"total_bytes":bytes,
+            "by_ext":by_ext,"truncated":false,"supported":DATASET_AUDIO_EXT});
+    }
     let mut files: u64 = 0;
     let mut other: u64 = 0;
     let mut bytes: u64 = 0;
@@ -929,6 +962,17 @@ pub fn cancel() {
     }
 }
 
+pub(crate) fn cancel_queued(id: &str) {
+    let owner = QUEUE_JOB.lock().unwrap_or_else(|e| e.into_inner());
+    if owner.as_deref() == Some(id) { cancel(); }
+}
+
+fn release_training_slot() {
+    *CHILD.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *QUEUE_JOB.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *BUSY.lock().unwrap_or_else(|e| e.into_inner()) = false;
+}
+
 #[cfg(windows)]
 fn kill_tree(pid: u32) {
     use std::os::windows::process::CommandExt;
@@ -948,12 +992,15 @@ fn kill_tree(pid: u32) {
 /// worker 只发 `message_code` + `message_params`（它不知道用户选了哪种语言），
 /// 翻译在这一侧。不在这里翻的话，界面要么显示 `train.sovits_started` 这种
 /// 裸 key，要么就得把八份文案再拼一遍 —— 而语言包的四道校验只认这边的引用。
-fn emit(app: &AppHandle, mut payload: Value) {
+fn emit(app: &AppHandle, mut payload: Value, job_id: Option<&str>) {
     let text = crate::i18n::t_worker_msg(&payload);
     if let Some(obj) = payload.as_object_mut() {
         if !text.is_empty() {
             obj.insert("text".into(), Value::String(text));
         }
+    }
+    if let Some(id) = job_id {
+        crate::train_queue::progress(app, id, &payload);
     }
     let _ = app.emit("train-progress", payload);
 }
@@ -965,7 +1012,7 @@ fn emit(app: &AppHandle, mut payload: Value) {
 /// （rmvpe/harvest/pm/dio）、以及训完之后建检索索引。GPT-SoVITS 一个都没有 ——
 /// 它的输入固定 32k、不提 f0、也没有索引这回事。照抄过来的结果是界面上摆着
 /// 一排这个产品根本不存在的旋钮。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrainReq {
     pub exp: String,
     pub dataset: String,
@@ -984,11 +1031,8 @@ pub struct TrainReq {
     #[serde(default = "default_lora_rank")]
     pub lora_rank: u32,
     pub resume: bool,
-    /// 训好的音色放哪。空 = `User_Data/models`（老行为）。
-    ///
-    /// 一个音色连模型带索引三四百 MB，训十个就是几个 G。允许挪到别的盘，
-    /// 但必须是绝对路径且建得出来 —— 相对路径会跟着 cwd 跑，训了几小时
-    /// 最后落在谁也找不到的地方。
+    /// 训练权重的中转目录。空值使用 `User_Data/train/<实验名>/weights`。
+    /// 自定义目录必须为可创建的绝对路径；完成的角色仍汇集到角色库。
     #[serde(default)]
     pub output_dir: String,
 }
@@ -1052,7 +1096,7 @@ pub fn validate_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
+pub(crate) fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
     validate_name(&req.exp)?;
     if !paths::runtime_ready(root) {
         return Err(crate::i18n::t("s.dc92f52f68").into());
@@ -1104,7 +1148,8 @@ fn preflight(root: &Path, req: &TrainReq) -> Result<(), String> {
     let exp_dir = exp_root(root).join(&req.exp);
     let have_slices = count_dir(&exp_dir.join("sliced")) > 0
         || STAGE_ARTIFACTS.iter().any(|a| exp_dir.join(a).exists());
-    if !(req.resume && have_slices) && !Path::new(&req.dataset).is_dir() {
+    if !(req.resume && have_slices) && !Path::new(&req.dataset).is_dir()
+        && !(Path::new(&req.dataset).is_file() && Path::new(&req.dataset).extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("list"))) {
         return Err(crate::i18n::t("s.6c4b38602a").into());
     }
     Ok(())
@@ -1302,7 +1347,7 @@ fn note_progress(log: &Path, v: &Value, progress: &mut Progress) {
 }
 
 
-/// 校验用户选的音色存放目录，返回归一化后的路径（空 = 用默认的 `User_Data/models`）。
+/// 校验训练权重目录并返回归一化路径。空值使用实验目录下的 `weights`。
 ///
 /// 必须是绝对路径：相对路径会跟着进程的 cwd 走，训了几小时最后落在谁也找不到
 /// 的地方。也必须现在就建得出来 —— 拔掉的移动硬盘、写保护的目录，等训完再发现
@@ -1321,15 +1366,30 @@ pub fn normalize_output_dir(raw: &str) -> Result<String, String> {
 }
 
 /// 阻塞跑一次训练，调用方负责挪到后台线程。
-pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, String> {
-    {
+pub fn run(app: &AppHandle, root: &Path, req: TrainReq) -> Result<Value, String> {
+    run_queued(app, root, req, None)
+}
+
+pub(crate) fn run_queued(app: &AppHandle, root: &Path, mut req: TrainReq, job_id: Option<&str>) -> Result<Value, String> {
+    loop {
         let mut g = BUSY.lock().unwrap_or_else(|e| e.into_inner());
-        if *g {
-            return Err(crate::i18n::t("s.fce4b463c1").into());
+        if !*g {
+            *g = true;
+            *QUEUE_JOB.lock().unwrap_or_else(|e| e.into_inner()) = job_id.map(str::to_owned);
+            break;
         }
-        *g = true;
+        if job_id.is_none() { return Err(crate::i18n::t("s.fce4b463c1")); }
+        drop(g);
+        if job_id.is_some_and(crate::train_queue::cancelled) {
+            return Err(crate::i18n::t("s.a5ffdc95ee"));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
     }
     cancel_flag().store(false, Ordering::SeqCst);
+    if job_id.is_some_and(crate::train_queue::cancelled) {
+        release_training_slot();
+        return Err(crate::i18n::t("s.a5ffdc95ee"));
+    }
     // 训练是这里最吃显存的一件事。合成留下的常驻 worker 还攥着 GPT + SoVITS
     // 两份权重，先放掉再开，别让训练从第一步就 OOM。
     crate::synth::shutdown();
@@ -1337,11 +1397,11 @@ pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, Str
     let out_dir = match normalize_output_dir(&req.output_dir) {
         Ok(d) => d,
         Err(e) => {
-            *BUSY.lock().unwrap_or_else(|err| err.into_inner()) = false;
+            release_training_slot();
             return Err(e);
         }
     };
-    // 记住选择：音色库要一直扫这个目录，不然重启之后训好的音色就「消失」了。
+    // 记住训练权重目录；完成的角色仍由 worker 汇集到角色库。
     let _ = crate::config::set_train_output_dir(root, &out_dir);
     req.output_dir = out_dir;
     let device = if is_nvidia(root) { "cuda" } else { "cpu" };
@@ -1370,7 +1430,7 @@ pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, Str
         log.file_name().and_then(|s| s.to_str()).unwrap_or("train")
     );
     let mut progress = Progress::default();
-    let result = run_inner(app, root, &req, &log, &mut progress);
+    let result = run_inner(app, root, &req, &log, &mut progress, job_id);
     let outcome = match &result {
         Ok(_) => "ok",
         Err(e) if e == &crate::i18n::t("s.a5ffdc95ee") => "cancelled",
@@ -1384,11 +1444,10 @@ pub fn run(app: &AppHandle, root: &Path, mut req: TrainReq) -> Result<Value, Str
             crate::logging::finish_run(&log, true, outcome);
         }
     }
-    *BUSY.lock().unwrap_or_else(|e| e.into_inner()) = false;
-    *CHILD.lock().unwrap_or_else(|e| e.into_inner()) = None;
     if let Err(ref e) = result {
-        emit(app, json!({ "phase": "error", "message": e }));
+        emit(app, json!({ "phase": "error", "message": e }), job_id);
     }
+    release_training_slot();
     result
 }
 
@@ -1398,6 +1457,7 @@ fn run_inner(
     req: &TrainReq,
     log: &Path,
     progress: &mut Progress,
+    job_id: Option<&str>,
 ) -> Result<Value, String> {
     preflight(root, req)?;
 
@@ -1461,8 +1521,14 @@ fn run_inner(
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
+    if cancel_flag().load(Ordering::SeqCst) || job_id.is_some_and(crate::train_queue::cancelled) {
+        return Err(crate::i18n::t("s.a5ffdc95ee"));
+    }
     let mut child: Child = cmd.spawn().map_err(|e| crate::i18n::te("s.217047672d", &(e)))?;
     *CHILD.lock().unwrap_or_else(|e| e.into_inner()) = Some(child.id());
+    if cancel_flag().load(Ordering::SeqCst) {
+        kill_tree(child.id());
+    }
     let _keep = crate::worker::ToolPidGuard::new(child.id());
     let stdout = child.stdout.take().ok_or(crate::i18n::t("s.c73d43b29b"))?;
 
@@ -1492,7 +1558,7 @@ fn run_inner(
             "done" => done = Some(v.clone()),
             _ => {}
         }
-        emit(app, v);
+        emit(app, v, job_id);
     }
 
     let st = child.wait().map_err(|e| crate::i18n::te("s.d21a4981b7", &(e)))?;
@@ -2125,4 +2191,21 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn selected_list_counts_only_its_referenced_audio() {
+        let root = crate::testutil::scratch("train-list-scan");
+        std::fs::create_dir_all(root.join("audio")).unwrap();
+        std::fs::write(root.join("audio/selected.wav"), [0u8; 17]).unwrap();
+        std::fs::write(root.join("audio/unrelated.wav"), [0u8; 23]).unwrap();
+        let selected = root.join("voice.LIST");
+        std::fs::write(&selected, "audio/selected.wav|speaker|zh|text\naudio/missing.wav|speaker|zh|missing\n").unwrap();
+        let stats = scan_dataset(&selected);
+        assert_eq!(stats["files"], 1);
+        assert_eq!(stats["total_bytes"], 17);
+        let mut inspected = Vec::new();
+        collect_audio(&selected, &mut inspected, 0);
+        assert_eq!(inspected, vec![root.join("audio/selected.wav")]);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

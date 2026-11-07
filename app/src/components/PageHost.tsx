@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { navDirection, type PageId } from "../lib/nav";
+import { PageActive } from "../trm";
 import { noteMount, noteUnmount } from "../lib/lifecycle";
 
 type Props = {
@@ -98,11 +99,12 @@ export function PageHost({ page, children }: Props) {
           <PagePane
             key={id}
             id={id}
+            active={!leaving && id === page}
             paneRef={leaving ? undefined : paneRef}
             className={
               leaving
                 ? `absolute inset-0 overflow-hidden pointer-events-none z-[1] ${leaveCls}`
-                : `absolute inset-0 overflow-y-auto z-[2] ${enterCls}`
+                : `absolute inset-0 ${id === "home" ? "overflow-hidden" : "overflow-y-auto"} z-[2] ${enterCls}`
             }
           >
             {children(id)}
@@ -120,10 +122,12 @@ export function PageHost({ page, children }: Props) {
 function PagePane({
   id,
   paneRef,
+  active,
   className,
   children,
 }: {
   id: PageId;
+  active: boolean;
   paneRef?: React.RefObject<HTMLDivElement | null>;
   className: string;
   children: ReactNode;
@@ -133,8 +137,8 @@ function PagePane({
     return () => noteUnmount(`page:${id}`);
   }, [id]);
   return (
-    <div ref={paneRef} className={className}>
-      {children}
+    <div ref={paneRef} className={className} inert={!active} aria-hidden={!active || undefined} data-page-scroll={active ? "" : undefined}>
+      <PageActive value={active}>{children}</PageActive>
     </div>
   );
 }

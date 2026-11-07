@@ -35,6 +35,7 @@ mod telemetry;
 mod testutil;
 mod tool_window;
 mod train;
+mod train_queue;
 mod ui_assets;
 pub mod update;
 mod vcredist;
@@ -971,6 +972,30 @@ async fn role_set_cover(
     characters::set_cover(&root, &id, &src)
 }
 
+#[tauri::command]
+async fn role_cover_data_url(src: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || characters::cover_data_url(&src))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn role_cover_pick(window: tauri::WebviewWindow) -> Result<Option<String>, String> {
+    let Some(path) = characters::pick_cover(Some(&window)) else { return Ok(None); };
+    role_cover_data_url(path.to_string_lossy().into_owned()).await.map(Some)
+}
+
+#[tauri::command]
+async fn role_cover_save(state: State<'_, Mutex<AppState>>, id: String, data_url: String) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || characters::save_cover(&root, &id, &data_url))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn role_cover_reset(state: State<'_, Mutex<AppState>>, id: String) -> Result<Value, String> {
+    characters::reset_cover(&root_clone(&state)?, &id)
+}
+
 /// 导出角色包。弹保存对话框；取消返回 null。打包可能要几秒，放到后台线程。
 #[tauri::command]
 async fn role_export(
@@ -1043,34 +1068,35 @@ fn train_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     Ok(train::status(&root_clone(&state)?))
 }
 
-/// 选数据集目录。原生对话框要主线程。
+/// 选择标注文件。原生对话框要主线程。
 #[tauri::command]
 fn train_pick_dataset(window: tauri::WebviewWindow) -> Option<String> {
     let picked = crate::shell_extras::dialog_on(Some(&window))
-        .set_title(&crate::i18n::t("s.612dddefc4"))
-        .pick_folder()
+        .set_title(&crate::i18n::t("s.annot.pickTitle"))
+        .add_filter(&crate::i18n::t("s.annot.pickFilter"), &["list"])
+        .pick_file()
         .map(|p| p.to_string_lossy().into_owned());
-    if let Some(ref p) = picked {
-        asset_scope::grant_dir(window.app_handle(), std::path::Path::new(p));
+    if let Some(dir) = picked.as_ref().and_then(|p| std::path::Path::new(p).parent()) {
+        asset_scope::grant_dir(window.app_handle(), dir);
     }
     picked
 }
 
-/// 选训好的音色放哪。原生对话框要主线程。
+/// 选择训练权重的中转目录。原生对话框要主线程。
 #[tauri::command]
 fn train_pick_output_dir(window: tauri::WebviewWindow) -> Option<String> {
     let picked = crate::shell_extras::dialog_on(Some(&window))
         .set_title(&crate::i18n::t("s.trainOutPick"))
         .pick_folder()
         .map(|p| p.to_string_lossy().into_owned());
-    // 训练输出目录在模型页之外：音色的封面要从那里读，得放行。
+    // 允许现有工具访问用户明确选择的训练目录。
     if let Some(ref p) = picked {
         asset_scope::grant_dir(window.app_handle(), std::path::Path::new(p));
     }
     picked
 }
 
-/// 上次选的存放目录。空 = 默认的 `User_Data/models`。
+/// 上次选择的训练权重目录。空值使用实验目录下的 `weights`。
 #[tauri::command]
 fn train_output_dir(state: State<'_, Mutex<AppState>>) -> Result<String, String> {
     Ok(config::train_output_dir(&root_clone(&state)?))
@@ -1087,6 +1113,27 @@ async fn train_start(
     tauri::async_runtime::spawn_blocking(move || train::run(&app, &root, req))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn train_queue_list(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || train_queue::list(&root))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn train_queue_add(app: AppHandle, state: State<'_, Mutex<AppState>>, req: train::TrainReq) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || train_queue::enqueue(app, root, req))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn train_queue_action(app: AppHandle, state: State<'_, Mutex<AppState>>, id: String, action: String) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || train_queue::action(app, root, id, action))
+        .await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1439,6 +1486,9 @@ pub fn run() {
             train_status,
             train_pick_dataset,
             train_start,
+            train_queue_list,
+            train_queue_add,
+            train_queue_action,
             train_pick_output_dir,
             train_output_dir,
             train_cancel,
@@ -1449,6 +1499,10 @@ pub fn run() {
             role_update,
             role_delete,
             role_set_cover,
+            role_cover_pick,
+            role_cover_data_url,
+            role_cover_save,
+            role_cover_reset,
             role_export,
             annot_reveal,
         ])

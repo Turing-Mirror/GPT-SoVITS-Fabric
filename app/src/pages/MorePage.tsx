@@ -24,8 +24,6 @@ type Props = {
   provision?: ProvisionStatus;
   onForceKill?: () => void | Promise<void>;
   onOpenProvision?: () => void;
-  /** 「下载模型」住在广场，这里只有一个跳过去的入口。 */
-  onOpenDownloadModels?: (reason?: string) => void;
   /**
    * 别处点「用不了？联系社区」跳过来时滚到「仓库与社媒」。
    *
@@ -40,7 +38,6 @@ export function MorePage({
   provision,
   onForceKill,
   onOpenProvision,
-  onOpenDownloadModels,
   focusCommunityNonce = 0,
 }: Props = {}) {
   // Where the UI itself is served from. Surfaced so a UI patch that did not
@@ -267,7 +264,7 @@ export function MorePage({
     : t("s.5abed96e7d");
 
   return (
-    <PagePad>
+    <PagePad width="read">
       <PageHead title={t("s.1a26edf94a")} sub={t("s.d0b65d2fd2")} />
       <Block title={t("s.2a4080ad9f")}>
         <Group>
@@ -366,15 +363,6 @@ export function MorePage({
           />
         </Group>
       </Block>
-      <Block title={t("more.resTitle")} note={t("more.resNote")}>
-        <Group>
-          <ListItem
-            title={t("s.1252c81119")}
-            desc={t("more.resDesc")}
-            right={<Btn onClick={() => onOpenDownloadModels?.()}>{t("s.65fc81e161")}</Btn>}
-          />
-        </Group>
-      </Block>
       <Block id="more-maint" title={t("s.72527e2f0e")}>
         <Group>
           <ListItem
@@ -467,14 +455,14 @@ export function MorePage({
           />
           <ListItem
             title={t("s.91e6c9b862")}
-            desc={legacyMsg.panel || t("s.bc94a9c280")}
+            desc={legacyMsg.panel}
             right={
               <Btn onClick={() => void openLegacy("panel")}>{t("s.65fc81e161")}</Btn>
             }
           />
           <ListItem
             title={t("s.a636b86646")}
-            desc={legacyMsg.webui || t("s.bc94a9c280")}
+            desc={legacyMsg.webui}
             right={<Btn onClick={() => void openLegacy("webui")}>{t("s.65fc81e161")}</Btn>}
           />
           {/* 「申请专业优化」暂时隐藏（服务还没开）。后端 consult_build 保留，

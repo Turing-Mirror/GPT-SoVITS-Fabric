@@ -644,42 +644,67 @@ fn diag_entry_text(e: &DiagEntry, redaction: Option<&(String, String)>) -> Optio
 /// 不知道是谁占的。异步跑：logs 下可能有好几万个文件。
 pub fn storage_usage(root: &Path) -> Value {
     let ud = paths::user_data(root);
-    let items = [
-        // 训练实验（数据集特征 + 检查点），现在在 User_Data/train 下。
-        ("logs", crate::train::exp_root(root)),
-        ("weights", root.join("assets").join("weights")),
-        ("models", ud.join("models")),
-        ("update_cache", paths::update_cache(root)),
-        ("diagnostics", ud.join("diagnostics")),
-        ("perf_reports", ud.join("perf_reports")),
-        ("app_logs", paths::logs_dir(root)),
+    let names = ["characters", "training", "outputs", "runtime", "pretrained", "separation", "cache", "other"];
+    let groups = [
+        vec![crate::synth::characters_dir(root)],
+        vec![crate::train::exp_root(root)],
+        vec![ud.join("synth"), ud.join("api"), ud.join("separate")],
+        vec![paths::runtime_dir(root)],
+        vec![root.join("GPT_SoVITS/pretrained_models"), root.join("GPT_SoVITS/text/G2PWModel")],
+        vec![crate::separate::model_dir(root)],
+        vec![paths::update_cache(root), paths::temp_dir(root), paths::ch_banner_dir(root)],
     ];
-    let list: Vec<Value> = items
-        .iter()
-        .map(|(name, p)| json!({ "name": name, "bytes": dir_bytes(p) }))
-        .collect();
-    let total: u64 = list
-        .iter()
-        .filter_map(|v| v.get("bytes").and_then(|b| b.as_u64()))
-        .sum();
-    json!({
-        "items": list,
-        "total_bytes": total,
-        "free_bytes": paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null),
-    })
+    let mut locations: Vec<(usize, PathBuf)> = groups.into_iter().enumerate()
+        .flat_map(|(index, paths)| paths.into_iter().map(move |path| (index, path))).collect();
+    let product = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let data = std::fs::canonicalize(&ud).unwrap_or_else(|_| ud.clone());
+    let mut direct_outputs = Vec::new();
+    let training_output = config::train_output_dir(root);
+    let custom = [(1, PathBuf::from(training_output)), (2, crate::synth::out_dir(root))];
+    for (index, path) in custom {
+        if path.as_os_str().is_empty() { continue; }
+        let Ok(canonical) = std::fs::canonicalize(&path) else { continue; };
+        if product.starts_with(&canonical) || canonical == data {
+            // A shared parent is not a product data directory. Only count the
+            // outputs written directly there, never its code or unrelated folders.
+            direct_outputs.push((index, canonical));
+        } else { locations.push((index, canonical)); }
+    }
+    // A custom output may be nested within a standard directory. The most
+    // specific path owns those bytes; the parent receives only its remainder.
+    locations.sort_by_cached_key(|(_, p)| std::cmp::Reverse(
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()).components().count()));
+    let mut visited = std::collections::BTreeSet::new();
+    let mut sizes = [0u64; 8];
+    for (index, path) in locations { sizes[index] += storage_bytes(&path, &mut visited); }
+    for (index, path) in direct_outputs {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+                let output = if index == 1 { ["pth", "ckpt"].contains(&ext.as_str()) }
+                    else { crate::train::DATASET_AUDIO_EXT.contains(&ext.as_str()) };
+                if output && path.is_file() { sizes[index] += storage_bytes(&path, &mut visited); }
+            }
+        }
+    }
+    sizes[7] += storage_bytes(&ud, &mut visited);
+    let items: Vec<Value> = names.iter().zip(sizes).map(|(name, bytes)|
+        json!({"name":name,"bytes":bytes,"kind":name})).collect();
+    let total: u64 = sizes.iter().sum();
+    json!({"items":items,"total_bytes":total,"total_gb":total as f64 / 1073741824.0,
+        "free_bytes":paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null)})
 }
 
-fn dir_bytes(p: &Path) -> u64 {
-    let Ok(meta) = std::fs::metadata(p) else {
-        return 0;
-    };
-    if meta.is_file() {
-        return meta.len();
-    }
-    let Ok(rd) = std::fs::read_dir(p) else {
-        return 0;
-    };
-    rd.flatten().map(|e| dir_bytes(&e.path())).sum()
+/// Resolve directory links once: developer Runtime/model junctions are real usage,
+/// but aliases, nested output folders, and cycles must not duplicate their bytes.
+fn storage_bytes(path: &Path, visited: &mut std::collections::BTreeSet<PathBuf>) -> u64 {
+    let Ok(canonical) = std::fs::canonicalize(path) else { return 0; };
+    if !visited.insert(canonical.clone()) { return 0; }
+    let Ok(meta) = std::fs::metadata(&canonical) else { return 0; };
+    if meta.is_file() { return meta.len(); }
+    let Ok(entries) = std::fs::read_dir(canonical) else { return 0; };
+    entries.flatten().map(|entry| storage_bytes(&entry.path(), visited)).sum()
 }
 
 /// 一段可以直接粘进群里的环境信息。
@@ -1394,4 +1419,65 @@ mod tests {
         acts.dedup();
         assert_eq!(acts.len(), n);
     }
+    #[test]
+    fn storage_tracks_gsv_directories_without_nested_output_duplicates() {
+        let root = crate::testutil::scratch("gsv-storage");
+        for (path, bytes) in [("User_Data/characters/voice/models/sovits.pth",11usize),
+            ("User_Data/train/voice/checkpoint.pth",13), ("User_Data/synth/sample.wav",17),
+            ("Runtime/python.exe",19), ("GPT_SoVITS/pretrained_models/base.pth",23),
+            ("assets/pymss/model.pth",29), ("User_Data/update_cache/partial.zip",31),
+            ("User_Data/logs/shell/test.log",37)] {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, vec![0u8;bytes]).unwrap();
+        }
+        let stats = storage_usage(&root);
+        let items=stats["items"].as_array().unwrap();
+        for (name, bytes) in [("characters",11u64),("training",13),("outputs",17),
+            ("runtime",19),("pretrained",23),("separation",29),("cache",31)] {
+            let item=items.iter().find(|v|v["name"]==name).unwrap();
+            assert_eq!(item["bytes"],bytes,"{name}");
+        }
+        let mut seen=std::collections::BTreeSet::new();
+        assert_eq!(storage_bytes(&root.join("User_Data/synth"),&mut seen),17);
+        assert_eq!(storage_bytes(&root.join("User_Data/synth/sample.wav"),&mut seen),0);
+        let _=std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn custom_training_outputs_keep_their_category_inside_shared_parents() {
+        let root = crate::testutil::scratch("storage-custom-training");
+        for (path, bytes) in [("User_Data/characters/voice/models/sovits.pth", 11usize),
+            ("User_Data/synth/custom/voice.pth", 13), ("User_Data/synth/sample.wav", 17),
+            ("Runtime/python.exe", 19), ("tools/not-product-data.bin", 23),
+            ("top-level.ckpt", 29), ("User_Data/loose.pth", 31)] {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, vec![0u8; bytes]).unwrap();
+        }
+        let bytes = |stats: &Value, key: &str| stats["items"].as_array().unwrap().iter()
+            .find(|item| item["name"] == key).unwrap()["bytes"].as_u64().unwrap();
+        config::set_train_output_dir(&root, &root.join("User_Data/synth/custom").to_string_lossy()).unwrap();
+        let stats = storage_usage(&root);
+        assert_eq!(bytes(&stats, "characters"), 11);
+        assert_eq!(bytes(&stats, "training"), 13);
+        assert_eq!(bytes(&stats, "outputs"), 17);
+        config::set_train_output_dir(&root, &root.to_string_lossy()).unwrap();
+        let stats = storage_usage(&root);
+        assert_eq!(bytes(&stats, "training"), 29);
+        assert_eq!(bytes(&stats, "characters"), 11);
+        assert_eq!(bytes(&stats, "runtime"), 19);
+        assert_eq!(bytes(&stats, "outputs"), 30);
+        let expected = 11 + 13 + 17 + 19 + 29 + 31
+            + std::fs::metadata(paths::app_config_path(&root)).unwrap().len();
+        assert_eq!(stats["total_bytes"].as_u64(), Some(expected));
+        config::set_train_output_dir(&root, &root.join("User_Data").to_string_lossy()).unwrap();
+        let stats = storage_usage(&root);
+        assert_eq!(bytes(&stats, "training"), 31);
+        assert_eq!(bytes(&stats, "characters"), 11);
+        assert_eq!(bytes(&stats, "runtime"), 19);
+        assert_eq!(bytes(&stats, "outputs"), 30);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

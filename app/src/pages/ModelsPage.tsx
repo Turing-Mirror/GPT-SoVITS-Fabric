@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field } from "../components/controls";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { CropCoverDialog } from "../components/CropCoverDialog";
 import { AdBanner } from "../components/AdBanner";
 import { Modal } from "../components/Modal";
 import { Leave } from "../components/Presence";
-import { Swap, stagger } from "../components/Motion";
-import { Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
+import { Swap } from "../components/Motion";
+import { FlowList, Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
 import { artOf } from "../lib/art";
 import { askConfirm } from "../lib/webDialog";
@@ -52,29 +53,42 @@ const refCount = (r: Role) => (r.lists ?? []).reduce((n, l) => n + (l.rows?.leng
 export function ModelsPage({
   onOpenPlaza,
   banner,
+  active = true,
 }: {
   onOpenPlaza?: () => void;
+  active?: boolean;
   /** 广场投放到本页的那一条（`plaza::pick_models_banner`，至多一条且必须可关）。 */
   banner?: PlazaItem | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(isTauri());
   const [roles, setRoles] = useState<Role[]>([]);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [editing, setEditing] = useState<Role | null>(null);
   // 封面换过之后浏览器会按旧地址缓存，地址上带一个版本号
   const [coverVer, setCoverVer] = useState(0);
+  const [coverEdit, setCoverEdit] = useState<Role | null>(null);
+  const loadRequest = useRef(0);
   const menu = useMenu();
 
   const reload = useCallback(() => {
     if (!isTauri()) return;
+    const request = ++loadRequest.current;
+    setLoading(true);
     void invoke<{ roles?: Role[] }>("synth_characters")
-      .then((r) => setRoles(r?.roles ?? []))
-      .catch(() => setRoles([]));
+      .then((r) => { if (request === loadRequest.current) setRoles(r?.roles ?? []); })
+      .catch((e) => { if (request === loadRequest.current) setMsg(String(e)); })
+      .finally(() => { if (request === loadRequest.current) setLoading(false); });
   }, []);
 
-  useEffect(reload, [reload]);
+  useEffect(() => {
+    if (active) reload();
+    else { setEditing(null); setCoverEdit(null); }
+    const counter = loadRequest;
+    return () => { counter.current++; };
+  }, [active, reload]);
 
   // 页面消息自己消失，免得一条旧结果一直挂着。
   useEffect(() => {
@@ -137,13 +151,17 @@ export function ModelsPage({
         id: "cover",
         label: t("library.setCover"),
         icon: "image",
-        onSelect: () =>
-          void run(async () => {
-            const res = await invoke<{ cover?: string } | null>("role_set_cover", { id: r.id });
-            if (!res) return null;
-            setCoverVer((v) => v + 1);
-            return t("library.coverDone");
-          }),
+        onSelect: () => setCoverEdit(r),
+      },
+      {
+        id: "reset-cover",
+        label: t("library.resetCover"),
+        icon: "image",
+        onSelect: () => void run(async () => {
+          await invoke("role_cover_reset", { id: r.id });
+          setCoverVer((v) => v + 1);
+          return t("library.coverDone");
+        }),
       },
       {
         id: "export",
@@ -211,23 +229,26 @@ export function ModelsPage({
         {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 selectable">{msg}</div> : null}
         {roles.length ? (
           <>
-            <Swap k={`${paged.page}|${query}|${sort}`} dir={pageDir}>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
-                {paged.slice.map((r, i) => {
+            <Swap k={String(paged.page)} dir={pageDir}>
+              <FlowList layout="grid" items={paged.slice} keyOf={(r) => r.id}
+                className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3"
+                render={(r) => {
                   const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
                   return (
                     <div
                       key={r.id}
-                      className="group rise relative rounded-[var(--r)] bg-[var(--group)] p-2.5 cursor-pointer transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]"
-                      style={stagger(i)}
+                      className="group relative rounded-[var(--r)] bg-[var(--group)] p-2.5 cursor-pointer transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]"
                       onClick={() => synthWithRole(r.id)}
+                      role="button" tabIndex={0}
+                      aria-label={r.name || r.id}
+                      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); synthWithRole(r.id); } }}
                       onContextMenu={(e) => menu.open(e, itemsFor(r))}
                     >
                       <div
                         className="w-full aspect-[4/3] rounded-[calc(var(--r)-4px)] mb-2.5 bg-center bg-cover"
                         style={cover ? { backgroundImage: `url("${cover}")` } : { background: artOf(r.id) }}
                       />
-                      <div className="absolute top-4 right-4">
+                      <div className="absolute top-4 right-4" onClick={(e) => e.stopPropagation()}>
                         <MoreBtn onOpen={(el) => menu.open(el, itemsFor(r))} />
                       </div>
                       <div className="text-[13.5px] font-medium leading-tight truncate">{r.name || r.id}</div>
@@ -239,12 +260,13 @@ export function ModelsPage({
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                }} />
             </Swap>
             {shown.length === 0 ? <p className="text-[13px] text-[var(--ink-muted)] m-0">{t("library.noHit")}</p> : null}
             <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />
           </>
+        ) : loading ? (
+          <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.valueLoading")}</p>
         ) : (
           <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center">
             <div className="text-[13.5px] font-medium">{t("library.emptyTitle")}</div>
@@ -255,22 +277,21 @@ export function ModelsPage({
         )}
       </Block>
 
-      <Block title={t("library.fmtTitle")} titleTip={t("library.fmtTip")}>
-        <pre className=" rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0">{`character.zip
-├─ config.json      # ${t("library.fmtConfig")}
-├─ cover.jpg
-├─ models/
-│  ├─ sovits.pth    # ${t("library.fmtSovits")}
-│  └─ gpt.ckpt      # ${t("library.fmtGpt")}
-└─ dataset/
-   ├─ name.list     # ${t("library.fmtList")}
-   └─ audios/`}</pre>
-      </Block>
-
       {menu.node}
+      <Leave>{coverEdit ? (
+        <CropCoverDialog key={coverEdit.id} model={coverEdit}
+          onClose={() => setCoverEdit(null)}
+          onSaved={() => {
+            setCoverEdit(null);
+            setCoverVer((v) => v + 1);
+            setMsg(t("library.coverDone"));
+            reload();
+          }} />
+      ) : null}</Leave>
       <Leave>
         {editing ? (
           <EditDialog
+            key={editing.id}
             role={editing}
             onClose={() => setEditing(null)}
             onSaved={(name) => {
