@@ -428,6 +428,10 @@ pub fn assets_status(root: &Path) -> Value {
     json!({
         "engine_core_ready": missing.is_empty(),
         "engine_core_missing": missing,
+        "engine_core_packs": BASE_MODEL_PACKS.iter().map(|(name, _)| json!({
+            "name": name,
+            "size_bytes": catalog_size_for(root, name),
+        })).collect::<Vec<_>>(),
     })
 }
 
@@ -452,6 +456,11 @@ mod tests {
         .unwrap();
         assert_eq!(catalog_size_for(&root, "base-v2proplus.zip"), 209_715_200);
         assert_eq!(catalog_size_for(&root, "not-in-catalog.zip"), 0);
+        let status = assets_status(&root);
+        let packs = status["engine_core_packs"].as_array().unwrap();
+        assert_eq!(packs.len(), BASE_MODEL_PACKS.len());
+        assert_eq!(packs.iter().find(|p| p["name"] == "base-v2proplus.zip").unwrap()["size_bytes"], 209_715_200);
+        assert_eq!(status["engine_core_ready"], false);
         let _ = std::fs::remove_dir_all(&root);
     }
 

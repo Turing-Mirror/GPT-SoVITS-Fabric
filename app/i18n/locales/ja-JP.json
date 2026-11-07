@@ -28,7 +28,8 @@
   "store": {
     "allSeries": "すべてのシリーズ",
     "searchHint": "音色・シリーズ・部活・作者で検索…",
-    "confirmInstall": "インストールを確認"
+    "confirmInstall": "インストールを確認",
+    "unpublished": "キャラクターパックはまだ公開されていません。"
   },
   "settings": {
     "tabs": {
@@ -564,7 +565,6 @@
     "f7b11922f6": "インストール済み",
     "f950213ab7": "読み込み中…",
     "f9cbb1e0c6": "未インストール、約 720 MB",
-    "f9f2a78f9f": "現在表示できる広告はありません。",
     "fbb8ddd570": "エンジン状態",
     "fcafc66aea": "表示",
     "fce4b463c1": "学習タスクが既に実行中です。完了までお待ちください",
@@ -946,6 +946,13 @@
         "label": "V5 ベースモデル",
         "notes": "V5 キャラクターとゼロショット音声合成に使用します。"
       }
+    },
+    "baseModels": {
+      "base-hubert-bert": "HuBERT と RoBERTa",
+      "base-gpt-s1v3": "GPT s1v3",
+      "base-v2proplus": "SoVITS v2ProPlus",
+      "base-g2pw": "G2PW 中国語読み",
+      "base-langdetect": "言語識別"
     }
   },
   "onboarding": {

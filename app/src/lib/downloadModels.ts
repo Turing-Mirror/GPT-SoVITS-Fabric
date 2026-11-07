@@ -14,6 +14,7 @@ import type { ExtrasFilter } from "../components/ExtrasDialog";
 export type AssetsStatus = {
   engine_core_ready?: boolean;
   engine_core_missing?: string[];
+  engine_core_packs?: { name: string; size_bytes: number }[];
 };
 
 export type OpenDownloadModelsOpts = {

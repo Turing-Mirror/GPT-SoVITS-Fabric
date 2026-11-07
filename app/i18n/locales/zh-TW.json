@@ -28,7 +28,8 @@
   "store": {
     "allSeries": "全部系列",
     "searchHint": "搜尋音色 / 系列 / 社團 / 作者…",
-    "confirmInstall": "確認安裝"
+    "confirmInstall": "確認安裝",
+    "unpublished": "尚未發布角色包。"
   },
   "settings": {
     "tabs": {
@@ -564,7 +565,6 @@
     "f7b11922f6": "已安裝",
     "f950213ab7": "讀取中…",
     "f9cbb1e0c6": "未安裝，約 720 MB",
-    "f9f2a78f9f": "暫無投放內容。",
     "fbb8ddd570": "引擎狀態",
     "fcafc66aea": "可見",
     "fce4b463c1": "已有一個訓練任務正在進行，請等待其完成後再操作",
@@ -946,6 +946,13 @@
         "label": "V5 底模",
         "notes": "用於 V5 角色和零樣本合成。"
       }
+    },
+    "baseModels": {
+      "base-hubert-bert": "HuBERT 與 RoBERTa",
+      "base-gpt-s1v3": "GPT s1v3",
+      "base-v2proplus": "SoVITS v2ProPlus",
+      "base-g2pw": "G2PW 中文讀音",
+      "base-langdetect": "語種識別"
     }
   },
   "onboarding": {

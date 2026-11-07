@@ -262,7 +262,7 @@ export function ExtrasPanel({
           <Warn className="mb-3">{reason}</Warn>
         ) : null}
 
-        {/* 引擎资源前置卡：CNB engine-core，约 720MB */}
+        {/* Required base models and their downloadable package sizes. */}
         <div
           className={[
             "mb-4 rounded-[var(--rs)] px-3.5 py-3",
@@ -287,6 +287,15 @@ export function ExtrasPanel({
                 {t("extras.engineDesc")}
 
               </p>
+              {assets?.engine_core_packs?.length ? (
+                <ul className="m-0 mt-2 p-0 list-none flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-[var(--ink-muted)]">
+                  {assets.engine_core_packs.map(pack => {
+                    const key = `extras.baseModels.${pack.name.replace(/\.zip$/, "")}`;
+                    const label = t(key);
+                    return <li key={pack.name}>{joinClauses([label === key ? pack.name : label, mb(pack.size_bytes)])}</li>;
+                  })}
+                </ul>
+              ) : null}
               {coreBusy && coreProg ? (
                 <div className="mt-2">
                   <div className="h-1 w-full overflow-hidden rounded bg-[color-mix(in_srgb,var(--ink)_10%,transparent)]">

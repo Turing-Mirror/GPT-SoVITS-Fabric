@@ -28,7 +28,8 @@
   "store": {
     "allSeries": "All series",
     "searchHint": "Search characters / series / clubs / authors…",
-    "confirmInstall": "Confirm install"
+    "confirmInstall": "Confirm install",
+    "unpublished": "No character packs have been published."
   },
   "settings": {
     "tabs": {
@@ -564,7 +565,6 @@
     "f7b11922f6": "Installed",
     "f950213ab7": "Reading…",
     "f9cbb1e0c6": "Not installed, about 720 MB",
-    "f9f2a78f9f": "No campaigns yet.",
     "fbb8ddd570": "Engine status",
     "fcafc66aea": "Visible",
     "fce4b463c1": "A training task is already running; please wait for it to finish",
@@ -946,6 +946,13 @@
         "label": "V5 base models",
         "notes": "For V5 characters and zero-shot synthesis."
       }
+    },
+    "baseModels": {
+      "base-hubert-bert": "HuBERT and RoBERTa",
+      "base-gpt-s1v3": "GPT s1v3",
+      "base-v2proplus": "SoVITS v2ProPlus",
+      "base-g2pw": "G2PW Chinese pronunciation",
+      "base-langdetect": "Language detection"
     }
   },
   "onboarding": {

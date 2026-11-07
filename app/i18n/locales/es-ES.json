@@ -28,7 +28,8 @@
   "store": {
     "allSeries": "Todas las series",
     "searchHint": "Buscar voces / series / clubes / autores…",
-    "confirmInstall": "Confirmar instalación"
+    "confirmInstall": "Confirmar instalación",
+    "unpublished": "Todavía no se han publicado paquetes de personajes."
   },
   "settings": {
     "tabs": {
@@ -564,7 +565,6 @@
     "f7b11922f6": "Instalado",
     "f950213ab7": "Leyendo…",
     "f9cbb1e0c6": "No instalado, unos 720 MB",
-    "f9f2a78f9f": "Aún no hay publicidad.",
     "fbb8ddd570": "Estado del motor",
     "fcafc66aea": "Visible",
     "fce4b463c1": "Ya hay una tarea de entrenamiento en curso; espere a que termine",
@@ -946,6 +946,13 @@
         "label": "Modelos base V5",
         "notes": "Para personajes V5 y síntesis sin entrenamiento previo."
       }
+    },
+    "baseModels": {
+      "base-hubert-bert": "HuBERT y RoBERTa",
+      "base-gpt-s1v3": "GPT s1v3",
+      "base-v2proplus": "SoVITS v2ProPlus",
+      "base-g2pw": "Pronunciación china G2PW",
+      "base-langdetect": "Detección de idioma"
     }
   },
   "onboarding": {

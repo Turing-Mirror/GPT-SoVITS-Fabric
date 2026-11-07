@@ -28,7 +28,8 @@
   "store": {
     "allSeries": "모든 시리즈",
     "searchHint": "보이스 / 시리즈 / 동아리 / 제작자 검색…",
-    "confirmInstall": "설치 확인"
+    "confirmInstall": "설치 확인",
+    "unpublished": "아직 게시된 캐릭터 팩이 없습니다."
   },
   "settings": {
     "tabs": {
@@ -564,7 +565,6 @@
     "f7b11922f6": "설치됨",
     "f950213ab7": "읽는 중…",
     "f9cbb1e0c6": "미설치, 약 720 MB",
-    "f9f2a78f9f": "현재 표시할 광고가 없습니다.",
     "fbb8ddd570": "엔진 상태",
     "fcafc66aea": "표시됨",
     "fce4b463c1": "학습 작업이 이미 실행 중입니다. 완료될 때까지 기다려 주세요",
@@ -946,6 +946,13 @@
         "label": "V5 기본 모델",
         "notes": "V5 캐릭터와 제로샷 합성에 사용합니다."
       }
+    },
+    "baseModels": {
+      "base-hubert-bert": "HuBERT 및 RoBERTa",
+      "base-gpt-s1v3": "GPT s1v3",
+      "base-v2proplus": "SoVITS v2ProPlus",
+      "base-g2pw": "G2PW 중국어 발음",
+      "base-langdetect": "언어 감지"
     }
   },
   "onboarding": {

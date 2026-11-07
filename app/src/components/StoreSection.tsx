@@ -582,7 +582,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
       <div ref={gridRef}>
         {grouping === "series" && seriesGroups ? (
           seriesGroups.length === 0 ? (
-            <Empty loading={loading} />
+            <Empty loading={loading} unpublished={!hasVoices && !err} />
           ) : (
             (focusParts(seriesFocus).parent
               ? seriesGroups.filter((s) => s.key === focusParts(seriesFocus).parent)
@@ -690,7 +690,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
             })
           )
         ) : pageItems.length === 0 ? (
-          <Empty loading={loading} />
+          <Empty loading={loading} unpublished={!hasVoices && !err} />
         ) : (
           <div className="grid gap-x-4 gap-y-[22px]" style={gridStyle}>
             {pageItems.map((v) => (
@@ -707,10 +707,10 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   );
 }
 
-function Empty({ loading }: { loading: boolean }) {
+function Empty({ loading, unpublished }: { loading: boolean; unpublished: boolean }) {
   return (
     <div className="text-[13px] text-[var(--meta)] py-4">
-      {loading ? t("s.f950213ab7") : t("s.83bc4b2a5f")}
+      {loading ? t("s.f950213ab7") : unpublished ? t("store.unpublished") : t("s.83bc4b2a5f")}
     </div>
   );
 }
