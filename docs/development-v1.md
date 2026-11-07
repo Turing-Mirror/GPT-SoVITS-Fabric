@@ -58,7 +58,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 
 ## 品牌素材
 
-SVG 原稿位于 `app/src/assets/brand/`：`gsvf-main-logo.svg` 用于标题栏，保留现有产品名称字标；`gsvf-main-icon.svg` 用于应用与网页图标。原稿保留透明背景和原始配色。
+SVG 原稿位于 `app/src/assets/brand/`：`gsvf-main-logo.svg` 用于标题栏，旁边仅显示产品名称 `GPT-SoVITS Fabric`，不附带副标题；`gsvf-main-icon.svg` 用于应用与网页图标。原稿保留透明背景和原始配色。
 
 修改 Icon 后，在 `app` 下执行 `npm run brand:icons`。脚本通过 Tauri CLI 生成桌面 PNG、ICO 和 ICNS，并保留已有的 64px 与 256px 文件名。临时产物写入已忽略的 `data/brand-icons/`，无需提交移动端图标。可在命令末尾通过 `-- <SVG 路径>` 指定其他源文件。
 

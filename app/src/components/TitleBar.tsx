@@ -3,7 +3,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { SegmentControl } from "./SegmentControl";
 import { navPages, type PageId } from "../lib/nav";
 import { useI18n } from "../i18n";
-import wordmark from "../assets/logo_wordmark.png";
 import logo from "../assets/brand/gsvf-main-logo.svg";
 
 type Props = {
@@ -59,14 +58,12 @@ export function TitleBar({
         data-tauri-drag-region
         className="h-8 w-8 mr-2 select-none flex-none"
       />
-      <img
-        src={wordmark}
-        alt="GPT-SoVITS Fabric"
-        draggable={false}
+      <span
         data-tauri-drag-region
-        className="h-[19px] w-auto select-none flex-none"
-        style={{ filter: "var(--logo-filter)" }}
-      />
+        className="text-[13px] font-medium whitespace-nowrap select-none flex-none"
+      >
+        GPT-SoVITS Fabric
+      </span>
 
       <div className="ml-auto flex items-center min-w-0" data-tauri-drag-region>
         <div
