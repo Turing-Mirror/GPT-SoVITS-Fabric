@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PagePad, PageHead, Btn } from "../components/ui";
-import { Swap } from "../components/Motion";
+import { CatalogTransition } from "../components/CatalogTransition";
 import { Icon, useDir } from "../trm";
 import { Field, Select, Slider, Toggle } from "../components/controls";
 import { invoke } from "@tauri-apps/api/core";
@@ -547,7 +547,7 @@ export function TrainPage() {
               </span>
             ) : null}
           </div>
-          <Swap k={String(step)} dir={stepDir}>{stepBody[step]}</Swap>
+          <CatalogTransition scope="training-steps" page={step} dir={stepDir || 1}>{stepBody[step]}</CatalogTransition>
           <div className="flex-none flex items-center gap-2 mt-4">
             {step > 0 ? <Btn onClick={() => setStep(step - 1)}>{t("train.prev")}</Btn> : null}
             {step < steps.length - 1 ? (

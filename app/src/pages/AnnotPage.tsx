@@ -9,7 +9,7 @@ import { pickPath } from "../lib/nativeDialog";
 import { askConfirm, askPrompt } from "../lib/webDialog";
 import { onHandoff, take, trainWith } from "../lib/intent";
 import { Pager, SearchBox, useDir, usePaged } from "../trm";
-import { Swap } from "../components/Motion";
+import { CatalogTransition } from "../components/CatalogTransition";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { ModelCard } from "../components/ModelCard";
@@ -58,7 +58,7 @@ type Loaded = {
 /** 上游认得的语种记号。和 annot.rs 的 KNOWN_LANGS 一致。 */
 const LANGS = ["zh", "ja", "en", "ko", "yue", "all_zh", "all_ja", "all_ko", "auto"];
 
-const PAGE_SIZE = 60;
+const PAGE_SIZE = 10;
 
 /** 角色包里的一份标注。 */
 type RoleList = { key: string; roleId: string; role: string; cover?: string; file: string; path: string; rows: number };
@@ -183,7 +183,6 @@ function AnnotPageImpl() {
   useEffect(loadRoleLists, [loadRoleLists]);
   const roleGrid = useModelGrid();
   const rolePaged = usePaged(roleLists, roleGrid.pageSize);
-  const roleDir = useDir(rolePaged.page);
 
   /** 关掉当前文件，回到角色标注文件的列表。 */
   const close = useCallback(async () => {
@@ -288,6 +287,7 @@ function AnnotPageImpl() {
 
   const paged = usePaged(view, PAGE_SIZE, `${path}|${query}|${only}`);
   const pageDir = useDir(paged.page);
+  const filterDir = useDir(only === "bad" ? 1 : 0);
   const pageRows = paged.slice;
 
   const bad = useMemo(() => rows.filter((r) => r.issues.length > 0).length, [rows]);
@@ -377,10 +377,11 @@ function AnnotPageImpl() {
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
         ) : null}
 
+        <CatalogTransition scope={path ? "editor" : "library"} dir={path ? 1 : -1}>
         {!path && roleLists.length ? (
           <Block title={t("s.annot.roleListsTitle")} note={String(roleLists.length)}>
             <div ref={roleGrid.ref} style={roleGrid.style}>
-              <Swap k={String(rolePaged.page)} dir={roleDir}>
+              <CatalogTransition scope="role-lists" page={rolePaged.page}>
                 <div className={MODEL_GRID_CLASS}>
                   {rolePaged.slice.map(list => (
                     <ModelCard key={list.key} id={list.roleId} name={list.role} cover={list.cover}
@@ -391,7 +392,7 @@ function AnnotPageImpl() {
                     </ModelCard>
                   ))}
                 </div>
-              </Swap>
+              </CatalogTransition>
             </div>
             <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
           </Block>
@@ -439,7 +440,7 @@ function AnnotPageImpl() {
                 </span>
               </div>
 
-              <Swap k={String(paged.page)} dir={pageDir}>
+              <CatalogTransition scope={`${path}|${only}|${query}`} page={paged.page} dir={filterDir || pageDir || 1}>
               <div className="overflow-x-auto bg-[var(--group)] rounded-[var(--r)]">
                 <table className="w-full border-collapse text-[12.5px]">
                   <thead>
@@ -568,7 +569,7 @@ function AnnotPageImpl() {
                   </tbody>
                 </table>
               </div>
-              </Swap>
+              </CatalogTransition>
               <datalist id="annot-langs">
                 {LANGS.map((l) => (
                   <option key={l} value={l} />
@@ -579,6 +580,7 @@ function AnnotPageImpl() {
             </Block>
           </>
         ) : null}
+        </CatalogTransition>
       </PagePad>
     </div>
   );

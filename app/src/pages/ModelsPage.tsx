@@ -6,7 +6,7 @@ import { CropCoverDialog } from "../components/CropCoverDialog";
 import { AdBanner } from "../components/AdBanner";
 import { Modal } from "../components/Modal";
 import { Leave } from "../components/Presence";
-import { Swap } from "../components/Motion";
+import { CatalogTransition } from "../components/CatalogTransition";
 import { FlowList, Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
 import { ModelCard } from "../components/ModelCard";
@@ -229,7 +229,7 @@ export function ModelsPage({
         {roles.length ? (
           <>
             <div ref={grid.ref} style={grid.style}>
-              <Swap k={String(paged.page)} dir={pageDir}>
+              <CatalogTransition scope="models" page={paged.page} dir={pageDir || 1}>
                 <FlowList layout="grid" items={paged.slice} keyOf={(r) => r.id}
                   className={MODEL_GRID_CLASS}
                   render={(r) => {
@@ -248,7 +248,7 @@ export function ModelsPage({
                       </ModelCard>
                     );
                   }} />
-              </Swap>
+              </CatalogTransition>
             </div>
             {shown.length === 0 ? <p className="text-[13px] text-[var(--ink-muted)] m-0">{t("library.noHit")}</p> : null}
             <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />

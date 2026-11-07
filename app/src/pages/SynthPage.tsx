@@ -11,7 +11,7 @@ import { t } from "../i18n/t";
 import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
 import { artOf } from "../lib/art";
 import { Icon, Pager, SearchBox, SegmentControl, useDir, usePaged } from "../trm";
-import { Swap } from "../components/Motion";
+import { CatalogTransition } from "../components/CatalogTransition";
 
 /**
  * 合成台 —— GPT-SoVITS Fabric 的核心页面。
@@ -881,7 +881,7 @@ export function SynthPage() {
             </div>
           ) : (
             <>
-              <Swap k={`${role?.id ?? ""}|${refPaged.page}|${refQuery}`} dir={refDir}>
+              <CatalogTransition scope={`${role?.id ?? ""}|${refQuery}`} page={refPaged.page} dir={refDir || 1}>
                 <div className="rounded-[var(--r)] overflow-hidden bg-[var(--group)]">
                   {refPaged.slice.map((row, i) => {
                     const key = keyOf(row);
@@ -954,7 +954,7 @@ export function SynthPage() {
                     );
                   })}
                 </div>
-              </Swap>
+              </CatalogTransition>
               <Pager page={refPaged.page} pages={refPaged.pages} onChange={refPaged.setPage} />
             </>
           )}
@@ -990,6 +990,7 @@ export function SynthPage() {
 
         {/* 中栏：文本与参数 */}
         <div className={COL}>
+          <CatalogTransition scope={mode} order={["single", "batch"]}>
           <ColHead
             title={mode === "single" ? t("synth.textTitle") : t("synth.batchTitle")}
             note={mode === "batch" && items.length ? `${doneCount} / ${items.length}` : undefined}
@@ -1070,6 +1071,7 @@ export function SynthPage() {
             </div>
           ) : null}
 
+          </CatalogTransition>
           <div className="flex-none mt-3 rounded-[var(--r)] bg-[var(--group)] p-3.5">
             <div className="flex items-center gap-2 mb-3 min-h-[30px]">
               <span className="text-[13px] font-medium">{t("synth.paramsTitle")}</span>

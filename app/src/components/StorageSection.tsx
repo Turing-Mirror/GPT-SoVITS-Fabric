@@ -1,9 +1,10 @@
+import { CatalogTransition } from "./CatalogTransition";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Block, Btn, Group, ListItem } from "./ui";
 import { askConfirm } from "../lib/webDialog";
 import { t } from "../i18n/t";
-import { Ring, Pager, Swap, useDir } from "../trm";
+import { Ring, Pager, useDir } from "../trm";
 import { listText } from "../lib/text";
 
 type Usage = {
@@ -167,7 +168,7 @@ export function StorageSection() {
             <p className="m-0 mb-3 text-[12px] text-[var(--meta)] leading-relaxed">
               {t("s.cleanupDesc")}
             </p>
-            <Swap k={String(pageClamped)} dir={pageDir}>
+            <CatalogTransition scope="storage" page={pageClamped} dir={pageDir || 1}>
             <ul className="m-0 list-none p-0">
               {pageRows.map((row, i) => (
                 <li key={row.exp} className="relative py-3 first:pt-0">
@@ -226,7 +227,7 @@ export function StorageSection() {
                 </li>
               ))}
             </ul>
-            </Swap>
+            </CatalogTransition>
             <Pager page={pageClamped} pages={totalPages} onChange={setPage} />
           </div>
         ) : null}
