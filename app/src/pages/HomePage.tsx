@@ -8,7 +8,7 @@ import { synthWithRole } from "../lib/intent";
 import { artOf } from "../lib/art";
 import { FittedItems } from "../components/FittedItems";
 import { listen } from "@tauri-apps/api/event";
-import { getConfig, onConfigPatch } from "../lib/config";
+import { useConfigSnapshot } from "../hooks/useConfigSnapshot";
 import emblem from "../assets/brand/gsvf-main-logo.svg";
 
 /**
@@ -33,6 +33,7 @@ type Role = {
 };
 
 type Recent = { name: string; path: string; mtime: number };
+const homeSnapshot: { roles: Role[] | null; recent: Recent[] | null } = { roles: null, recent: null };
 
 const DEMO_ROLES: Role[] = [
   { id: "tendou_alice", name: "天童爱丽丝", version: "v2ProPlus" },
@@ -47,44 +48,13 @@ function isTauri(): boolean {
 
 /**
  * 首页横幅的自定义文案与当前角色（设置 → 外观、合成页）。标题留空 = 默认标题；
- * 副标题留空 = 不显示。配置变化走 onConfigPatch，改完立刻生效。
+ * 副标题留空 = 不显示。配置快照跨页保留，改完立刻生效。
  */
-function useBannerConfig(): { title: string; sub: string; role: string } {
-  const [v, setV] = useState({ title: "", sub: "", role: "" });
-  useEffect(() => {
-    let alive = true;
-    const patches: Record<string, unknown> = {};
-    const str = (x: unknown) => (typeof x === "string" ? x : undefined);
-    void getConfig()
-      .then((c) => {
-        if (alive) {
-          const latest = { ...c, ...patches };
-          setV({ title: str(latest.home_banner_text) ?? "", sub: str(latest.home_banner_sub) ?? "", role: str(latest.synth_role) ?? "" });
-        }
-      })
-      .catch(() => {
-        /* 浏览器预览里没有 Tauri 后端，用默认标题 */
-      });
-    const update = (p: Record<string, unknown>) => {
-      Object.assign(patches, p);
-      setV((prev) => ({
-        title: str(p.home_banner_text) ?? prev.title,
-        sub: str(p.home_banner_sub) ?? prev.sub,
-        role: str(p.synth_role) ?? prev.role,
-      }));
-    };
-    const off = onConfigPatch(update);
-    let unlisten: (() => void) | undefined;
-    if (isTauri()) void listen<{ config?: Record<string, unknown> }>("config-changed", (e) => {
-      if (alive && e.payload.config) update(e.payload.config);
-    }).then((fn) => { if (alive) unlisten = fn; else fn(); }).catch(() => {});
-    return () => {
-      alive = false;
-      off();
-      unlisten?.();
-    };
-  }, []);
-  return { title: v.title.trim(), sub: v.sub.trim(), role: v.role };
+function useBannerConfig() {
+  const { config, loaded } = useConfigSnapshot();
+  const str = (key: string) => typeof config[key] === "string" ? (config[key] as string).trim() : "";
+  return { title: str("home_banner_text"), sub: str("home_banner_sub"), role: str("synth_role"),
+    ready: loaded || !("__TAURI_INTERNALS__" in window) };
 }
 
 /**
@@ -104,8 +74,8 @@ function fmtAgo(mtime: number): string {
 export function HomePage({ onNavigate, active = true }: Props) {
   const { locale } = useI18n();
   void locale;
-  const [roles, setRoles] = useState<Role[]>(isTauri() ? [] : DEMO_ROLES);
-  const [recent, setRecent] = useState<Recent[]>([]);
+  const [roles, setRoles] = useState<Role[] | null>(() => isTauri() ? homeSnapshot.roles : DEMO_ROLES);
+  const [recent, setRecent] = useState<Recent[] | null>(() => isTauri() ? homeSnapshot.recent : []);
   const banner = useBannerConfig();
 
   useEffect(() => {
@@ -113,10 +83,10 @@ export function HomePage({ onNavigate, active = true }: Props) {
     let alive = true;
     const refresh = () => {
     void invoke<{ roles?: Role[] }>("synth_characters")
-      .then((r) => { if (alive) setRoles(r?.roles ?? []); })
+      .then((r) => { if (alive) { homeSnapshot.roles = r?.roles ?? []; setRoles(homeSnapshot.roles); } })
       .catch(() => {});
     void invoke<Recent[]>("synth_recent")
-      .then((r) => { if (alive) setRecent(Array.isArray(r) ? r : []); })
+      .then((r) => { if (alive) { homeSnapshot.recent = Array.isArray(r) ? r : []; setRecent(homeSnapshot.recent); } })
       .catch(() => {});
     };
     refresh();
@@ -132,14 +102,14 @@ export function HomePage({ onNavigate, active = true }: Props) {
     [],
   );
 
-  const current = roles.find((r) => r.id === banner.role);
+  const current = roles?.find((r) => r.id === banner.role);
 
   return (
     <div className="home-page">
       <div className="home-banner" style={{ background: STAGE_BG }}>
-        <h2 title={banner.title || t("home.bannerTitle")}>{banner.title || t("home.bannerTitle")}</h2>
-        <p className="home-current" title={current ? current.name || current.id : t("home.noRole")}>
-          {current ? current.name || current.id : t("home.noRole")}
+        <h2 title={banner.ready ? banner.title || t("home.bannerTitle") : ""}>{banner.ready ? banner.title || t("home.bannerTitle") : ""}</h2>
+        <p className="home-current" title={current ? current.name || current.id : roles && banner.ready ? t("home.noRole") : ""}>
+          {current ? current.name || current.id : roles && banner.ready ? t("home.noRole") : ""}
         </p>
         {banner.sub ? <p className="home-sub" title={banner.sub}>{banner.sub}</p> : null}
         <img src={emblem} alt="" aria-hidden draggable={false} className="home-emblem" />
@@ -164,7 +134,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
             {!isTauri() ? <span className="text-[11px] text-[var(--meta)]">{t("synth.demoBadge")}</span> : null}
             <Btn onClick={() => onNavigate("models")}>{t("home.allRoles")}</Btn>
           </div>
-          {roles.length === 0 ? <div className="home-empty">{t("home.rolesEmpty")}</div> : (
+          {roles === null ? null : roles.length === 0 ? <div className="home-empty">{t("home.rolesEmpty")}</div> : (
             <FittedItems className="home-role-grid" items={roles.map((r) => (
               <button key={r.id} type="button" onClick={() => pickRole(r)} className="home-role" title={r.name || r.id}>
                 {r.cover_exists && r.cover && r.dir && isTauri() ? (
@@ -181,7 +151,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
             <h3>{t("home.recentTitle")}</h3>
             <span className="text-[11px] text-[var(--meta)]">{t("home.recentNote")}</span>
           </div>
-          {recent.length === 0 ? <div className="home-empty">{t("home.recentEmpty")}</div> : (
+          {recent === null ? null : recent.length === 0 ? <div className="home-empty">{t("home.recentEmpty")}</div> : (
             <FittedItems className="home-recent-list" items={recent.map((r) => (
               <button key={r.path} type="button" title={r.name}
                 onClick={() => void invoke("synth_reveal_file", { path: r.path }).catch(() => {})}
