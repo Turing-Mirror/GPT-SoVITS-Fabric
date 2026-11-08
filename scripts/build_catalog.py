@@ -322,6 +322,8 @@ def build(src: dict, rep: Report) -> dict:
 
     out["runtimes"] = build_runtimes(src, rep)
     out["roles"] = build_roles(src, rep)
+    # Older Fabric clients read the same role entries under voices.
+    out["voices"] = out["roles"]
     out["extras"] = build_extras(src, rep)
     return out
 
@@ -416,7 +418,7 @@ def main() -> int:
         bp = Path(args.bundle)
         bundled = json.loads(bp.read_text(encoding="utf-8")) if bp.is_file() else {}
         for k in ("schema", "format", "cnb_repo", "runtime_release_tag", "manifest_urls",
-                  "app", "engine_core", "runtimes", "roles", "extras"):
+                  "app", "engine_core", "runtimes", "roles", "voices", "extras"):
             if k in doc:
                 bundled[k] = doc[k]
         bp.write_text(json.dumps(bundled, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

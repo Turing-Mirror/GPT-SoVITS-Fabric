@@ -262,7 +262,8 @@ fn parse_voice_list(raw: &Value, force_official: Option<bool>) -> Vec<Value> {
 
 fn catalog_from_data(data: &Value, source: &str) -> Value {
     let voices = parse_voice_list(
-        data.get("voices")
+        data.get("roles")
+            .or_else(|| data.get("voices"))
             .or_else(|| data.get("models"))
             .unwrap_or(&json!([])),
         None,
