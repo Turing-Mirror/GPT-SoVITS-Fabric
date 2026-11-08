@@ -297,7 +297,35 @@ pub fn read_package_meta_variant(root: &Path) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-fn write_package_meta(root: &Path, variant: &str, label: &str, version: &str) -> Result<(), String> {
+fn legacy_variant(root: &Path) -> Option<String> {
+    let dir = paths::legacy_runtime_dir(root);
+    if !paths::runtime_tree_ready(&dir) { return None; }
+    if let Ok(raw) = fs::read_to_string(dir.join("Lib/site-packages/torch/version.py")) {
+        for line in raw.lines() {
+            if let Some((name, value)) = line.split_once('=') {
+                if name.split(':').next().map(str::trim) == Some("cuda") {
+                    let value = value.trim();
+                    if value == "None" { return Some("cpu".into()); }
+                    if value.starts_with(['\'', '"']) { return Some("nvidia".into()); }
+                }
+            }
+        }
+    }
+    let raw = fs::read_to_string(paths::package_meta_path(root)).ok()?;
+    let meta: Value = serde_json::from_str(&raw).ok()?;
+    if meta["managed_runtime"] == true {
+        meta["legacy_variant"].as_str().map(str::to_owned)
+    } else {
+        read_package_meta_variant(root)
+    }
+}
+
+fn runtime_choice(root: &Path, variant: &str) -> Option<bool> {
+    if paths::runtime_tree_ready(&paths::runtime_variant_dir(root, variant)) { return Some(true); }
+    (legacy_variant(root).as_deref() == Some(variant)).then_some(false)
+}
+
+fn write_package_meta(root: &Path, variant: &str, label: &str, version: &str, managed: bool) -> Result<(), String> {
     // 变体收敛后只有 nvidia / cpu 两种取值（normalize_variant 保证）。
     let (accel, summary) = match variant {
         "cpu" => ("cpu", "CPU Runtime".to_string()),
@@ -309,6 +337,8 @@ fn write_package_meta(root: &Path, variant: &str, label: &str, version: &str) ->
         .unwrap_or(0);
     let data = json!({
         "variant": variant,
+        "managed_runtime": managed,
+        "legacy_variant": legacy_variant(root),
         "label": label,
         "accel_default": accel,
         "summary": summary,
@@ -318,11 +348,8 @@ fn write_package_meta(root: &Path, variant: &str, label: &str, version: &str) ->
         "tagged": true,
     });
     let path = paths::package_meta_path(root);
-    fs::write(
-        &path,
-        serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+    crate::config::write_atomic(&path, &text).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -349,7 +376,7 @@ pub fn provision_status(root: &Path) -> Value {
     let pyw = paths::runtime_pythonw(root);
     let gpus = list_gpus();
     let (recommended, reason) = recommend_variant(&gpus);
-    let installed = read_package_meta_variant(root);
+    let installed = read_package_meta_variant(root).or_else(|| legacy_variant(root));
     let worker_script = paths::worker_script(root).is_file();
     let need_provision = !ready;
     let busy = *PROVISION_BUSY.lock().unwrap_or_else(|e| e.into_inner());
@@ -391,6 +418,7 @@ pub fn provision_status(root: &Path) -> Value {
             "label": fallback_label,
             "size_bytes": sz,
             "size_label": format_size(sz),
+            "installed": runtime_choice(root, id).is_some(),
         }));
     }
 
@@ -489,6 +517,21 @@ pub fn cancel_provision() {
 }
 
 /// Download + extract Runtime for *variant*. Emits `provision-progress` events.
+fn ensure_runtime_idle() -> Result<(), String> {
+    if crate::train::busy() || crate::separate::busy() {
+        return Err(crate::i18n::t("s.synthErrBusy"));
+    }
+    Ok(())
+}
+
+fn activate_runtime(root: &Path, variant: &str, label: &str, version: &str, managed: bool) -> Result<(), String> {
+    crate::synth::while_idle(|| {
+        ensure_runtime_idle()?;
+        crate::synth::shutdown();
+        write_package_meta(root, variant, label, version, managed)
+    })
+}
+
 pub fn run_provision(
     app: AppHandle,
     root: PathBuf,
@@ -511,22 +554,10 @@ pub fn run_provision(
         // 里归位：CUDA 系回 nvidia，其余落到谁都能跑的 cpu。
         let var = catalog::normalize_variant(&variant);
 
-        if paths::runtime_ready(&root) && !force {
-            write_package_meta(&root, &var, &var, "").ok();
+        if let Some(managed) = runtime_choice(&root, &var).filter(|_| !force) {
+            activate_runtime(&root, &var, &var, "", managed)?;
             emit_progress(&app, "done", 1, 1, &crate::i18n::t("s.e1b39abf92"));
-            return Ok(json!({
-                "ok": true,
-                "message": crate::i18n::t("s.227d108a35"),
-                "variant": var,
-            }));
-        }
-
-        if force {
-            let rt = root.join("Runtime");
-            if rt.exists() {
-                emit_progress(&app, "prepare", 0, 1, &crate::i18n::t("s.7a048346cb"));
-                let _ = fs::remove_dir_all(&rt);
-            }
+            return Ok(json!({"ok": true, "variant": var}));
         }
 
         emit_progress(&app, "catalog", 0, 1, &crate::i18n::t("s.bd45f9d523"));
@@ -664,35 +695,55 @@ pub fn run_provision(
             return Err(crate::i18n::t("s.a5ffdc95ee"));
         }
 
-        // Several GB of tar takes minutes. A single static line with a bar that
-        // never moves is indistinguishable from a hang, so report bytes read.
-        emit_progress(&app, "extract", 0, 1, &crate::i18n::t("s.e5d3918de2"));
-        {
-            let app_x = app.clone();
-            extract::extract_runtime_tar_with_progress(&dest_file, &root, &|done, total| {
-                emit_progress(
-                    &app_x,
-                    "extract",
-                    done,
-                    total.max(1),
-                    &crate::i18n::t2("s.6aa1e213af", &format_size(done), &format_size(total)),
-                );
+        let target = paths::runtime_variant_dir(&root, &var);
+        let parent = target.parent().expect("runtime parent");
+        let nonce = crate::role_assets::unique();
+        let staging = parent.join(format!(".extract-{nonce}"));
+        let backup = parent.join(format!(".backup-{nonce}"));
+        let install = (|| -> Result<(), String> {
+            // Several GB of tar takes minutes. A single static line with a bar that
+            // never moves is indistinguishable from a hang, so report bytes read.
+            emit_progress(&app, "extract", 0, 1, &crate::i18n::t("s.e5d3918de2"));
+            {
+                let app_x = app.clone();
+                extract::extract_runtime_tar_with_progress(&dest_file, &staging, &|done, total| {
+                    emit_progress(
+                        &app_x,
+                        "extract",
+                        done,
+                        total.max(1),
+                        &crate::i18n::t2("s.6aa1e213af", &format_size(done), &format_size(total)),
+                    );
+                })
+                .map_err(|e| extract_error_text(&e))?;
+            }
+            emit_progress(&app, "extract", 1, 1, &crate::i18n::t("s.58a0882f6f"));
+
+            let candidate = staging.join("Runtime");
+            if !paths::runtime_tree_ready(&candidate) {
+                return Err(format!("{}\n\n{}", crate::i18n::t("s.74aef4af02"), crate::i18n::t("s.rtExtractHelp")));
+            }
+            if cancel_flag().load(Ordering::SeqCst) {
+                return Err(crate::i18n::t("s.a5ffdc95ee"));
+            }
+            crate::synth::while_idle(|| {
+                ensure_runtime_idle()?;
+                crate::synth::shutdown();
+                let had_previous = target.exists();
+                if had_previous { fs::rename(&target, &backup).map_err(|e| e.to_string())?; }
+                let swapped = fs::rename(&candidate, &target).map_err(|e| e.to_string());
+                let result = swapped.and_then(|_| write_package_meta(&root, &var, &spec.label, &spec.version, true));
+                if let Err(err) = result {
+                    if target.exists() { let _ = fs::rename(&target, &candidate); }
+                    if had_previous { fs::rename(&backup, &target).map_err(|e| format!("{err}: {e}"))?; }
+                    return Err(err);
+                }
+                if had_previous { let _ = fs::remove_dir_all(&backup); }
+                Ok(())
             })
-            .map_err(|e| extract_error_text(&e))?;
-        }
-        emit_progress(&app, "extract", 1, 1, &crate::i18n::t("s.58a0882f6f"));
-
-        write_package_meta(&root, &var, &spec.label, &spec.version)?;
-
-        if !paths::runtime_ready(&root) {
-            // 校验过的包解出来却少东西，几乎只有一个原因：杀软在解压过程中
-            // 把 torch 那几个 dll 挑走了。不写出来，用户只会一遍遍重下。
-            return Err(format!(
-                "{}\n\n{}",
-                crate::i18n::t("s.74aef4af02"),
-                crate::i18n::t("s.rtExtractHelp"),
-            ));
-        }
+        })();
+        let _ = fs::remove_dir_all(&staging);
+        install?;
 
         emit_progress(&app, "done", 1, 1, &crate::i18n::t("s.a64a986f63"));
         Ok(json!({
@@ -721,6 +772,30 @@ mod tests {
 
     /// D3 之后推荐只有三档：N 卡（含 50 系，不再单列）→ nvidia；
     /// 识别得到显卡但没有 N 卡 → cpu；一块卡都问不到 → unknown 让用户手选。
+    #[test]
+    fn managed_runtime_switch_preserves_legacy_and_other_variants() {
+        let root = crate::testutil::scratch("managed-runtime-switch");
+        let legacy = root.join("Runtime");
+        let cpu = paths::runtime_variant_dir(&root, "cpu");
+        for (dir, cuda) in [(&legacy, "'12.8'"), (&cpu, "None")] {
+            let torch = dir.join("Lib/site-packages/torch");
+            fs::create_dir_all(&torch).unwrap();
+            fs::write(dir.join("python.exe"), b"fixture").unwrap();
+            fs::write(torch.join("__init__.py"), b"").unwrap();
+            fs::write(torch.join("version.py"), format!("cuda: str | None = {cuda}")).unwrap();
+        }
+        assert_eq!(runtime_choice(&root, "nvidia"), Some(false));
+        assert_eq!(runtime_choice(&root, "cpu"), Some(true));
+        assert_eq!(paths::runtime_dir(&root), legacy);
+        write_package_meta(&root, "cpu", "CPU", "v1", true).unwrap();
+        assert_eq!(paths::runtime_dir(&root), cpu);
+        assert_eq!(runtime_choice(&root, "nvidia"), Some(false));
+        write_package_meta(&root, "nvidia", "NVIDIA", "", false).unwrap();
+        assert_eq!(paths::runtime_dir(&root), legacy);
+        assert!(paths::runtime_tree_ready(&cpu));
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn recommendation_falls_back_to_cpu_without_nvidia() {
         let g = |names: &[&str]| -> String {

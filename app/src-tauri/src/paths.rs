@@ -98,12 +98,29 @@ pub fn logs_dir(root: &Path) -> PathBuf {
     user_data(root).join("logs")
 }
 
-pub fn runtime_dir(root: &Path) -> PathBuf {
+pub fn runtime_variant_dir(root: &Path, variant: &str) -> PathBuf {
+    user_data(root).join("runtimes").join(crate::catalog::normalize_variant(variant))
+}
+
+pub fn legacy_runtime_dir(root: &Path) -> PathBuf {
     if root.join("Runtime").is_dir() {
         root.join("Runtime")
     } else {
         root.join("runtime")
     }
+}
+
+pub fn runtime_dir(root: &Path) -> PathBuf {
+    let meta = std::fs::read_to_string(package_meta_path(root)).ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    if let Some(meta) = meta {
+        if meta["managed_runtime"] == true {
+            if let Some(variant) = meta["variant"].as_str() {
+                return runtime_variant_dir(root, variant);
+            }
+        }
+    }
+    legacy_runtime_dir(root)
 }
 
 /// Prefer pythonw (no console). Fall back to python.exe only if needed.
@@ -141,13 +158,12 @@ pub fn audio_tool(root: &Path, stem: &str) -> Option<PathBuf> {
 /// True when Runtime looks usable (python + torch present), same spirit as
 /// launcher.runtime_provision.runtime_ready.
 pub fn runtime_ready(root: &Path) -> bool {
-    let Some(py) = runtime_python(root) else {
-        return false;
-    };
-    let site = py
-        .parent()
-        .map(|p| p.join("Lib").join("site-packages").join("torch").join("__init__.py"));
-    site.map(|p| p.is_file()).unwrap_or(false)
+    runtime_tree_ready(&runtime_dir(root))
+}
+
+pub fn runtime_tree_ready(dir: &Path) -> bool {
+    (dir.join("python.exe").is_file() || dir.join("pythonw.exe").is_file())
+        && dir.join("Lib/site-packages/torch/__init__.py").is_file()
 }
 
 /// 这个产品的主 worker。

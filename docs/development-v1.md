@@ -71,3 +71,7 @@ SVG 原稿位于 `app/src/assets/brand/`：`gsvf-main-logo.svg` 用于标题栏�
 2026-11-07：`CatalogTransition` 用自然高度的 `QueueList` 承载分类内容，实际滚动归外层 `PageHost`。QueueList 默认的 `overscroll-behavior: contain` 将鼠标滚轮留在自身，即使其内容没有溢出，也阻断外层页面滚动。修复仅对产品的 `.catalog-transition` 设置 `overscroll-behavior: auto`，保留队列组件原有的独立滚动规则和左右切换动画。
 
 复查时将指针放在设置卡片正文上，验证滚轮上下、连续小幅滚动、滚至末项、分类切换后滚动，以及离开设置再返回。覆盖默认和最小窗口尺寸，并在父组件持续刷新时确认滚动位置不复位。不要只检查 `scrollHeight` 或程序设置 `scrollTop`，这两者不能证明真实滚轮事件可以传给外层页面。
+
+## 运行环境与首次安装
+
+新安装的 CPU 与 NVIDIA 环境分别位于 User_Data/runtimes/cpu 和 User_Data/runtimes/nvidia，使用与 RVC Fabric 一致的目录结构。既有 Runtime 仍可识别和使用。在「其他 → 运行环境 → 管理」选择已安装环境可直接切换。新环境先解压并检查完整性，再写入当前选择。首次运行引导在运行环境可用后提示安装引擎基础资源，支持稍后下载和完成退出。

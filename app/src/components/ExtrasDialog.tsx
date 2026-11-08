@@ -49,7 +49,7 @@ type List = {
 };
 
 /** 打开下载弹窗时预选哪一类；弹窗内仍可切换。 */
-export type ExtrasFilter = "all" | ExtraGroup;
+export type ExtrasFilter = "all" | "train" | ExtraGroup;
 
 /** 单页条数。和广场更新日志一样固定 5，不做无限滚。 */
 const PER_PAGE = 5;
@@ -64,7 +64,7 @@ function mb(n: number) {
 }
 
 function categoryLabel(cat: Category): string {
-  return cat === "separate" ? t("s.8fd038283b") : cat === "train" ? t("s.ba65bd5595") : cat === "synth" ? t("extras.synthCategory") : t("s.extraCatOther");
+  return cat === "separate" ? t("s.8fd038283b") : cat === "synth" ? t("extras.engineTitle") : t("s.extraCatOther");
 }
 
 /** Prefer the locale pack, then the catalog's locale map, then its primary value. */
@@ -81,7 +81,7 @@ function extraNotes(it: Item): string {
 }
 
 function categoryBlurb(cat: Category): string {
-  return cat === "separate" ? t("s.63fa37071e") : cat === "train" ? t("s.5b422f44dd") : cat === "synth" ? t("extras.synthDescription") : t("s.extraBlurbOther");
+  return cat === "separate" ? t("s.63fa37071e") : cat === "synth" ? t("extras.synthDescription") : t("s.extraBlurbOther");
 }
 
 /**
@@ -122,7 +122,7 @@ export function ExtrasPanel({
   const [msg, setMsg] = useState("");
   const [removeKey, setRemoveKey] = useState("");
   const [category, setCategory] = useState<Category>(
-    filter !== "all" ? filter : "separate",
+    filter === "train" || filter === "all" ? "synth" : filter,
   );
   const [page, setPage] = useState(0);
 
@@ -149,7 +149,7 @@ export function ExtrasPanel({
     setList(null);
     setAssets(null);
     setPage(0);
-    setCategory(filter !== "all" ? filter : "separate");
+    setCategory(filter === "train" || filter === "all" ? "synth" : filter);
     void load();
     // `load` 每次渲染都是新函数，列进依赖会变成「渲染一次拉一次清单」。
     // 这个 effect 要的是「挂载时拉一次，filter 变了再拉一次」。
@@ -160,7 +160,7 @@ export function ExtrasPanel({
     void load();
   }, [jobs.generation]);
 
-  const categories = useMemo(() => categoriesOf(list?.items || []), [list]);
+  const categories = useMemo(() => ["synth" as const, ...categoriesOf(list?.items || []).filter(c => c !== "synth")], [list]);
   useEffect(() => {
     if (categories.length && !categories.includes(category)) {
       setCategory(categories[0]);
@@ -230,9 +230,7 @@ export function ExtrasPanel({
   const emptyHint =
     list?.available === false
       ? t("s.122abe360d")
-      : category === "train"
-        ? t("s.2b9ddc0b69")
-        : category === "separate" ? t("s.7e9782377b") : category === "synth" ? t("extras.synthEmpty") : t("s.extraEmptyOther");
+      : category === "separate" ? t("s.7e9782377b") : category === "synth" ? t("extras.synthEmpty") : t("s.extraEmptyOther");
 
   const coreMissing = engineReady === false;
   const anyBusy = downloading.length > 0 || !!removeKey || coreBusy;
@@ -265,6 +263,7 @@ export function ExtrasPanel({
         ) : null}
 
         {/* Required base models and their downloadable package sizes. */}
+        {category === "synth" ? (
         <div
           className={[
             "mb-4 rounded-[var(--rs)] px-3.5 py-3",
@@ -330,6 +329,7 @@ export function ExtrasPanel({
             ) : null}
           </div>
         </div>
+        ) : null}
 
         <CatalogTransition scope={category} page={pageClamped + 1} order={categories}>
           {list === null ? (

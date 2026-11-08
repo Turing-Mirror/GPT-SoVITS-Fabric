@@ -636,7 +636,7 @@ pub fn storage_usage(root: &Path) -> Value {
         vec![crate::synth::characters_dir(root)],
         vec![crate::train::exp_root(root)],
         vec![ud.join("synth"), ud.join("api"), ud.join("separate")],
-        vec![paths::runtime_dir(root)],
+        vec![paths::legacy_runtime_dir(root), paths::user_data(root).join("runtimes")],
         vec![root.join("GPT_SoVITS/pretrained_models"), root.join("GPT_SoVITS/text/G2PWModel")],
         vec![crate::separate::model_dir(root)],
         vec![paths::update_cache(root), paths::temp_dir(root), paths::ch_banner_dir(root)],

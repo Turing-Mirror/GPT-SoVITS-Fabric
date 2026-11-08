@@ -347,7 +347,7 @@ export function MorePage({
             right={
               <span className="flex items-center gap-2">
                 <span className="text-[13.5px] text-[var(--ink-muted)]">
-                  {provision?.recommended_variant || t("s.notDetected")}
+                  {provision?.installed_variant || provision?.recommended_variant || t("s.notDetected")}
                 </span>
                 {onOpenProvision ? (
                   <Btn onClick={onOpenProvision}>

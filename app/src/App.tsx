@@ -29,7 +29,7 @@ import { PlazaPage } from "./pages/PlazaPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SynthPage } from "./pages/SynthPage";
 import { TrainPage } from "./pages/TrainPage";
-import { registerDownloadModelsOpener } from "./lib/downloadModels";
+import { getAssetsStatus, registerDownloadModelsOpener } from "./lib/downloadModels";
 import { registerHelpOpener } from "./lib/helpNav";
 import { usePageNavigation } from "./hooks/usePageNavigation";
 import { mayCloseApp } from "./lib/windowLeave";
@@ -241,6 +241,7 @@ export default function App() {
    */
   /** id → 显示名。底栏要写「收音机」，不是写 radio。 */
 
+  const [coreOnly, setCoreOnly] = useState(false);
   const [showProvision, setShowProvision] = useState(false);
   const [provisionDismissed, setProvisionDismissed] = useState(false);
   /** 补全弹窗关掉之后，底部 Nudge 再问一次 —— 那次也关了，这个会话就不再提。 */
@@ -495,6 +496,18 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (!langGateChecked || showLangGate || !engine.provision.runtime_ready || provisionDismissed) return;
+    let alive = true;
+    void Promise.all([getAssetsStatus(), invoke<Record<string, unknown>>("config_get")]).then(([assets, config]) => {
+      if (alive && assets.engine_core_ready === false && config.setup_guide_done !== true) {
+        setCoreOnly(true);
+        setShowProvision(true);
+      }
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [langGateChecked, showLangGate, engine.provision.runtime_ready, provisionDismissed]);
+
+  useEffect(() => {
     const mq = window.matchMedia("(max-width: 520px)");
     const fn = () => setCompactNav(mq.matches);
     fn();
@@ -644,9 +657,11 @@ export default function App() {
       <ProvisionGate
         open={showProvision && !showLangGate}
         initial={engine.provision}
+        coreOnly={coreOnly}
         onDone={async () => {
           setShowProvision(false);
-          setProvisionDismissed(false);
+          setCoreOnly(false);
+          setProvisionDismissed(true);
           void invoke<Record<string, unknown>>("config_get")
             .then((cfg) => { if (cfg.setup_guide_done !== true) openGuide("role"); })
             .catch(() => {});
@@ -664,6 +679,7 @@ export default function App() {
         }}
         onDismiss={() => {
           setShowProvision(false);
+          setCoreOnly(false);
           setProvisionDismissed(true);
         }}
       />

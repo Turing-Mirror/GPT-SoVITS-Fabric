@@ -12,17 +12,17 @@ describe("附加资源分类", () => {
         { key: "a", group: "separate" },
         { key: "b", group: "train" },
       ]),
-    ).toEqual(["train", "separate"]);
+    ).toEqual(["synth", "separate"]);
   });
 
   it("清单明写的 group 压过 key 的猜测", () => {
     // key 的命名规则会变，清单是明写的。
     expect(inferGroup("pymss-vocal")).toBe("separate");
-    expect(groupOf({ key: "pymss-vocal", group: "train" })).toBe("train");
+    expect(groupOf({ key: "pymss-vocal", group: "train" })).toBe("synth");
   });
 
   it("清单没写 group 时按 key 兜底，判据和 Rust 那份一致", () => {
-    expect(groupOf({ key: "pretrained-v2-40k" })).toBe("train");
+    expect(groupOf({ key: "pretrained-v2-40k" })).toBe("synth");
     expect(groupOf({ key: "pymss-vocal" })).toBe("separate");
     expect(groupOf({ key: "uvr-hp2" })).toBe("separate");
     expect(groupOf({ key: "something-else" })).toBe("other");
@@ -40,6 +40,6 @@ describe("附加资源分类", () => {
   });
 
   it("大小写和空白不影响分类", () => {
-    expect(groupOf({ key: "x", group: "  Train " })).toBe("train");
+    expect(groupOf({ key: "x", group: "  Train " })).toBe("synth");
   });
 });

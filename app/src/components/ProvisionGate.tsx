@@ -21,11 +21,13 @@ type VariantRow = {
   label: string;
   size_bytes?: number;
   size_label?: string;
+  installed?: boolean;
 };
 
 type Props = {
   open: boolean;
   initial?: ProvisionStatus;
+  coreOnly?: boolean;
   onDone: () => void;
   onDismiss?: () => void;
 };
@@ -65,7 +67,7 @@ function isCancelError(e: unknown): boolean {
  * 引擎资源（GSV 底模组）不在这里下，改到「广场 → 下载模型」按需补。
  * Only shown when need_provision; does not change everyday synth flow once ready.
  */
-export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
+export function ProvisionGate({ open, initial, coreOnly = false, onDone, onDismiss }: Props) {
   // 订阅语言。这个组件用的是静态 t()，本身不会因为换语言重渲染；下面的
   // useMemo 还把 locale 当依赖，拿不到它就永远算不出第二遍。
   const { locale } = useI18n();
@@ -75,6 +77,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
       ? initial.recommended_variant
       : "nvidia",
   );
+  const [runtimeComplete, setRuntimeComplete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<ProvisionProgress | null>(null);
@@ -148,13 +151,21 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    void getProvisionStatus().then((p) => {
+    setCore(coreOnly ? "ask" : null);
+    setVcr(null);
+    setProgress(null);
+    setRuntimeComplete(false);
+    setError("");
+    if (coreOnly) return;
+    let alive = true;
+    void getProvisionStatus().then(p => {
+      if (!alive) return;
       setInfo(p);
-      if (p.recommended_variant && p.recommended_variant !== "unknown") {
-        setVariant(p.recommended_variant);
-      }
-    });
-  }, [open]);
+      const preferred = p.installed_variant || p.recommended_variant;
+      if (preferred && preferred !== "unknown") setVariant(preferred);
+    }).catch(e => { if (alive) setError(String(e)); });
+    return () => { alive = false; };
+  }, [open, coreOnly]);
 
   useEffect(() => {
     if (!open) return;
@@ -266,6 +277,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
     try {
       const r = await startProvision(variant, false);
       if (r.ok) {
+        setRuntimeComplete(true);
         // 引擎资源不并进补全本体，但补全完要主动问一句 —— 以前完全不提，用户
         // 点开合成台才发现还要再下 720MB，那一下的挫败是可以避免的。
         try {
@@ -349,10 +361,12 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
   const stalled = Boolean(showBar) && idleMs > STALL_AFTER_MS;
   const elapsedMs = startedAt.current ? now - startedAt.current : 0;
 
+  const selectedInstalled = variants.some(v => v.id === variant && v.installed);
   return (
     <Modal z={50} contained>
       <div className="w-full max-w-[520px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-7">
-        <h2 className="text-[22px] font-semibold m-0 mb-2">{t("s.405125fb37")}</h2>
+        <h2 className="text-[22px] font-semibold m-0 mb-2">{t(coreOnly ? "extras.engineTitle" : "s.405125fb37")}</h2>
+        {!coreOnly && !runtimeComplete ? <>
         <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">
           {info.recommend_reason ||
             t("s.1e1016e5c8")}
@@ -387,7 +401,9 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
                   {info.recommended_variant === v.id ? (
                     <span className="text-[11.5px] text-[var(--accent)]">{t("s.62b46f24ae")}</span>
                   ) : null}
-                  {sizeText ? (
+                  {v.installed ? (
+                    <span className="text-[11.5px] text-[var(--meta)]">{t("s.eb88ff57c9")}</span>
+                  ) : sizeText ? (
                     <span className="text-[11.5px] text-[var(--meta)]">
                       {t("s.244d1be15c", { v0: sizeText })}
                     </span>
@@ -480,6 +496,7 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
           <p className="text-[12.5px] text-[var(--ink-muted)] m-0 mb-3">{extra}</p>
         ) : null}
 
+        </> : null}
         {error ? (
           <p className="text-[12.5px] text-[var(--danger)] m-0 mb-3 leading-relaxed whitespace-pre-line">
             {error}
@@ -537,6 +554,8 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
             </>
           ) : core === "downloading" ? (
             <Btn disabled>{t("s.provCoreDownloading")}</Btn>
+          ) : (runtimeComplete || coreOnly) && vcr !== "ready" && vcr !== "failed" && vcr !== "installing" && !busy ? (
+            <Btn primary onClick={onDone}>{t("s.33246f6a5e")}</Btn>
           ) : vcr === "ready" || vcr === "failed" ? (
             <>
               {/* 跳过也走得下去：跳过的人还能在设置页补装。 */}
@@ -565,8 +584,8 @@ export function ProvisionGate({ open, initial, onDone, onDismiss }: Props) {
             <>
               {onDismiss ? <Btn onClick={onDismiss}>{t("s.479fcc1cc0")}</Btn> : null}
               <Btn primary onClick={() => void start()}>
-                {t("s.92f35590d5")}
-                {selectedSizeLabel ? t("s.e592773b6a", { v0: selectedSizeLabel }) : ""}
+                {t(selectedInstalled ? "s.runtimeUseInstalled" : "s.92f35590d5")}
+                {!selectedInstalled && selectedSizeLabel ? t("s.e592773b6a", { v0: selectedSizeLabel }) : ""}
               </Btn>
             </>
           )}

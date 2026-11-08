@@ -56,6 +56,7 @@ export type ProvisionStatus = {
     label: string;
     size_bytes?: number;
     size_label?: string;
+    installed?: boolean;
   }[];
   message?: string;
 };
