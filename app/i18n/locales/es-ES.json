@@ -889,7 +889,11 @@
     "roleErrListAudio": "Faltan archivos de audio referenciados. Corrija las rutas y vuelva a intentarlo.",
     "roleWeightPickTitle": "Seleccionar archivo del modelo",
     "roleListPickTitle": "Vincular archivo de anotaciones",
-    "roleErrVersion": "Seleccione una versión de modelo compatible."
+    "roleErrVersion": "Seleccione una versión de modelo compatible.",
+    "roleErrWeightInvalid": "El archivo del modelo no es válido o no es compatible.",
+    "roleErrWeightPair": "Los modelos GPT y SoVITS no son compatibles.",
+    "roleErrWeightVersionMismatch": "La versión seleccionada no coincide con el modelo.",
+    "roleErrWeightRuntime": "Complete primero la instalación del entorno de ejecución."
   },
   "extras": {
     "engineTitle": "Recursos del motor",
@@ -1288,7 +1292,6 @@
     "modelFiles": "Archivos del modelo",
     "replaceWeight": "Cambiar archivo",
     "missingFile": "Falta el archivo",
-    "newModelVersion": "Versión del nuevo modelo",
     "associatedLists": "Anotaciones vinculadas",
     "associateList": "Vincular .list",
     "associateNote": "Al vincular se copian las anotaciones y el audio. Al desvincular se conservan los archivos.",

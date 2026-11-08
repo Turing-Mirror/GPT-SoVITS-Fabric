@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Snapshot as Cache } from "./snapshot";
 import { listen } from "@tauri-apps/api/event";
 
 export type TrainJobState = "queued" | "running" | "cancelling" | "paused" | "interrupted" | "completed" | "failed" | "cancelled";
@@ -13,6 +14,7 @@ export type TrainJob = {
   error: string;
 };
 type Snapshot = { jobs: TrainJob[] };
+const queueSnapshot = new Cache<TrainJob[]>();
 export const activeJob = (jobs: TrainJob[]) => jobs.find(j => j.state === "running" || j.state === "cancelling");
 export const terminalJob = (job: TrainJob) => ["completed", "failed", "cancelled", "interrupted"].includes(job.state);
 export function latestExperimentJob(jobs: TrainJob[], experiment: string): TrainJob | undefined {
@@ -32,22 +34,23 @@ export function trainPercent(job?: TrainJob): number {
   return Math.round(((stage + within) / TRAIN_STAGES.length) * 100);
 }
 export function useTrainingQueue() {
-  const [jobs, setJobs] = useState<TrainJob[]>([]);
+  const [jobs, setJobs] = useState<TrainJob[]>(() => queueSnapshot.get() ?? []);
+  const [loaded, setLoaded] = useState(() => queueSnapshot.get() !== null);
   const [error, setError] = useState("");
   const updates = useRef(0);
   const refresh = useCallback(async () => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     const revision = updates.current;
     try {
-      const value = await invoke<Snapshot>("train_queue_list");
-      if (revision === updates.current) setJobs(value.jobs);
+      const jobs = await queueSnapshot.read(async () => (await invoke<Snapshot>("train_queue_list")).jobs);
+      if (revision === updates.current) { setJobs(jobs); setLoaded(true); }
       setError("");
     } catch (e) { setError(String(e)); }
   }, []);
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let disposed = false;
-    const un = listen<Snapshot>("train-queue", event => { if (!disposed) { updates.current += 1; setJobs(event.payload.jobs); } });
+    const un = listen<Snapshot>("train-queue", event => { if (!disposed) { updates.current += 1; queueSnapshot.receive(event.payload.jobs); setJobs(event.payload.jobs); setLoaded(true); } });
     // Subscribe before reading the snapshot to cover mounting during a transition.
     void un.then(() => { if (!disposed) void refresh(); });
     const timer = window.setInterval(() => void refresh(), 2000);
@@ -59,5 +62,5 @@ export function useTrainingQueue() {
       await refresh();
     } catch (e) { setError(String(e)); }
   }, [refresh]);
-  return { jobs, error, refresh, action };
+  return { jobs, loaded, error, refresh, action };
 }

@@ -889,7 +889,11 @@
     "roleErrListAudio": "Аудиофайлы, указанные в разметке, отсутствуют. Исправьте пути и повторите попытку.",
     "roleWeightPickTitle": "Выбор файла модели",
     "roleListPickTitle": "Привязка файла разметки",
-    "roleErrVersion": "Выберите поддерживаемую версию модели."
+    "roleErrVersion": "Выберите поддерживаемую версию модели.",
+    "roleErrWeightInvalid": "Файл модели недействителен или не поддерживается.",
+    "roleErrWeightPair": "Модели GPT и SoVITS несовместимы.",
+    "roleErrWeightVersionMismatch": "Выбранная версия не соответствует модели.",
+    "roleErrWeightRuntime": "Сначала завершите установку среды выполнения."
   },
   "extras": {
     "engineTitle": "Ресурсы движка",
@@ -1288,7 +1292,6 @@
     "modelFiles": "Файлы модели",
     "replaceWeight": "Заменить файл",
     "missingFile": "Файл отсутствует",
-    "newModelVersion": "Версия новой модели",
     "associatedLists": "Связанная разметка",
     "associateList": "Связать .list",
     "associateNote": "При привязке копируются разметка и аудио. При отмене привязки файлы сохраняются.",

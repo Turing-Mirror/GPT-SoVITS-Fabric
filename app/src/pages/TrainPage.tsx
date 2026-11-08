@@ -585,7 +585,7 @@ export function TrainPage() {
               <div className="pt-1 text-[12px] leading-relaxed text-[var(--help)]">{statusHint}</div>
             ) : null}
           </div>
-          <TrainingQueue jobs={queue.jobs} error={queue.error} onAction={queue.action} />
+          <TrainingQueue loaded={queue.loaded} jobs={queue.jobs} error={queue.error} onAction={queue.action} />
         </div>
       </div>
     </PagePad>

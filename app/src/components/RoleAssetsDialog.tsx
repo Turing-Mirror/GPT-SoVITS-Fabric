@@ -1,7 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { Modal } from "./Modal";
 import { Btn } from "./ui";
-import { Select } from "./controls";
 import { Collapse } from "./Presence";
 import { useI18n } from "../i18n";
 import { openInAnnot, synthWithRole } from "../lib/intent";
@@ -18,12 +17,11 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [replaceSovits, setReplaceSovits] = useState(false);
-  const [version, setVersion] = useState("");
 
   useEffect(() => {
     let alive = true;
     void getRoleAssets(role.id).then(data => {
-      if (alive) { setDetails(data); setVersion(data.version); }
+      if (alive) { setDetails(data); }
     }).catch(e => { if (alive) setError(String(e)); });
     return () => { alive = false; };
   }, [role.id]);
@@ -36,7 +34,6 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
       const data = await action();
       if (data) {
         setDetails(data);
-        setVersion(data.version);
         setReplaceSovits(false);
         onChanged();
       }
@@ -71,9 +68,7 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
                 </div>
                 {weight.kind === "sovits" ? <Collapse open={replaceSovits}>
                   <div className="flex items-center gap-3 flex-wrap pt-3">
-                    <span className="text-[12.5px] text-[var(--help)]">{t("library.newModelVersion")}</span>
-                    <Select value={version} options={details.versions.map(v => ({ id: v, label: v }))} onChange={setVersion} disabled={busy} />
-                    <Btn primary busy={busy} onClick={() => void update(() => replaceRoleWeight(role.id, "sovits", version))}>{t("sep.pickFile")}</Btn>
+                    <Btn primary busy={busy} onClick={() => void update(() => replaceRoleWeight(role.id, "sovits"))}>{t("sep.pickFile")}</Btn>
                     <Btn disabled={busy} onClick={() => setReplaceSovits(false)}>{t("dialog.cancel")}</Btn>
                   </div>
                 </Collapse> : null}

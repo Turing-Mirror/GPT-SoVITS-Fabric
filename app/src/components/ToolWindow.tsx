@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
@@ -7,6 +7,7 @@ import { SeparatePanel } from "./SeparatePanel";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { WebDialogHost } from "./WebDialog";
+import { protectToolClose } from "../lib/windowLeave";
 import { NativeDialogHint } from "./NativeDialogHint";
 
 /** 地址里带的 `#/tool/<kind>` —— 主窗口和工具窗口用的是同一份前端。 */
@@ -54,6 +55,9 @@ export function ToolWindow({ kind }: { kind: ToolKind }) {
   // state，于是永远停在 DEFAULT_LOCALE。面板里的文字因为自己有 state 会跟着刷新，
   // 结果同一扇窗上半截中文、下半截日文。
   useI18n();
+  useEffect(() => {
+    if (kind === "annot" && "__TAURI_INTERNALS__" in window) return protectToolClose();
+  }, [kind]);
   // 常驻操作栏挂载的那个格子。用 state 而不是 ref：ref 变了不会触发重渲染，
   // 面板第一次渲染时拿到的会永远是 null，按钮就再也进不了这条栏。
   const [footer, setFooter] = useState<HTMLElement | null>(null);

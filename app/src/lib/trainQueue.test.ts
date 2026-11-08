@@ -86,3 +86,12 @@ describe("training queue reconnect", () => {
   });
 
 });
+
+it("retains the last queue snapshot on the first frame of a return visit", async () => {
+  bridge.invoke.mockResolvedValue({ jobs: [job("remembered", "running")] });
+  await mount(); await act(async () => root.unmount()); root = createRoot(host);
+  bridge.invoke.mockImplementation(() => new Promise(() => {}));
+  await mount();
+  expect(current.loaded).toBe(true);
+  expect(current.jobs[0].id).toBe("remembered");
+});

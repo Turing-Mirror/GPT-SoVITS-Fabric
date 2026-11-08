@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { peekCharacters, readCharacters } from "../lib/characters";
+import { useCallback, useEffect, useMemo, useState, memo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Block, Btn, PageHead, PagePad } from "../components/ui";
 import { Select, Slider } from "../components/controls";
@@ -13,6 +14,9 @@ import { CatalogTransition } from "../components/CatalogTransition";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { ModelCard } from "../components/ModelCard";
+import { useAudioPreview } from "../hooks/useAudioPreview";
+import { registerLeaveGuard } from "../lib/navigationGuard";
+import { usePageActive } from "trm-ui";
 import { useConfig } from "../hooks/useConfig";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
@@ -62,6 +66,14 @@ const LANGS = ["zh", "ja", "en", "ko", "yue", "all_zh", "all_ja", "all_ko", "aut
 const PAGE_SIZE = 10;
 
 /** 角色包里的一份标注。 */
+function listsOf(roles: NonNullable<ReturnType<typeof peekCharacters>>): RoleList[] {
+  return roles.flatMap(role => (role.lists ?? []).map(l => ({
+    key: `${role.id}/${l.file}`, roleId: role.id, role: role.name || role.id,
+    cover: role.cover_exists && role.cover ? convertFileSrc(`${role.dir}/${role.cover}`) : undefined,
+    file: l.file, path: `${role.dir}/${l.file}`, rows: l.rows?.length ?? 0,
+  })));
+}
+
 type RoleList = { key: string; roleId: string; role: string; cover?: string; file: string; path: string; rows: number };
 
 /** 文件所在的目录。 */
@@ -99,14 +111,15 @@ function AnnotPageImpl() {
   const [msg, setMsg] = useState("");
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState<"all" | "bad">("all");
-  const [playing, setPlaying] = useState("");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const config = useConfig();
   const savedVolume = config.num("annot_preview_volume", 100);
   const volume = Number.isFinite(savedVolume) ? Math.max(0, Math.min(100, savedVolume)) : 100;
+  const { playing, play: playAudio, stop: stopAudio, player } = useAudioPreview(volume / 100);
+  const active = usePageActive();
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume / 100;
-  }, [volume]);
+    if (!dirty || !active) return;
+    return registerLeaveGuard(() => busy ? Promise.resolve(false) : askConfirm(t("s.annot.dropChanges")));
+  }, [dirty, busy, active]);
 
   // 页面消息自己消失。不消失的话下一条会盖掉上一条，用户更容易漏看。
   useEffect(() => {
@@ -115,21 +128,13 @@ function AnnotPageImpl() {
     return () => window.clearTimeout(id);
   }, [msg]);
 
-  // 离开这一页 / 关掉软件时把正在响的那段停掉。不停的话音频会一直播到底，
-  // 而界面上已经没有任何能按停它的东西了。
-  useEffect(() => {
-    return () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
-    };
-  }, []);
-
   const apply = useCallback((r: Loaded) => {
+    stopAudio();
     setPath(r.path);
     setRows(r.rows || []);
     setSpeakers(r.speakers || []);
     setDirty(false);
-  }, []);
+  }, [stopAudio]);
 
   const openPath = useCallback(async (p: string) => {
     if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
@@ -166,26 +171,10 @@ function AnnotPageImpl() {
   }, [openPath]);
 
   // 各角色自带的标注文件，未打开文件时列出来，点一下即可打开。
-  const [roleLists, setRoleLists] = useState<RoleList[]>([]);
+  const [roleLists, setRoleLists] = useState<RoleList[]>(() => listsOf(peekCharacters() ?? []));
   const loadRoleLists = useCallback(() => {
     if (!isTauri()) return;
-    void invoke<{ roles?: { id: string; name: string; dir: string; cover?: string; cover_exists?: boolean; lists?: { file: string; rows?: unknown[] }[] }[] }>("synth_characters")
-      .then((r) =>
-        setRoleLists(
-          (r?.roles ?? []).flatMap((role) =>
-            (role.lists ?? []).map((l) => ({
-              key: `${role.id}/${l.file}`,
-              roleId: role.id,
-              role: role.name || role.id,
-              cover: role.cover_exists && role.cover ? convertFileSrc(`${role.dir}/${role.cover}`) : undefined,
-              file: l.file,
-              path: `${role.dir}/${l.file}`,
-              rows: l.rows?.length ?? 0,
-            })),
-          ),
-        ),
-      )
-      .catch(() => setRoleLists([]));
+    void readCharacters().then(roles => setRoleLists(listsOf(roles))).catch(e => setErr(String(e)));
   }, []);
   useEffect(loadRoleLists, [loadRoleLists]);
   const roleGrid = useModelGrid();
@@ -194,8 +183,7 @@ function AnnotPageImpl() {
   /** 关掉当前文件，回到角色标注文件的列表。 */
   const close = useCallback(async () => {
     if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
-    audioRef.current?.pause();
-    setPlaying("");
+    stopAudio();
     setPath("");
     setRows([]);
     setSpeakers([]);
@@ -203,7 +191,7 @@ function AnnotPageImpl() {
     setQuery("");
     setOnly("all");
     setErr("");
-  }, [dirty]);
+  }, [dirty, stopAudio]);
 
   const reload = useCallback(async () => {
     if (!path) return;
@@ -257,28 +245,9 @@ function AnnotPageImpl() {
     setDirty(true);
   }, []);
 
-  const play = useCallback((r: Row) => {
-    if (!r.exists || !r.abs) return;
-    audioRef.current?.pause();
-    if (playing === r.abs) {
-      setPlaying("");
-      return;
-    }
-    try {
-      const a = new Audio(isTauri() ? convertFileSrc(r.abs) : r.abs);
-      a.volume = volume / 100;
-      a.onended = () => setPlaying("");
-      a.onerror = () => {
-        setPlaying("");
-        setErr(t("s.annot.playFailed", { v0: r.wav }));
-      };
-      audioRef.current = a;
-      void a.play();
-      setPlaying(r.abs);
-    } catch (e) {
-      setErr(String(e));
-    }
-  }, [playing, volume]);
+  const play = (r: Row) => {
+    if (r.exists && r.abs) playAudio(r.abs, () => setErr(t("s.annot.playFailed", { v0: r.wav })));
+  };
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -297,6 +266,9 @@ function AnnotPageImpl() {
   const pageDir = useDir(paged.page);
   const filterDir = useDir(only === "bad" ? 1 : 0);
   const pageRows = paged.slice;
+  useEffect(() => {
+    player.retain(pageRows.map(r => r.abs));
+  }, [pageRows, player]);
 
   const bad = useMemo(() => rows.filter((r) => r.issues.length > 0).length, [rows]);
   const missing = useMemo(

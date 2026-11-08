@@ -11,8 +11,8 @@ const STATE_KEYS: Record<TrainJobState, string> = {
   failed: "train.queueFailed", cancelled: "train.queueCancelled",
 };
 const STAGE_KEYS = { prepare: "train.stagePrepare", format: "train.stageFormat", sovits: "train.stageSovits", gpt: "train.stageGpt" };
-export function TrainingQueue({ jobs, error, onAction }: {
-  jobs: TrainJob[]; error: string; onAction: (id: string, action: string) => Promise<void>;
+export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
+  jobs: TrainJob[]; loaded?: boolean; error: string; onAction: (id: string, action: string) => Promise<void>;
 }) {
   const paged = usePaged(jobs, 5);
   const [pending, setPending] = useState<string[]>([]);
@@ -29,7 +29,7 @@ export function TrainingQueue({ jobs, error, onAction }: {
     <div className="rounded-[var(--r)] bg-[var(--group)] p-3.5 min-h-0 overflow-y-auto">
       <QueueList scope="training" page={paged.page} items={paged.slice} keyOf={job => job.id}
         className="flex flex-col gap-4"
-        empty={<div className="text-[12.5px] text-[var(--help)]">{t("train.queueEmpty")}</div>}
+        empty={<div className="text-[12.5px] text-[var(--help)]">{loaded ? t("train.queueEmpty") : error ? "" : t("s.valueLoading")}</div>}
         render={job => {
             const running = job.state === "running" || job.state === "cancelling";
             const stage = job.progress?.stage;

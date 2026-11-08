@@ -889,7 +889,11 @@
     "roleErrListAudio": "注釈が参照する音声ファイルがありません。パスを修正して再試行してください。",
     "roleWeightPickTitle": "モデルファイルを選択",
     "roleListPickTitle": "注釈ファイルを関連付ける",
-    "roleErrVersion": "対応するモデルバージョンを選択してください。"
+    "roleErrVersion": "対応するモデルバージョンを選択してください。",
+    "roleErrWeightInvalid": "モデルファイルが無効か、対応していません。",
+    "roleErrWeightPair": "GPT と SoVITS のモデルに互換性がありません。",
+    "roleErrWeightVersionMismatch": "選択したバージョンがモデルと一致しません。",
+    "roleErrWeightRuntime": "先に実行環境のインストールを完了してください。"
   },
   "extras": {
     "engineTitle": "エンジンリソース",
@@ -1288,7 +1292,6 @@
     "modelFiles": "モデルファイル",
     "replaceWeight": "ファイルを変更",
     "missingFile": "ファイルがありません",
-    "newModelVersion": "新しいモデルのバージョン",
     "associatedLists": "関連付けた注釈",
     "associateList": ".list を関連付ける",
     "associateNote": "関連付け時に注釈と音声をコピーします。解除してもファイルは残ります。",

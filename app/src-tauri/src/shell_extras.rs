@@ -44,7 +44,10 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => focus_main(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                focus_main(app);
+                let _ = app.emit_to("main", "app://exit-requested", ());
+            },
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -68,22 +71,6 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         .build(app)
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-/// 上一次弹出「关闭询问」但**还没被回答**的时刻。
-///
-/// 用来兜住「界面卡死了，用户连窗口都关不掉」：10 秒内第二次点 X 就直接退出。
-///
-/// 关键是**答完必须清掉**（`clear_close_ask`）。以前它是个闭包里的局部变量，
-/// 谁也够不着，于是用户点 X → 选「最小化到托盘」→ 一会儿又点 X，第二次就撞上
-/// 这条兜底：软件不问一声直接没了。用户报的「再次点 X 软件会崩溃」就是这个 ——
-/// 它没崩，是被自己的救命开关退掉了。答过一次就证明界面是活的，计时该归零。
-static LAST_ASK: std::sync::Mutex<Option<std::time::Instant>> =
-    std::sync::Mutex::new(None);
-
-/// 用户答过关闭询问了：界面是活的，把「卡死」计时清掉。
-pub fn clear_close_ask() {
-    *LAST_ASK.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 fn focus_main(app: &AppHandle) {
@@ -1069,30 +1056,16 @@ pub fn install_close_handler(app: &AppHandle) {
 
         match action.as_str() {
             "exit" => {
-                for win in handle.webview_windows().into_values() {
-                    let _ = win.hide();
-                }
+                api.prevent_close();
+                let _ = handle.emit_to("main", "app://exit-requested", ());
             }
             "tray" => {
                 api.prevent_close();
                 let _ = w.hide();
             }
             _ => {
-                // If the UI is wedged it can never answer, and the user would
-                // be unable to close the window at all. Second attempt within
-                // 10s falls back to a plain exit.
+                // Repeated clicks must not bypass unsaved annotation confirmation.
                 api.prevent_close();
-                let now = std::time::Instant::now();
-                let mut last = LAST_ASK.lock().unwrap_or_else(|e| e.into_inner());
-                let stuck = last
-                    .map(|t: std::time::Instant| now.duration_since(t).as_secs() < 10)
-                    .unwrap_or(false);
-                *last = Some(now);
-                drop(last);
-                if stuck {
-                    handle.exit(0);
-                    return;
-                }
                 let _ = handle.emit("app://close-requested", ());
             }
         }
@@ -1101,8 +1074,6 @@ pub fn install_close_handler(app: &AppHandle) {
 
 /// Called by the UI once the user answered the close prompt.
 pub fn finish_close(app: &AppHandle, to_tray: bool) {
-    // 答过了就说明界面是活的，「点两次 X 强退」那条兜底该重新计时。
-    clear_close_ask();
     if to_tray {
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.hide();

@@ -1,3 +1,4 @@
+import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Btn } from "../components/ui";
@@ -74,7 +75,7 @@ function fmtAgo(mtime: number): string {
 export function HomePage({ onNavigate, active = true }: Props) {
   const { locale } = useI18n();
   void locale;
-  const [roles, setRoles] = useState<Role[] | null>(() => isTauri() ? homeSnapshot.roles : DEMO_ROLES);
+  const [roles, setRoles] = useState<Role[] | null>(() => isTauri() ? peekCharacters() ?? homeSnapshot.roles : DEMO_ROLES);
   const [recent, setRecent] = useState<Recent[] | null>(() => isTauri() ? homeSnapshot.recent : []);
   const banner = useBannerConfig();
 
@@ -82,8 +83,8 @@ export function HomePage({ onNavigate, active = true }: Props) {
     if (!isTauri() || !active) return;
     let alive = true;
     const refresh = () => {
-    void invoke<{ roles?: Role[] }>("synth_characters")
-      .then((r) => { if (alive) { homeSnapshot.roles = r?.roles ?? []; setRoles(homeSnapshot.roles); } })
+    void readCharacters()
+      .then((r) => { if (alive) { homeSnapshot.roles = r; setRoles(homeSnapshot.roles); } })
       .catch(() => {});
     void invoke<Recent[]>("synth_recent")
       .then((r) => { if (alive) { homeSnapshot.recent = Array.isArray(r) ? r : []; setRecent(homeSnapshot.recent); } })

@@ -24,12 +24,15 @@ afterEach(() => { act(() => root.unmount()); container.remove(); delete (window 
 describe("role library interaction", () => {
   it("does not switch to synthesis when the more button is opened", async () => {
     await act(async () => root.render(view(true)));
-    const card = container.querySelector('[role="button"][aria-label="current"]')!;
-    const more = card.querySelector("button")!;
+    const card = container.querySelector('[role="group"][aria-label="current"]')!;
+    const buttons = card.querySelectorAll("button");
+    const more = buttons[buttons.length - 1];
     expect(more).not.toBeNull();
     act(() => more.click());
     expect(mocks.synth).not.toHaveBeenCalled();
     act(() => (card as HTMLElement).click());
+    expect(mocks.synth).not.toHaveBeenCalled();
+    act(() => buttons[0].click());
     expect(mocks.synth).toHaveBeenCalledExactlyOnceWith("current");
   });
   it("ignores a delayed previous visit after returning and reloading", async () => {

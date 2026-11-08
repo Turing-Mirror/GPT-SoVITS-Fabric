@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useAudioPreview } from "../hooks/useAudioPreview";
 import { Btn } from "./ui";
 import { Select } from "./controls";
 import { t } from "../i18n/t";
@@ -57,9 +58,8 @@ export function SynthResults({
 }) {
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [sel, setSel] = useState("");
-  const [playing, setPlaying] = useState("");
+  const { playing, play: playAudio, player } = useAudioPreview();
   const [renaming, setRenaming] = useState(false);
-  const audio = useRef<HTMLAudioElement | null>(null);
 
   const reload = useCallback(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -76,30 +76,10 @@ export function SynthResults({
     if (latest) setSel(latest);
   }, [latest]);
 
-  const stop = useCallback(() => {
-    audio.current?.pause();
-    audio.current = null;
-    setPlaying("");
-  }, []);
-
-  useEffect(() => stop, [stop]);
-
-  const play = (path: string) => {
-    if (playing === path) {
-      stop();
-      return;
-    }
-    stop();
-    const a = new Audio(convertFileSrc(path));
-    a.onended = () => setPlaying("");
-    a.onerror = () => {
-      setPlaying("");
-      onError(t("synth.playFailed"));
-    };
-    audio.current = a;
-    void a.play();
-    setPlaying(path);
-  };
+  useEffect(() => {
+    player.retain(rows.map(r => r.path));
+  }, [rows, player]);
+  const play = (path: string) => playAudio(path, () => onError(t("synth.playFailed")));
 
   const current = rows.find((r) => r.path === sel) ?? null;
   const seed = current?.record?.params?.seed;
@@ -114,6 +94,7 @@ export function SynthResults({
 
   const rename = (name: string) => {
     if (!current) return;
+    player.stopPath(current.path);
     setRenaming(false);
     void invoke<string>("synth_rename", { path: current.path, name })
       .then((p) => {
@@ -125,7 +106,7 @@ export function SynthResults({
 
   const remove = () => {
     if (!current) return;
-    if (playing === current.path) stop();
+    player.stopPath(current.path);
     void invoke("synth_delete", { path: current.path })
       .then(() => {
         setSel("");

@@ -889,7 +889,11 @@
     "roleErrListAudio": "标注中的音频文件缺失，请修正路径后重试。",
     "roleWeightPickTitle": "选择模型文件",
     "roleListPickTitle": "关联标注文件",
-    "roleErrVersion": "请选择支持的模型版本。"
+    "roleErrVersion": "请选择支持的模型版本。",
+    "roleErrWeightInvalid": "模型文件无效或不受支持。",
+    "roleErrWeightPair": "GPT 与 SoVITS 模型不兼容。",
+    "roleErrWeightVersionMismatch": "所选版本与模型实际版本不一致。",
+    "roleErrWeightRuntime": "请先完成运行环境安装。"
   },
   "extras": {
     "engineTitle": "引擎资源",
@@ -1288,7 +1292,6 @@
     "modelFiles": "模型文件",
     "replaceWeight": "更换文件",
     "missingFile": "文件缺失",
-    "newModelVersion": "新模型版本",
     "associatedLists": "关联标注",
     "associateList": "关联 .list",
     "associateNote": "关联时复制标注及音频；解除关联时保留文件。",

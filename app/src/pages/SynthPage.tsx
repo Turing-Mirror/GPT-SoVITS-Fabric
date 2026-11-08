@@ -1,3 +1,4 @@
+import { peekCharacters, readCharacters, type Character as Role, type AnnotRow } from "../lib/characters";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -7,8 +8,10 @@ import { Collapse } from "../components/Presence";
 import { SynthResults, type OutFormat, type SynthRecord } from "../components/SynthResults";
 import { ErrorNote } from "../components/ErrorNote";
 import { useConfig } from "../hooks/useConfig";
+import { useAudioPreview } from "../hooks/useAudioPreview";
+import { referenceKey, findReference, referenceConfigKey, roleReferences } from "../lib/roleReferences";
 import { useRoleParams } from "../hooks/useRoleParams";
-import { SYNTH_DEFAULTS, type SynthParams } from "../lib/synthRoleParams";
+import { SYNTH_DEFAULTS } from "../lib/synthRoleParams";
 import { t } from "../i18n/t";
 import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
 import { artOf } from "../lib/art";
@@ -34,37 +37,12 @@ import { CatalogTransition } from "../components/CatalogTransition";
  * 浏览器预览模式（无 Tauri 外壳）下用内置样例数据，只为看排版，合成不可用。
  */
 
-type AnnotRow = {
-  line: number;
-  wav: string;
-  speaker: string;
-  lang: string;
-  text: string;
-  abs: string;
-  exists: boolean;
-  issues: string[];
-};
-
-type ListFile = { file: string; lang: string; note: string; rows: AnnotRow[] };
-
 type RoleParams = {
   speed?: number;
   top_k?: number;
   top_p?: number;
   temperature?: number;
   repetition_penalty?: number;
-};
-
-type Role = {
-  id: string;
-  name: string;
-  author: string;
-  version: string;
-  cover: string;
-  cover_exists: boolean;
-  params: Partial<SynthParams>;
-  lists: ListFile[];
-  dir: string;
 };
 
 /** 参考候选：`.list` 的一行，加上它属于哪个标注文件。 */
@@ -257,15 +235,13 @@ function ColHead({ title, note, action }: { title: string; note?: string; action
 /** 每一栏：宽窗口下各自内部滚动；窄窗口下随整页滚动。 */
 const COL = "min-h-0 flex flex-col min-[900px]:overflow-y-auto min-[900px]:overscroll-contain min-[900px]:pr-1";
 
-const keyOf = (r: RefRow) => `${r.from}#${r.line}`;
+const keyOf = referenceKey;
 
 export function SynthPage() {
   const c = useConfig();
-  const [roles, setRoles] = useState<Role[] | null>(null);
+  const [roles, setRoles] = useState<Role[] | null>(peekCharacters);
   const [reloadTick, setReloadTick] = useState(0);
   const [roleId, setRoleId] = useState("");
-  const [refKey, setRefKey] = useState("");
-  const [auxKeys, setAuxKeys] = useState<string[]>([]);
 
   const [mode, setMode] = useState<Mode>("single");
   const [text, setText] = useState("");
@@ -287,9 +263,7 @@ export function SynthPage() {
   const [err, setErr] = useState("");
   const [resultTick, setResultTick] = useState(0);
   const [latest, setLatest] = useState("");
-  const [preview, setPreview] = useState("");
-
-  const previewRef = useRef<HTMLAudioElement | null>(null);
+  const { playing: preview, play: previewAudio, stop: stopPreview, player: previewPlayer } = useAudioPreview();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const startedAt = useRef(0);
   /** 配置只在第一次读到时灌进来一次，之后以界面为准，免得写盘回声把滑块拽回去。 */
@@ -311,11 +285,10 @@ export function SynthPage() {
       setRoles(demoRoles());
       return;
     }
-    invoke<{ roles: Role[] }>("synth_characters")
-      .then((r) => alive && setRoles(r?.roles ?? []))
+    readCharacters()
+      .then((r) => alive && setRoles(r))
       .catch((e) => {
         if (!alive) return;
-        setRoles([]);
         setErr(String(e));
       });
     return () => {
@@ -327,6 +300,12 @@ export function SynthPage() {
     () => (roles ?? []).find((r) => r.id === (roleId || c.str("synth_role"))) ?? (roles ?? [])[0] ?? null,
     [roles, roleId, c],
   );
+  const selection = roleReferences(c.cfg, role?.id ?? "");
+  const refKey = selection.primary;
+  const auxKeys = selection.auxiliary;
+  const setRefKey = (primary: string) => {
+    if (role && c.loaded) void c.set(referenceConfigKey(role.id), { ...selection, primary }, true);
+  };
   const rp = useRoleParams(role, c.cfg, c.loaded);
   const { setDraft } = rp;
   const params: Params = useMemo(() => ({
@@ -347,7 +326,7 @@ export function SynthPage() {
   const [durs, setDurs] = useState<Record<string, number>>({});
   const usable = useCallback((r: RefRow) => r.exists && refFits(durs[r.abs]), [durs]);
   const ref = useMemo(() => {
-    const picked = refs.find((r) => keyOf(r) === refKey);
+    const picked = findReference(refs, refKey);
     if (picked && usable(picked)) return picked;
     // 默认优先已确认时长合格的，其次尚未探测完的。
     return (
@@ -358,7 +337,7 @@ export function SynthPage() {
   }, [refs, refKey, durs, usable]);
   // 辅助参考只取音色，不受 3–10 秒限制，文件在就行。
   const auxRows = useMemo(
-    () => auxKeys.map((k) => refs.find((r) => keyOf(r) === k)).filter((r): r is RefRow => !!r && r.exists),
+    () => auxKeys.map((k) => findReference(refs, k)).filter((r): r is RefRow => !!r && r.exists),
     [auxKeys, refs],
   );
 
@@ -416,8 +395,6 @@ export function SynthPage() {
   }, [setDraft, c]);
   const pickRole = useCallback((r: Role) => {
     setRoleId(r.id);
-    setRefKey("");
-    setAuxKeys([]);
     void c.set("synth_role", r.id);
   }, [c]);
 
@@ -474,29 +451,14 @@ export function SynthPage() {
     return () => window.clearInterval(id);
   }, [busy]);
 
-  const stopPreview = useCallback(() => {
-    previewRef.current?.pause();
-    previewRef.current = null;
-    setPreview("");
-  }, []);
-  useEffect(() => stopPreview, [stopPreview]);
-
-  const playRef = (r: RefRow) => {
-    if (preview === r.abs) {
-      stopPreview();
-      return;
-    }
+  useEffect(() => {
     stopPreview();
-    if (!isTauri()) return;
-    const a = new Audio(convertFileSrc(r.abs));
-    a.onended = () => setPreview("");
-    a.onerror = () => {
-      setPreview("");
-      setErr(t("synth.playFailed"));
-    };
-    previewRef.current = a;
-    void a.play();
-    setPreview(r.abs);
+  }, [role?.id, refPaged.page, refQuery, stopPreview]);
+  useEffect(() => {
+    previewPlayer.retain(refs.filter(r => r.exists).map(r => r.abs));
+  }, [refs, previewPlayer]);
+  const playRef = (r: RefRow) => {
+    if (isTauri()) previewAudio(r.abs, () => setErr(t("synth.playFailed")));
   };
 
   const refLang = (code: string) => {
@@ -506,7 +468,10 @@ export function SynthPage() {
 
   const toggleAux = (r: RefRow) => {
     const k = keyOf(r);
-    setAuxKeys((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
+    if (!role || !c.loaded) return;
+    const current = auxRows.map(keyOf);
+    const auxiliary = current.includes(k) ? current.filter(x => x !== k) : [...current, k];
+    void c.set(referenceConfigKey(role.id), { ...selection, auxiliary }, true);
   };
 
   /** 合成一条。返回 "done" 或 "stop"；出错时抛出。 */
@@ -811,12 +776,12 @@ export function SynthPage() {
                   {refPaged.slice.map((row, i) => {
                     const key = keyOf(row);
                     const on = ref != null && key === keyOf(ref);
-                    const isAux = auxKeys.includes(key);
+                    const isAux = auxRows.some(r => keyOf(r) === key);
                     const sec = durs[row.abs];
                     const ok = usable(row);
                     return (
                       <div
-                        key={key}
+                        key={`${key}:${row.line}`}
                         role="button"
                         tabIndex={ok ? 0 : -1}
                         aria-disabled={!ok || undefined}

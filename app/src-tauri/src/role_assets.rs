@@ -50,7 +50,7 @@ pub fn details(root: &Path, id: &str) -> Result<Value, String> {
             "exists":safe && path.is_file(),"valid":parsed.is_some(),"rows":parsed.as_ref().and_then(|p|p["total"].as_u64()).unwrap_or(0)})
     }).collect();
     Ok(
-        json!({"id":id,"version":cfg["version"].as_str().unwrap_or("v2ProPlus"),"versions":versions(root,&cfg),"weights":weights,"lists":lists}),
+        json!({"id":id,"version":cfg["version"].as_str().unwrap_or("v2ProPlus"),"versions":versions(root,&cfg),"weights":weights,"weight_info":cfg["weight_info"],"lists":lists}),
     )
 }
 
@@ -78,12 +78,73 @@ fn unique() -> String {
     )
 }
 
+fn inspect_replacement(
+    root: &Path,
+    kind: &str,
+    source: &Path,
+    counterpart: Option<&Path>,
+    version: Option<&str>,
+) -> Result<Value, String> {
+    let python = crate::paths::runtime_python(root)
+        .ok_or_else(|| crate::i18n::t("s.roleErrWeightRuntime"))?;
+    let script = root.join("tools/weight_inspect.py");
+    if !script.is_file() {
+        return Err(crate::i18n::t("s.roleErrWeightRuntime"));
+    }
+    let mut command = std::process::Command::new(python);
+    command
+        .arg(script)
+        .arg("--source")
+        .arg(source)
+        .arg("--kind")
+        .arg(kind)
+        .current_dir(root)
+        .env("PYTHONIOENCODING", "utf-8");
+    if let Some(path) = counterpart {
+        command.arg("--counterpart").arg(path);
+    }
+    if let Some(selected) = version.filter(|_| kind == "sovits") {
+        command.arg("--version").arg(selected);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let output = command
+        .output()
+        .map_err(|_| crate::i18n::t("s.roleErrWeightRuntime"))?;
+    let result: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|_| crate::i18n::t("s.roleErrWeightInvalid"))?;
+    if !output.status.success() || result["ok"] != true {
+        let key = match result["error"].as_str() {
+            Some("pair") => "s.roleErrWeightPair",
+            Some("version_mismatch") => "s.roleErrWeightVersionMismatch",
+            Some("runtime") => "s.roleErrWeightRuntime",
+            _ => "s.roleErrWeightInvalid",
+        };
+        return Err(crate::i18n::t(key));
+    }
+    Ok(result)
+}
+
 pub fn replace_weight(
     root: &Path,
     id: &str,
     kind: &str,
     src: &Path,
     version: Option<&str>,
+) -> Result<Value, String> {
+    replace_weight_with(root, id, kind, src, version, inspect_replacement)
+}
+
+fn replace_weight_with(
+    root: &Path,
+    id: &str,
+    kind: &str,
+    src: &Path,
+    version: Option<&str>,
+    inspect: impl FnOnce(&Path, &str, &Path, Option<&Path>, Option<&str>) -> Result<Value, String>,
 ) -> Result<Value, String> {
     crate::synth::while_idle(|| {
         let ext = weight_extension(kind)?;
@@ -99,11 +160,10 @@ pub fn replace_weight(
             return Err(crate::i18n::t("s.roleErrNoConfig"));
         }
         if kind == "sovits" {
-            if let Some(v) = version {
-                if !versions(root, &cfg).iter().any(|known| known == v) {
+            if let Some(selected) = version {
+                if !versions(root, &cfg).iter().any(|known| known == selected) {
                     return Err(crate::i18n::t("s.roleErrVersion"));
                 }
-                cfg["version"] = json!(v);
             }
         }
         let models = dir.join("models");
@@ -112,6 +172,23 @@ pub fn replace_weight(
         let tmp = models.join(format!(".weight-{}", unique()));
         let result = (|| {
             std::fs::copy(src, &tmp).map_err(|e| e.to_string())?;
+            let other = models.join(if kind == "gpt" {
+                "sovits.pth"
+            } else {
+                "gpt.ckpt"
+            });
+            // Validate the exact staged bytes before touching either installed file.
+            let validation = inspect(
+                root,
+                kind,
+                &tmp,
+                other.is_file().then_some(other.as_path()),
+                version,
+            )?;
+            if let Some(detected) = validation["version"].as_str() {
+                cfg["version"] = json!(detected);
+            }
+            cfg["weight_info"] = json!({"gpt":validation["gpt"], "sovits":validation["sovits"]});
             // The worker caches by role ID, including when filenames remain unchanged.
             crate::synth::shutdown();
             let backup = models.join(format!(".weight-previous-{}", unique()));
@@ -121,9 +198,7 @@ pub fn replace_weight(
             }
             let install = (|| {
                 std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
-                if kind == "sovits" && version.is_some() {
-                    write_cfg(&dir, &cfg)?;
-                }
+                write_cfg(&dir, &cfg)?;
                 Ok::<(), String>(())
             })();
             if let Err(err) = install {
@@ -346,7 +421,20 @@ mod tests {
         let (root, dir) = fixture("role-weight");
         let src = root.join("replacement.ckpt");
         std::fs::write(&src, b"new gpt").unwrap();
-        replace_weight(&root, "voice", "gpt", &src, None).unwrap();
+        replace_weight_with(
+            &root,
+            "voice",
+            "gpt",
+            &src,
+            None,
+            |_, kind, staged, other, _| {
+                assert_eq!(kind, "gpt");
+                assert!(other.is_none());
+                assert_eq!(std::fs::read(staged).unwrap(), b"new gpt");
+                Ok(json!({"gpt":{"symbol_version":"v2"}}))
+            },
+        )
+        .unwrap();
         assert_eq!(
             std::fs::read(dir.join("models/gpt.ckpt")).unwrap(),
             b"new gpt"
@@ -354,6 +442,73 @@ mod tests {
         assert_eq!(std::fs::read(&src).unwrap(), b"new gpt");
         assert!(replace_weight(&root, "voice", "sovits", &src, None).is_err());
         assert_eq!(read_cfg(&dir).unwrap()["version"], "v2");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn invalid_checkpoint_preserves_weights_and_config() {
+        let (root, dir) = fixture("role-invalid-weight");
+        let src = root.join("replacement.ckpt");
+        std::fs::write(&src, b"not a checkpoint").unwrap();
+        let config = std::fs::read(dir.join("config.json")).unwrap();
+        let result = replace_weight_with(&root, "voice", "gpt", &src, None, |_, _, _, _, _| {
+            Err("invalid checkpoint".into())
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read(dir.join("models/gpt.ckpt")).unwrap(),
+            b"old gpt"
+        );
+        assert_eq!(std::fs::read(dir.join("config.json")).unwrap(), config);
+        assert_eq!(std::fs::read_dir(dir.join("models")).unwrap().count(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_runtime_leaves_existing_weights_untouched() {
+        let (root, dir) = fixture("role-weight-no-runtime");
+        let src = root.join("replacement.ckpt");
+        std::fs::write(&src, b"new gpt").unwrap();
+        assert!(replace_weight(&root, "voice", "gpt", &src, None).is_err());
+        assert_eq!(
+            std::fs::read(dir.join("models/gpt.ckpt")).unwrap(),
+            b"old gpt"
+        );
+        assert_eq!(std::fs::read_dir(dir.join("models")).unwrap().count(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detected_version_is_saved_and_returned() {
+        let (root, dir) = fixture("role-detected-weight");
+        let src = root.join("replacement.pth");
+        std::fs::write(&src, b"new sovits").unwrap();
+        let detail = replace_weight_with(&root, "voice", "sovits", &src, None, |_, _, _, other, _| {
+            assert_eq!(other.unwrap().file_name().unwrap(), "gpt.ckpt");
+            Ok(json!({"version":"v5dev", "sovits":{"version":"v5dev"}, "gpt":{"symbol_version":"v2"}}))
+        }).unwrap();
+        assert_eq!(detail["version"], "v5dev");
+        assert_eq!(read_cfg(&dir).unwrap()["version"], "v5dev");
+        assert_eq!(read_cfg(&dir).unwrap()["custom"], 42);
+        assert_eq!(detail["weight_info"]["sovits"]["version"], "v5dev");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn config_write_failure_restores_previous_weight() {
+        let (root, dir) = fixture("role-weight-rollback");
+        let src = root.join("replacement.ckpt");
+        std::fs::write(&src, b"new gpt").unwrap();
+        let result = replace_weight_with(&root, "voice", "gpt", &src, None, |_, _, _, _, _| {
+            std::fs::remove_file(dir.join("config.json")).unwrap();
+            std::fs::create_dir(dir.join("config.json")).unwrap();
+            Ok(json!({"gpt":{"symbol_version":"v2"}}))
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read(dir.join("models/gpt.ckpt")).unwrap(),
+            b"old gpt"
+        );
+        assert_eq!(std::fs::read_dir(dir.join("models")).unwrap().count(), 1);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

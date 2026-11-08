@@ -889,7 +889,11 @@
     "roleErrListAudio": "Audio files referenced by the annotations are missing. Correct the paths and try again.",
     "roleWeightPickTitle": "Select model file",
     "roleListPickTitle": "Link annotation file",
-    "roleErrVersion": "Select a supported model version."
+    "roleErrVersion": "Select a supported model version.",
+    "roleErrWeightInvalid": "The model file is invalid or unsupported.",
+    "roleErrWeightPair": "The GPT and SoVITS models are incompatible.",
+    "roleErrWeightVersionMismatch": "The selected version does not match the model.",
+    "roleErrWeightRuntime": "Complete the runtime installation first."
   },
   "extras": {
     "engineTitle": "Engine resources",
@@ -1288,7 +1292,6 @@
     "modelFiles": "Model files",
     "replaceWeight": "Replace file",
     "missingFile": "File missing",
-    "newModelVersion": "New model version",
     "associatedLists": "Linked annotations",
     "associateList": "Link .list",
     "associateNote": "Linking copies the annotations and audio. Unlinking keeps the files.",

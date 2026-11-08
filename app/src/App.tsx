@@ -17,7 +17,6 @@ import { TitleBar } from "./components/TitleBar";
 import { useEngine } from "./hooks/useEngine";
 import { usePlaza } from "./hooks/usePlaza";
 import { forceKillEngine } from "./lib/engine";
-import type { PageId } from "./lib/nav";
 import { invoke } from "@tauri-apps/api/core";
 import { applyAppearance } from "./lib/appearance";
 import { listen } from "@tauri-apps/api/event";
@@ -32,6 +31,8 @@ import { SynthPage } from "./pages/SynthPage";
 import { TrainPage } from "./pages/TrainPage";
 import { registerDownloadModelsOpener } from "./lib/downloadModels";
 import { registerHelpOpener } from "./lib/helpNav";
+import { usePageNavigation } from "./hooks/usePageNavigation";
+import { mayCloseApp } from "./lib/windowLeave";
 import { registerNavigator } from "./lib/intent";
 import { useI18n } from "./i18n";
 import { t } from "./i18n/t";
@@ -83,7 +84,7 @@ export default function App() {
   const { locale } = useI18n();
   void locale;
 
-  const [page, setPage] = useState<PageId>("home");
+  const [page, setPage] = usePageNavigation("home");
   const [compactNav, setCompactNav] = useState(false);
   // 「下载模型」：用户主动打开，或音频工具缺引擎资源时跳转。
   const [extrasReason, setExtrasReason] = useState("");
@@ -425,6 +426,7 @@ export default function App() {
   const [closeRemember, setCloseRemember] = useState(false);
   const answerClose = async (toTray: boolean) => {
     setCloseAsk(false);
+    if (!toTray && !(await mayCloseApp())) return;
     if (closeRemember) {
       await invoke("config_set", {
         patch: { close_action: toTray ? "tray" : "exit" },
@@ -512,14 +514,14 @@ export default function App() {
   const openCommunity = useCallback(() => {
     setCommunityNonce((n) => n + 1);
     setPage("more");
-  }, []);
+  }, [setPage]);
   const [helpFocus, setHelpFocus] = useState("");
   const [helpFocusNonce, setHelpFocusNonce] = useState(0);
   const openHelp = useCallback((section?: string) => {
     setHelpFocus(section || "");
     setHelpFocusNonce((n) => n + 1);
     setPage("help");
-  }, []);
+  }, [setPage]);
   // 「下载模型」现在住在广场，「其他」页和工具入口都是跳过来。
   //
   // 以前它是「其他」页上弹的一个框。同一件事在两个地方各有一份实现，改一个
@@ -536,7 +538,7 @@ export default function App() {
       // 加一 = 「再滚一次」。广场很长，不滚过去用户看不见自己被带到哪了。
       setScrollToDownloads((n) => n + 1);
     },
-    [plaza],
+    [plaza, setPage],
   );
 
   useEffect(() => {
@@ -577,7 +579,7 @@ export default function App() {
   useEffect(() => {
     registerNavigator(setPage);
     return () => registerNavigator(null);
-  }, []);
+  }, [setPage]);
 
   useEffect(() => {
     let un: (() => void) | undefined;
@@ -593,7 +595,7 @@ export default function App() {
   const openPlaza = useCallback(() => {
     plaza.markSeen();
     setPage("plaza");
-  }, [plaza]);
+  }, [plaza, setPage]);
   const { reload: plazaReload } = plaza;
   const reloadPlaza = useCallback(() => void plazaReload(), [plazaReload]);
 
@@ -609,6 +611,9 @@ export default function App() {
     // hotkey://toggle-window 没有前端处理：窗口藏起来时 webview 可能被系统
     // 挂起，事件根本到不了这里。那个动作在 Rust 里就地做完了。
     void add("app://close-requested", () => setCloseAsk(true));
+    void add("app://exit-requested", () => {
+      void mayCloseApp().then(ok => { if (ok) void invoke("close_finish", { toTray: false }); });
+    });
     return () => {
       disposed = true;
       offs.forEach((f) => f());

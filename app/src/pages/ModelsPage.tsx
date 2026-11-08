@@ -1,3 +1,4 @@
+import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field } from "../components/controls";
@@ -61,8 +62,8 @@ export function ModelsPage({
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [loading, setLoading] = useState(isTauri());
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [loading, setLoading] = useState(() => isTauri() && peekCharacters() === null);
+  const [roles, setRoles] = useState<Role[]>(() => peekCharacters() ?? []);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [editing, setEditing] = useState<Role | null>(null);
@@ -77,8 +78,8 @@ export function ModelsPage({
     if (!isTauri()) return;
     const request = ++loadRequest.current;
     setLoading(true);
-    void invoke<{ roles?: Role[] }>("synth_characters")
-      .then((r) => { if (request === loadRequest.current) setRoles(r?.roles ?? []); })
+    void readCharacters()
+      .then((r) => { if (request === loadRequest.current) setRoles(r); })
       .catch((e) => { if (request === loadRequest.current) setMsg(String(e)); })
       .finally(() => { if (request === loadRequest.current) setLoading(false); });
   }, []);
