@@ -877,7 +877,6 @@
     "metaProgress": "Progression : {v0} %",
     "metaVersion": "Version : {v0}",
     "roleBaseVersion": "Modèle de base : {v0}",
-    "metaSize": "Taille : {v0}",
     "gpuIndexed": "GPU {v0} : {v1}",
     "valueLoading": "Chargement",
     "valueFailed": "Lecture impossible",

@@ -877,7 +877,6 @@
     "metaProgress": "Прогресс: {v0}%",
     "metaVersion": "Версия: {v0}",
     "roleBaseVersion": "Базовая модель: {v0}",
-    "metaSize": "Размер: {v0}",
     "gpuIndexed": "GPU {v0}: {v1}",
     "valueLoading": "Загрузка",
     "valueFailed": "Не удалось прочитать",
