@@ -786,6 +786,7 @@
     "annot.title": ".list 주석 관리",
     "annot.sub": "같은 주석이 학습에도, 「합성」의 참조 후보에도 쓰입니다.",
     "annot.open": ".list 열기",
+    "annot.volume": "음량",
     "annot.reload": "다시 읽기",
     "annot.reveal": "폴더에서 보기",
     "annot.saveDirty": "변경 저장",

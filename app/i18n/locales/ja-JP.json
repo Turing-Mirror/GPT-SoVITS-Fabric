@@ -786,6 +786,7 @@
     "annot.title": ".list 注釈の管理",
     "annot.sub": "同じアノテーションを学習にも、「合成」の参照候補にも使います。",
     "annot.open": ".list を開く",
+    "annot.volume": "音量",
     "annot.reload": "再読み込み",
     "annot.reveal": "フォルダーで表示",
     "annot.saveDirty": "変更を保存",

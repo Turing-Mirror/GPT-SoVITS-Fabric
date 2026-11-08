@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Block, Btn, PageHead, PagePad } from "../components/ui";
-import { Select } from "../components/controls";
+import { Select, Slider } from "../components/controls";
 import { SegmentControl } from "../components/SegmentControl";
 import { ErrorNote } from "../components/ErrorNote";
 import { openTool } from "../components/ToolWindow";
@@ -13,6 +13,7 @@ import { CatalogTransition } from "../components/CatalogTransition";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { ModelCard } from "../components/ModelCard";
+import { useConfig } from "../hooks/useConfig";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
 /**
@@ -100,6 +101,12 @@ function AnnotPageImpl() {
   const [only, setOnly] = useState<"all" | "bad">("all");
   const [playing, setPlaying] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const config = useConfig();
+  const savedVolume = config.num("annot_preview_volume", 100);
+  const volume = Number.isFinite(savedVolume) ? Math.max(0, Math.min(100, savedVolume)) : 100;
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume / 100;
+  }, [volume]);
 
   // 页面消息自己消失。不消失的话下一条会盖掉上一条，用户更容易漏看。
   useEffect(() => {
@@ -259,6 +266,7 @@ function AnnotPageImpl() {
     }
     try {
       const a = new Audio(isTauri() ? convertFileSrc(r.abs) : r.abs);
+      a.volume = volume / 100;
       a.onended = () => setPlaying("");
       a.onerror = () => {
         setPlaying("");
@@ -270,7 +278,7 @@ function AnnotPageImpl() {
     } catch (e) {
       setErr(String(e));
     }
-  }, [playing]);
+  }, [playing, volume]);
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -347,11 +355,19 @@ function AnnotPageImpl() {
                   {t("s.annot.openWindow")}
                 </Btn>
               ) : null}
-              <Btn primary={!path} onClick={() => void open()} busy={busy && !path}>
+              {!path ? <Btn primary onClick={() => void open()} busy={busy}>
                 {t("s.annot.open")}
-              </Btn>
+              </Btn> : null}
               {path ? (
                 <>
+                  <div className="flex items-center gap-2" role="group" aria-label={t("s.annot.volume")}>
+                    <span className="text-[12.5px] text-[var(--ink-muted)] whitespace-nowrap">{t("s.annot.volume")}</span>
+                    <div className="w-[170px]">
+                      <Slider value={volume} min={0} max={100} step={1} defaultValue={100}
+                        ariaLabel={t("s.annot.volume")} format={value => `${value}%`}
+                        onChange={value => void config.set("annot_preview_volume", value)} />
+                    </div>
+                  </div>
                   <Btn onClick={() => void reload()} disabled={busy}>
                     {t("s.annot.reload")}
                   </Btn>
@@ -372,7 +388,7 @@ function AnnotPageImpl() {
           }
         />
 
-        {err ? <ErrorNote text={err} /> : null}
+        {err || config.error ? <ErrorNote text={err || config.error} /> : null}
         {msg ? (
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
         ) : null}

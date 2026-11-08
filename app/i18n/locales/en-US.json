@@ -786,6 +786,7 @@
     "annot.title": ".list annotations",
     "annot.sub": "The same annotation is used for training and as reference candidates in Synthesis.",
     "annot.open": "Open .list",
+    "annot.volume": "Volume",
     "annot.reload": "Reload",
     "annot.reveal": "Show in folder",
     "annot.saveDirty": "Save changes",

@@ -786,6 +786,7 @@
     "annot.title": ".list 标注管理",
     "annot.sub": "同一份标注既用于训练，也作为「合成」的参考候选。",
     "annot.open": "打开 .list",
+    "annot.volume": "音量",
     "annot.reload": "重新读取",
     "annot.reveal": "在文件夹中显示",
     "annot.saveDirty": "保存改动",

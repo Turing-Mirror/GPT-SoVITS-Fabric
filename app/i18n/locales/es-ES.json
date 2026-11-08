@@ -786,6 +786,7 @@
     "annot.title": "Anotaciones .list",
     "annot.sub": "La misma anotación se usa para el entrenamiento y como referencias candidatas en Síntesis.",
     "annot.open": "Abrir .list",
+    "annot.volume": "Volumen",
     "annot.reload": "Recargar",
     "annot.reveal": "Mostrar en la carpeta",
     "annot.saveDirty": "Guardar cambios",
