@@ -67,7 +67,7 @@ fn has_extension(path: &Path, ext: &str) -> bool {
         .map(|s| s.eq_ignore_ascii_case(ext))
         .unwrap_or(false)
 }
-fn unique() -> String {
+pub(crate) fn unique() -> String {
     format!(
         "{}-{}",
         std::process::id(),
@@ -78,7 +78,7 @@ fn unique() -> String {
     )
 }
 
-fn inspect_replacement(
+pub(crate) fn inspect_replacement(
     root: &Path,
     kind: &str,
     source: &Path,

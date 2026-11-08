@@ -56,3 +56,9 @@ tools/weight_inspect.py 使用 PyTorch 的 weights_only 与 FakeTensorMode 读�
 - 未执行真实训练或真实合成；检查点结构验证不代表音质或完整推理验收。
 
 依据：[上游检查点格式](https://github.com/RVC-Boss/GPT-SoVITS/blob/main/GPT_SoVITS/process_ckpt.py)、[上游 TTS 加载规则](https://github.com/RVC-Boss/GPT-SoVITS/blob/main/GPT_SoVITS/TTS_infer_pack/TTS.py)。
+
+## 旧角色版本识别
+
+导入角色包时，有 Python 运行环境的客户端读取两份检查点并保存实际版本，校验通过后才替换已有角色。环境尚未安装时，角色可先导入，权重校验状态标为待检查。合成 worker 在加载角色时按检查点识别版本和配对，再初始化引擎。七组旧角色均为 v2。合成使用包内训练成品，v2 训练底模通过广场的“训练底模”分类按需下载。
+
+上游底模来源：[GPT-SoVITS v2 底模](https://huggingface.co/lj1995/GPT-SoVITS/tree/main/gsv-v2final-pretrained)。

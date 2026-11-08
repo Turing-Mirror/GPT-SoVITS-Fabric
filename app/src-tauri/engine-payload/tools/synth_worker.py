@@ -298,6 +298,17 @@ class SynthEngine:
             emit(event="ready", role=role_id, cached=True, device=str(getattr(self._config, "device", "")))
             return
 
+        from tools.weight_inspect import WeightError, validate_replacement
+
+        try:
+            detected = validate_replacement(self._abs(sovits), "sovits", self._abs(gpt))
+        except WeightError as exc:
+            emit(event="error", job=role_id, message="模型权重校验失败",
+                 code="load_failed", detail=str(exc))
+            return
+        req = {**req, "version": detected["version"]}
+        self._current = None
+
         def _load() -> None:
             """新建 = TTS(cfg) 构造时按角色权重初始化；已建 = 热切换。"""
             if not self._ensure_tts(req):

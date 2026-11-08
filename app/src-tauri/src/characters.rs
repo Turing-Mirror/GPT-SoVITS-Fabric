@@ -166,8 +166,8 @@ pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
         .files
         .get("config.json")
         .ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
-    let cfg: Value = serde_json::from_slice(cfg_bytes)
-        .map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))?;
+    let mut cfg: Value =
+        serde_json::from_slice(cfg_bytes).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))?;
 
     let name = str_field(&cfg, "name");
     if name.trim().is_empty() {
@@ -195,26 +195,70 @@ pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
         &declared
     });
 
-    let dest = paths::user_data(root).join("characters").join(&id);
-    // 覆盖安装：先清空，避免上一版留下的多余权重被当成这一版的。
-    if dest.exists() {
-        std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    }
-    std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let parent = paths::user_data(root).join("characters");
+    let dest = parent.join(&id);
+    let nonce = crate::role_assets::unique();
+    let stage = paths::user_data(root).join(format!(".install-{nonce}"));
+    let backup = paths::user_data(root).join(format!(".previous-{nonce}"));
+    std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        for (rel, bytes) in &z.files {
+            // 落盘前再查一遍：剥包装目录是字符串操作，别让它把校验绕过去。
+            check_entry_path(rel)?;
+            let out = stage.join(rel);
+            // 最后一道：算出来的路径必须仍在角色目录里。
+            if !out.starts_with(&stage) {
+                return Err(format!("entry escapes the pack dir: {rel}"));
+            }
+            if rel == "config.json" {
+                continue;
+            }
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("{}: {e}", parent.display()))?;
+            }
+            std::fs::write(&out, bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+        }
 
-    for (rel, bytes) in &z.files {
-        // 落盘前再查一遍：剥包装目录是字符串操作，别让它把校验绕过去。
-        check_entry_path(rel)?;
-        let out = dest.join(rel);
-        // 最后一道：算出来的路径必须仍在角色目录里。
-        if !out.starts_with(&dest) {
-            return Err(format!("entry escapes the pack dir: {rel}"));
+        if crate::paths::runtime_python(root).is_some()
+            && root.join("tools/weight_inspect.py").is_file()
+        {
+            let detected = crate::role_assets::inspect_replacement(
+                root,
+                "sovits",
+                &stage.join("models/sovits.pth"),
+                Some(&stage.join("models/gpt.ckpt")),
+                None,
+            )?;
+            cfg["version"] = detected["version"].clone();
+            cfg["weight_info"] = json!({"gpt": detected["gpt"], "sovits": detected["sovits"]});
+            cfg["weight_validation"] = json!("verified");
+        } else {
+            cfg["weight_validation"] = json!("pending");
         }
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        write_cfg(&stage, &cfg)?;
+        static INSTALL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let replacing = dest.exists();
+        if replacing {
+            std::fs::rename(&dest, &backup).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&out, bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+        if let Err(e) = std::fs::rename(&stage, &dest) {
+            if replacing {
+                std::fs::rename(&backup, &dest).map_err(|restore| format!("{e}; {restore}"))?;
+            }
+            return Err(e.to_string());
+        }
+        if replacing {
+            let _ = std::fs::remove_dir_all(&backup);
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&stage);
     }
+    result?;
 
     let version = {
         let v = str_field(&cfg, "version");
