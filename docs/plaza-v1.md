@@ -53,3 +53,5 @@
 对照固定上游版本表和公开附件，v2、v3、v4、v2ProPlus、v5dev 和 v5turbo 所需底模已有对应资源。v1 的 GPT 与 SoVITS 底模、v2Pro 的 SoVITS G/D，以及 v3 可选的 AP-BWE 超采样权重仍无广场下载项。现有 v1 和 v2Pro 成品角色可用各自随包权重。v2Pro 合成所需的声纹模型随基础引擎资源提供。
 
 上游参考：[GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS/blob/main/README.md)、[预训练模型](https://huggingface.co/lj1995/GPT-SoVITS/tree/main)。
+
+隔离客户端从公开广场下载五个文件并校验哈希，两组均显示已安装。使用下载所得权重完成真实 CUDA 短句合成，v3 输出 24 kHz，v4 输出 48 kHz。训练页 v4 底模缺失列表为空。前端 107 项测试和完整构建通过。

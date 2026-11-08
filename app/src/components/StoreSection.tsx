@@ -907,7 +907,8 @@ function VoiceCard({
   const childLabel = voiceChildGroup(v, loc);
   const ver = /^v(?:[1-5]|2Pro(?:Plus)?|5dev|5turbo)$/.test(v.version ?? "") ? v.version : "";
   const date = voiceVersionLabel(v.date).slice(1);
-  const meta = joinClauses([parentLabel, childLabel, date, v.size_label && t("s.metaSize", { v0: v.size_label })]);
+  const byline = joinClauses([author ? t("s.7feea73fa3", { v0: author }) : t("s.2af26573b0"), date]);
+  const meta = joinClauses([parentLabel, childLabel, v.size_label && t("s.metaSize", { v0: v.size_label })]);
   const coverBadge = author || displayVoiceOrigin(v);
   // 第三方音色下下来是别人的东西：作者是谁、从哪个仓库发的，得在**下载之前**
   // 就能点开看，不能等装完了才在模型页的「⋯」里找得到。清单里两个地址常常
@@ -964,9 +965,9 @@ function VoiceCard({
       </div>
       <div
         className="text-xs text-[var(--meta)] mt-0.5 truncate"
-        title={author || undefined}
+        title={byline}
       >
-        {author ? t("s.7feea73fa3", { v0: author }) : t("s.2af26573b0")}
+        {byline}
       </div>
       {meta ? (
         <div className="text-[11.5px] text-[var(--meta)] truncate" title={meta}>
