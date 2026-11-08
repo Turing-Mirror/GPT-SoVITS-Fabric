@@ -876,6 +876,7 @@
     "metaSpeed": "속도: {v0}",
     "metaProgress": "진행률: {v0}%",
     "metaVersion": "버전: {v0}",
+    "roleBaseVersion": "기본 모델: {v0}",
     "metaSize": "크기: {v0}",
     "gpuIndexed": "GPU {v0}: {v1}",
     "valueLoading": "불러오는 중",

@@ -876,6 +876,7 @@
     "metaSpeed": "速度：{v0}",
     "metaProgress": "進度：{v0}%",
     "metaVersion": "版本：{v0}",
+    "roleBaseVersion": "底模：{v0}",
     "metaSize": "大小：{v0}",
     "gpuIndexed": "顯示卡 {v0}：{v1}",
     "valueLoading": "正在讀取",

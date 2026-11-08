@@ -851,6 +851,77 @@
           ]
         }
       ]
+    },
+    "gsv-v3": {
+      "key": "gsv-v3",
+      "label": "GPT-SoVITS v3",
+      "dest": "GPT_SoVITS/pretrained_models",
+      "notes": "",
+      "group": "synth",
+      "recommended": false,
+      "order": 30,
+      "release_tag": "GSV-v3-base",
+      "size_bytes": 994216232,
+      "files": [
+        {
+          "name": "s2Gv3.pth",
+          "sha256": "f33abb1920076d988e1711d5f41b5c9c6d7f92575b4acf0ad4fae6a4ebf0cf19",
+          "size_bytes": 769035145,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v3-base/s2Gv3.pth"
+          ]
+        },
+        {
+          "name": "models--nvidia--bigvgan_v2_24khz_100band_256x/config.json",
+          "sha256": "d77e2c96583ca2296ac112a56ec7cc6bd5da4bf7681ceff18448bedc4fcf6512",
+          "size_bytes": 1402,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v3-base/config.json"
+          ]
+        },
+        {
+          "name": "models--nvidia--bigvgan_v2_24khz_100band_256x/bigvgan_generator.pt",
+          "sha256": "ee5e2f9cd60b51db75e1806f4fe7621733757586c541c78cb3dd369d5ba24476",
+          "size_bytes": 225179685,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v3-base/bigvgan_generator.pt"
+          ]
+        }
+      ]
+    },
+    "gsv-v4": {
+      "key": "gsv-v4",
+      "label": "GPT-SoVITS v4",
+      "dest": "GPT_SoVITS/pretrained_models/gsv-v4-pretrained",
+      "notes": "",
+      "group": "synth",
+      "recommended": false,
+      "order": 40,
+      "release_tag": "GSV-v4-base",
+      "size_bytes": 826806654,
+      "files": [
+        {
+          "name": "s2Gv4.pth",
+          "sha256": "906fe22f48c3e037a389df291d4d32a9414e15dbb8f9628643e83aaced109ea4",
+          "size_bytes": 769025545,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v4-base/s2Gv4.pth"
+          ]
+        },
+        {
+          "name": "vocoder.pth",
+          "sha256": "4d611913df7b12d49e8976c944558d2d096816365edfc6c35a9e85b67dd14ed9",
+          "size_bytes": 57781109,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v4-base/vocoder.pth"
+          ]
+        }
+      ]
     }
   },
   "engine_core": {

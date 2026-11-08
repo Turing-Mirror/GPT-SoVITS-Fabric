@@ -43,3 +43,13 @@
 新增未安装引擎状态下的组件测试，验证列表可见、下载按钮可用且直接启动所选模型下载。浏览器复核八语言、两种窗口尺寸与下载切页恢复。
 
 本次原生资源模块 18 项测试通过；前端共 61 项测试通过，构建、类型检查与八语言文案检查通过。
+
+## 旧版底模下载
+
+广场在“合成底模”下列出 GPT-SoVITS v3 和 v4。v3 包含 SoVITS 权重和 BigVGAN 的配置及权重。v4 包含 SoVITS 权重和 v4 声码器。两组共用引擎资源中已有的 GPT s1v3。各文件沿用上游路径，v4 与 v5 的同名声码器按不同 Release 标签发布。
+
+角色卡片的封面角标显示清单登记的底模版本，发布日期显示在卡片信息行。无法确认底模版本的条目不显示底模角标。
+
+对照固定上游版本表和公开附件，v2、v3、v4、v2ProPlus、v5dev 和 v5turbo 所需底模已有对应资源。v1 的 GPT 与 SoVITS 底模、v2Pro 的 SoVITS G/D，以及 v3 可选的 AP-BWE 超采样权重仍无广场下载项。现有 v1 和 v2Pro 成品角色可用各自随包权重。v2Pro 合成所需的声纹模型随基础引擎资源提供。
+
+上游参考：[GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS/blob/main/README.md)、[预训练模型](https://huggingface.co/lj1995/GPT-SoVITS/tree/main)。

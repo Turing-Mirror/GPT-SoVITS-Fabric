@@ -905,12 +905,10 @@ function VoiceCard({
   const author = displayVoiceAuthor(v, loc);
   const parentLabel = voiceParentSeries(v, loc);
   const childLabel = voiceChildGroup(v, loc);
-  const meta =
-    joinClauses([parentLabel, childLabel, v.size_label && t("s.metaSize", { v0: v.size_label })]);
+  const ver = /^v(?:[1-5]|2Pro(?:Plus)?|5dev|5turbo)$/.test(v.version ?? "") ? v.version : "";
+  const date = voiceVersionLabel(v.date).slice(1);
+  const meta = joinClauses([parentLabel, childLabel, date, v.size_label && t("s.metaSize", { v0: v.size_label })]);
   const coverBadge = author || displayVoiceOrigin(v);
-  // 发布日期当版本号（v26.07.31）：同一角色常有多个版本在架，下载前先看清
-  // 自己装的是哪一版。没有日期就不画，不留一个空角标。
-  const ver = voiceVersionLabel(v.date);
   // 第三方音色下下来是别人的东西：作者是谁、从哪个仓库发的，得在**下载之前**
   // 就能点开看，不能等装完了才在模型页的「⋯」里找得到。清单里两个地址常常
   // 只有一个，有哪条给哪条。作者可以有多位 —— 多位时点了先问一声开哪个。
@@ -948,7 +946,7 @@ function VoiceCard({
         ) : null}
         {ver ? (
           <span className="absolute left-2.5 top-2.5 text-[11px] px-1.5 py-0.5 rounded-[4px] tabular-nums text-[var(--ink)] bg-[color-mix(in_srgb,var(--surface)_72%,transparent)] shadow-[inset_0_0_0_1px_var(--line)]">
-            {ver}
+            {t("s.roleBaseVersion", { v0: ver })}
           </span>
         ) : null}
         <span className="absolute left-2.5 bottom-2 text-[11px] text-[var(--ink)] drop-shadow">

@@ -876,6 +876,7 @@
     "metaSpeed": "Speed: {v0}",
     "metaProgress": "Progress: {v0}%",
     "metaVersion": "Version: {v0}",
+    "roleBaseVersion": "Base model: {v0}",
     "metaSize": "Size: {v0}",
     "gpuIndexed": "GPU {v0}: {v1}",
     "valueLoading": "Loading",
