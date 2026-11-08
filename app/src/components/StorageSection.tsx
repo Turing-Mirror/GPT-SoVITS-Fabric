@@ -40,16 +40,7 @@ function human(n: number): string {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-/**
- * 存储占用与训练残留清理。
- *
- * 一个训练实验的中间产物动辄三四个 GB，而用户完全看不见 —— 他只知道 C 盘满了，
- * 不知道是谁占的，于是来群里问「能不能删」。这里把占用摊开，并且只允许逐个实验、
- * 逐类勾选后清除。
- *
- * 明确不做「一键清理全部实验」：这套判据先在真实用户那边跑过一个版本再说。误删
- * 一次就是不可挽回的信任损失，而它省下的只是几次点击。
- */
+/** 各实验分别勾选清理类别，由列表底部统一执行。 */
 export function StorageSection() {
   const request = useRef(0);
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -77,23 +68,24 @@ export function StorageSection() {
     pageClamped * PAGE_SIZE,
   );
 
-  const scan = async () => {
+  const scan = async (resetSelection = true) => {
     const current = ++request.current;
     setBusy(true);
     setMsg("");
     const [u, r] = await Promise.allSettled([
       invoke<Usage>("storage_usage"), invoke<Row[]>("train_cleanup_scan"),
     ]);
-    if (current !== request.current) return;
+    if (current !== request.current) return "";
     if (u.status === "fulfilled") setUsage(u.value);
     if (r.status === "fulfilled") {
       setRows(Array.isArray(r.value) ? r.value : []);
-      setPicked({});
+      if (resetSelection) setPicked({});
       setPage(1);
     }
     const failure = [u, r].find((result) => result.status === "rejected");
     if (failure?.status === "rejected") setMsg(String(failure.reason));
     setBusy(false);
+    return failure?.status === "rejected" ? String(failure.reason) : "";
   };
 
   useEffect(() => {
@@ -113,24 +105,36 @@ export function StorageSection() {
     });
   };
 
-  const apply = async (row: Row) => {
-    const kinds = [...(picked[row.exp] ?? [])];
-    if (kinds.length === 0 || busy) return;
-    const names = listText(kinds.map((k) => t(KINDS.find((x) => x.id === k)?.labelKey ?? k)));
-    if (!(await askConfirm(t("s.cleanupConfirm", { a0: row.exp, a1: names })))) return;
+  const selected = sorted.map(row => ({
+    exp: row.exp,
+    kinds: KINDS.filter(kind => picked[row.exp]?.has(kind.id) && (row.kinds[kind.id]?.bytes ?? 0) > 0).map(kind => kind.id),
+  })).filter(row => row.kinds.length > 0);
+  const pickedCount = selected.reduce((count, row) => count + row.kinds.length, 0);
+  const pickedBytes = selected.reduce((bytes, row) => bytes + row.kinds.reduce(
+    (sum, kind) => sum + (rows?.find(item => item.exp === row.exp)?.kinds[kind]?.bytes ?? 0), 0), 0);
+
+  const apply = async () => {
+    if (!selected.length || busy) return;
     setBusy(true);
+    const names = selected.map(row => row.exp + "（" + listText(row.kinds.map(kind => t(KINDS.find(item => item.id === kind)!.labelKey))) + "）");
     try {
-      const r = await invoke<{ freed_bytes?: number }>("train_cleanup_apply", {
-        exp: row.exp,
-        kinds,
-      });
-      await scan();
-      setMsg(t("s.cleanupDone", { v0: human(r?.freed_bytes ?? 0) }));
-    } catch (e) {
-      setMsg(String(e));
-    } finally {
-      setBusy(false);
-    }
+      if (!(await askConfirm(t("s.cleanConfirm", { list: listText(names) })))) return;
+      let freed = 0;
+      let error = "";
+      try {
+        for (const row of selected) {
+          const result = await invoke<{ freed_bytes?: number }>("train_cleanup_apply", row);
+          freed += result?.freed_bytes ?? 0;
+          setPicked(prev => ({ ...prev, [row.exp]: new Set() }));
+        }
+      } catch (e) { error = String(e); }
+      const scanError = await scan(false);
+      setMsg([
+        !error || freed > 0 ? t("s.cleanupDone", { v0: human(freed) }) : "",
+        error,
+        scanError,
+      ].filter(Boolean).join("\n"));
+    } finally { setBusy(false); }
   };
 
   return (
@@ -215,20 +219,22 @@ export function StorageSection() {
                       );
                     })}
                   </div>
-                  <div className="mt-2">
-                    <Btn
-                      onClick={() => void apply(row)}
-                      busy={busy}
-                      disabled={busy || (picked[row.exp]?.size ?? 0) === 0}
-                    >
-                      {t("s.cleanupApply")}
-                    </Btn>
-                  </div>
+
                 </li>
               ))}
             </ul>
             </CatalogTransition>
             <Pager page={pageClamped} pages={totalPages} onChange={setPage} />
+            <div className="mt-3 pt-3 flex flex-wrap items-center gap-3 shadow-[0_-1px_0_var(--hairline)]">
+              <span className="text-[12.5px] text-[var(--meta)]" role="status">
+                {pickedCount ? t("s.cleanPicked", { n: pickedCount, size: human(pickedBytes) }) : t("s.cleanNonePicked")}
+              </span>
+              <span className="ml-auto">
+                <Btn primary onClick={() => void apply()} busy={busy} disabled={busy || pickedCount === 0}>
+                  {t("s.cleanupApply")}
+                </Btn>
+              </span>
+            </div>
           </div>
         ) : null}
       </Group>
