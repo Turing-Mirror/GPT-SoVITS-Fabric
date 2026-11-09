@@ -180,10 +180,8 @@ impl Application for AudioApp {
                 "Install the application's runtime first",
             ));
         }
-        let resources = synth::list_characters(&self.root);
-        let role = resources["roles"]
-            .as_array()
-            .and_then(|rows| rows.iter().find(|r| r["id"] == args["roleId"]))
+        let role_id = args["roleId"].as_str().unwrap_or_default();
+        let (role_dir, role) = synth::find_character_config(&self.root, role_id)
             .ok_or_else(|| ApiError::new("resource_missing", "Character is not installed"))?;
         let output = args["outputDirectory"]
             .as_str()
@@ -197,7 +195,7 @@ impl Application for AudioApp {
         if let Some(input) = args["parameters"].as_object() {
             params.extend(input.clone());
         }
-        let opts = json!({"owner":ctx.id,"job_id":ctx.id,"output_dir":output,"format":args["format"].as_str().unwrap_or("wav"),"role_name":role["name"]});
+        let opts = json!({"owner":ctx.id,"job_id":ctx.id,"output_dir":output,"format":args["format"].as_str().unwrap_or("wav"),"role_name":role["name"].as_str().unwrap_or(role_id)});
         let mut listeners = Vec::new();
         for event in ["synth-chunk", "synth-done", "synth-error"] {
             let observer = ctx.clone();
@@ -223,8 +221,8 @@ impl Application for AudioApp {
         let result = synth::synthesize(
             &self.app,
             &self.root,
-            args["roleId"].as_str().unwrap(),
-            &PathBuf::from(role["dir"].as_str().unwrap()),
+            role_id,
+            &role_dir,
             role["version"].as_str().unwrap_or("v2ProPlus"),
             args["text"].as_str().unwrap(),
             args["referenceAudio"].as_str().unwrap(),

@@ -717,16 +717,9 @@ pub fn summary_text(root: &Path) -> String {
     // 合成台把选中的角色 id 存在 synth_role；摘要里要的是人看的名字。
     let role = {
         let id = cv("synth_role");
-        crate::synth::list_characters(root)
-            .get("roles")
-            .and_then(|r| r.as_array())
-            .and_then(|a| {
-                a.iter()
-                    .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
-            })
-            .and_then(|r| r.get("name").and_then(|v| v.as_str()))
-            .unwrap_or("")
-            .to_string()
+        crate::synth::find_character_config(root, &id)
+            .map(|(_, cfg)| cfg["name"].as_str().unwrap_or(&id).to_string())
+            .unwrap_or_default()
     };
     let findings = crate::selfcheck::run(root);
     let findings_line = if findings.is_empty() {

@@ -296,11 +296,12 @@ export function SynthPage() {
     };
   }, [reloadTick]);
 
+  const selectedRoleId = roleId || c.str("synth_role");
   const role = useMemo(
-    () => (roles ?? []).find((r) => r.id === (roleId || c.str("synth_role"))) ?? (roles ?? [])[0] ?? null,
-    [roles, roleId, c],
+    () => roles?.find((r) => r.id === selectedRoleId) ?? roles?.[0] ?? null,
+    [roles, selectedRoleId],
   );
-  const selection = roleReferences(c.cfg, role?.id ?? "");
+  const selection = useMemo(() => roleReferences(c.cfg, role?.id ?? ""), [c.cfg, role?.id]);
   const refKey = selection.primary;
   const auxKeys = selection.auxiliary;
   const setRefKey = (primary: string) => {
@@ -325,16 +326,16 @@ export function SynthPage() {
   const refDir = useDir(refPaged.page);
   const [durs, setDurs] = useState<Record<string, number>>({});
   const usable = useCallback((r: RefRow) => r.exists && refFits(durs[r.abs]), [durs]);
+  const savedRef = useMemo(() => refKey ? findReference(refs, refKey) : undefined, [refs, refKey]);
   const ref = useMemo(() => {
-    const picked = findReference(refs, refKey);
-    if (picked && usable(picked)) return picked;
+    if (savedRef && usable(savedRef)) return savedRef;
     // 默认优先已确认时长合格的，其次尚未探测完的。
     return (
       refs.find((r) => r.exists && durs[r.abs] != null && refFits(durs[r.abs])) ??
       refs.find(usable) ??
       null
     );
-  }, [refs, refKey, durs, usable]);
+  }, [refs, savedRef, durs, usable]);
   // 辅助参考只取音色，不受 3–10 秒限制，文件在就行。
   const auxRows = useMemo(
     () => auxKeys.map((k) => findReference(refs, k)).filter((r): r is RefRow => !!r && r.exists),

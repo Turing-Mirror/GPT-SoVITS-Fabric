@@ -802,9 +802,11 @@ fn tools_open_help(app: AppHandle, section: Option<String>) -> Result<(), String
 // --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
 
 #[tauri::command]
-fn synth_characters(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+async fn synth_characters(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    Ok(synth::list_characters(&root))
+    tauri::async_runtime::spawn_blocking(move || synth::list_characters(&root))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -859,9 +861,15 @@ fn synth_reveal_output(state: State<'_, Mutex<AppState>>) -> Result<(), String> 
 
 /// 首页「最近合成」：输出目录里最新的几条产物。
 #[tauri::command]
-fn synth_recent(state: State<'_, Mutex<AppState>>, limit: Option<usize>) -> Result<Value, String> {
+async fn synth_recent(
+    state: State<'_, Mutex<AppState>>,
+    limit: Option<usize>,
+) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    Ok(synth::recent_outputs(&root, limit.unwrap_or(8).min(500)))
+    let limit = limit.unwrap_or(8).min(500);
+    tauri::async_runtime::spawn_blocking(move || synth::recent_outputs(&root, limit))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 合成页右栏：改名。

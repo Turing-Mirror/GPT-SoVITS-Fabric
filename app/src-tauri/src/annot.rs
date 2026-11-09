@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -108,11 +108,10 @@ fn norm(p: &str) -> String {
     p.replace('\\', "/").trim_matches('/').to_ascii_lowercase()
 }
 
-/// 读一份 .list，连带把每一行体检一遍。
-pub fn load(path: &str) -> Result<Value, String> {
-    let p = Path::new(path);
-    let raw = fs::read_to_string(p).map_err(|e| format!("{path}: {e}"))?;
-    let base: PathBuf = p.parent().map(Path::to_path_buf).unwrap_or_default();
+/// 读取并校验标注行，供标注编辑器与合成台共用。
+pub(crate) fn read_rows(path: &Path) -> Result<Vec<Row>, String> {
+    let raw = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let base = path.parent().unwrap_or_else(|| Path::new(""));
 
     let mut rows: Vec<Row> = Vec::new();
     for (i, line) in raw.lines().enumerate() {
@@ -139,7 +138,14 @@ pub fn load(path: &str) -> Result<Value, String> {
         let dup = !r.wav.is_empty() && seen.get(&norm(&r.wav)).copied().unwrap_or(0) > 1;
         r.issues = issues_of(r, dup);
     }
+    Ok(rows)
+}
 
+/// 读取标注编辑器所需的行与统计信息。
+pub fn load(path: &str) -> Result<Value, String> {
+    let p = Path::new(path);
+    let rows = read_rows(p)?;
+    let base = p.parent().unwrap_or_else(|| Path::new(""));
     let bad = rows.iter().filter(|r| !r.issues.is_empty()).count();
     let missing = rows.iter().filter(|r| r.issues.iter().any(|i| i == "missing")).count();
     let speakers = {

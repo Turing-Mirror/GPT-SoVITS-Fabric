@@ -21,11 +21,7 @@ pub fn onboarding(root: &Path) -> Value {
     let cfg = crate::config::read(root);
     // 「有没有可用的角色」。以前问的是 RVC 音色库的 `selected_idx`，
     // 那套东西这个产品没有；判据换成合成台真正读的那个目录。
-    let selected = crate::synth::list_characters(root)
-        .get("roles")
-        .and_then(|v| v.as_array())
-        .map(|a| !a.is_empty())
-        .unwrap_or(false);
+    let selected = crate::synth::has_characters(root);
     json!({
         "runtime": paths::runtime_ready(root),
         "voice": selected,

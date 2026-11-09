@@ -59,7 +59,9 @@ export function useEngine() {
     }
     try {
       const st = await getEngineStatus();
-      setStatus((prev) => ({ ...prev, ...st }));
+      setStatus((prev) =>
+        Object.keys(st).every((key) => Object.is(prev[key], st[key])) ? prev : { ...prev, ...st },
+      );
       if (st.state === "error" && st.error) setLastError(String(st.error));
     } catch (e) {
       setLastError(String(e));

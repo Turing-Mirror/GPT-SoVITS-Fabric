@@ -413,79 +413,98 @@ fn emit_progress(app: &AppHandle, event: &str, mut value: Value) {
     let _ = app.emit(event, value);
 }
 
+fn character_dirs(base: &Path) -> impl Iterator<Item = std::fs::DirEntry> {
+    std::fs::read_dir(base).into_iter().flatten().flatten()
+}
+
+fn read_character_config(dir: &Path) -> Option<Value> {
+    let cfg_path = dir.join("config.json");
+    if !cfg_path.is_file() {
+        return None;
+    }
+    let raw = std::fs::read_to_string(cfg_path).ok()?;
+    match serde_json::from_str(&raw) {
+        Ok(cfg) => Some(cfg),
+        Err(_) => {
+            crate::logging::shell_log!(
+                "character pack skipped (bad config.json): {}",
+                dir.display()
+            );
+            None
+        }
+    }
+}
+
+pub(crate) fn has_characters(root: &Path) -> bool {
+    character_dirs(&characters_dir(root)).any(|entry| read_character_config(&entry.path()).is_some())
+}
+
+/// 由目录枚举中的原始名称匹配已安装角色，保留目录大小写与旧角色 ID。
+pub(crate) fn find_character_config(root: &Path, id: &str) -> Option<(PathBuf, Value)> {
+    let entry = character_dirs(&characters_dir(root))
+        .find(|entry| entry.file_name().to_string_lossy() == id)?;
+    let dir = entry.path();
+    let cfg = read_character_config(&dir)?;
+    Some((dir, cfg))
+}
+
 /// 本地角色包清单：扫 `User_Data/characters/*/config.json`。
 ///
 /// 包格式见 docs/DECISIONS.md D4：config.json 声明 name/author/version/cover/
 /// lists/params；models/ 放权重；dataset/*.list 是参考音频候选。.list 的解析
-/// 直接复用 annot::load —— 那份实现带着绝对路径拼装与存在性检查，合成台的
+/// 复用 annot::read_rows，包含绝对路径拼装与存在性检查，合成台的
 /// 参考挑选器要的正是这两样。
 pub fn list_characters(root: &Path) -> Value {
     let base = characters_dir(root);
     let mut roles: Vec<Value> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&base) {
-        for e in rd.flatten() {
-            let dir = e.path();
-            let cfg_path = dir.join("config.json");
-            if !cfg_path.is_file() {
-                continue;
-            }
-            let Ok(raw) = std::fs::read_to_string(&cfg_path) else {
-                continue;
-            };
-            let Ok(cfg) = serde_json::from_str::<Value>(&raw) else {
-                // 坏包不拖垮整页：跳过并记一条，界面少一个角色好过整页报错。
-                crate::logging::shell_log!(
-                    "character pack skipped (bad config.json): {}",
-                    dir.display()
-                );
-                continue;
-            };
-            let id = dir
-                .file_name()
-                .map(|x| x.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let mut lists: Vec<Value> = Vec::new();
-            if let Some(arr) = cfg.get("lists").and_then(|v| v.as_array()) {
-                for l in arr {
-                    // `file` 相对包根（`dataset/xxx.list` —— 和 pack_role_pack.py
-                    // 的 `f in rels` 校验、train_worker 写回的 `dataset/<exp>.list`
-                    // 同一套约定）。它是包里带来的字符串：拦住 `..` / 绝对路径 /
-                    // 盘符，不然一个坏包就能把任意文件读给标注解析器。
-                    let file = l.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                    let rel = file.replace('\\', "/");
-                    let ok = !rel.is_empty()
-                        && !rel.starts_with('/')
-                        && !rel.contains(':')
-                        && rel
-                            .split('/')
-                            .all(|s| !s.is_empty() && s != "." && s != "..");
-                    if !ok {
-                        continue;
-                    }
-                    let path = dir.join(&rel);
-                    let Ok(parsed) = crate::annot::load(&path.to_string_lossy()) else {
-                        continue;
-                    };
-                    lists.push(json!({
-                        "file": file,
-                        "lang": l.get("lang").and_then(|v| v.as_str()).unwrap_or(""),
-                        "note": l.get("note").and_then(|v| v.as_str()).unwrap_or(""),
-                        "rows": parsed.get("rows").cloned().unwrap_or(json!([])),
-                    }));
+    for entry in character_dirs(&base) {
+        let dir = entry.path();
+        let Some(cfg) = read_character_config(&dir) else {
+            continue;
+        };
+        let name = entry.file_name();
+        let id = name.to_string_lossy();
+        let mut lists: Vec<Value> = Vec::new();
+        if let Some(arr) = cfg.get("lists").and_then(|v| v.as_array()) {
+            for l in arr {
+                // `file` 相对包根（`dataset/xxx.list` —— 和 pack_role_pack.py
+                // 的 `f in rels` 校验、train_worker 写回的 `dataset/<exp>.list`
+                // 同一套约定）。它是包里带来的字符串：拦住 `..` / 绝对路径 /
+                // 盘符，不然一个坏包就能把任意文件读给标注解析器。
+                let file = l.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                let rel = file.replace('\\', "/");
+                let ok = !rel.is_empty()
+                    && !rel.starts_with('/')
+                    && !rel.contains(':')
+                    && rel
+                        .split('/')
+                        .all(|s| !s.is_empty() && s != "." && s != "..");
+                if !ok {
+                    continue;
                 }
+                let path = dir.join(&rel);
+                let Ok(rows) = crate::annot::read_rows(&path) else {
+                    continue;
+                };
+                lists.push(json!({
+                    "file": file,
+                    "lang": l.get("lang").and_then(|v| v.as_str()).unwrap_or(""),
+                    "note": l.get("note").and_then(|v| v.as_str()).unwrap_or(""),
+                    "rows": rows,
+                }));
             }
-            roles.push(json!({
-                "id": id,
-                "name": cfg.get("name").and_then(|v| v.as_str()).unwrap_or(&id),
-                "author": cfg.get("author").and_then(|v| v.as_str()).unwrap_or(""),
-                "version": cfg.get("version").and_then(|v| v.as_str()).unwrap_or("v2ProPlus"),
-                "cover": cfg.get("cover").and_then(|v| v.as_str()).unwrap_or(""),
-                "cover_exists": dir.join(cfg.get("cover").and_then(|v| v.as_str()).unwrap_or("")).is_file(),
-                "params": cfg.get("params").cloned().unwrap_or(json!({})),
-                "lists": lists,
-                "dir": dir.to_string_lossy(),
-            }));
         }
+        roles.push(json!({
+            "id": id,
+            "name": cfg.get("name").and_then(|v| v.as_str()).unwrap_or(id.as_ref()),
+            "author": cfg.get("author").and_then(|v| v.as_str()).unwrap_or(""),
+            "version": cfg.get("version").and_then(|v| v.as_str()).unwrap_or("v2ProPlus"),
+            "cover": cfg.get("cover").and_then(|v| v.as_str()).unwrap_or(""),
+            "cover_exists": dir.join(cfg.get("cover").and_then(|v| v.as_str()).unwrap_or("")).is_file(),
+            "params": cfg.get("params").cloned().unwrap_or(json!({})),
+            "lists": lists,
+            "dir": dir.to_string_lossy(),
+        }));
     }
     roles.sort_by(|a, b| {
         a.get("name")
@@ -781,6 +800,13 @@ mod tests {
         let roles = v["roles"].as_array().unwrap();
         assert_eq!(roles.len(), 1);
         assert_eq!(roles[0]["name"], "好角色");
+        assert!(has_characters(&root));
+        let (dir, cfg) = find_character_config(&root, "good").unwrap();
+        assert_eq!(dir, base.join("good"));
+        assert_eq!(cfg["name"], roles[0]["name"]);
+        assert!(find_character_config(&root, "bad").is_none());
+        assert!(find_character_config(&root, "GOOD").is_none());
+        assert!(find_character_config(&root, "../good").is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 
