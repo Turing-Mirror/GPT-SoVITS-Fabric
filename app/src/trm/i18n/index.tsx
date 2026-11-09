@@ -18,11 +18,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { I18nScope } from "trm-ui";
 import { fallbackPack, packOf, translate } from "./dict";
+import { ensurePack } from "./packs";
 import {
   DEFAULT_LOCALE,
   LOCALES,
@@ -66,7 +68,7 @@ const localStorageStore: LocaleStore = {
 
 type I18nCtx = {
   locale: LocaleCode;
-  setLocale: (code: LocaleCode) => void;
+  setLocale: (code: LocaleCode, persist?: boolean) => Promise<boolean>;
   t: TranslateFn;
   /** 语言已经从存储里读出来了。false 时可以先不画正文，避免闪一下默认语言。 */
   ready: boolean;
@@ -83,6 +85,7 @@ export function I18nProvider({
 }) {
   const [locale, setLocaleState] = useState<LocaleCode>(DEFAULT_LOCALE);
   const [ready, setReady] = useState(false);
+  const request = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -95,9 +98,16 @@ export function I18nProvider({
       } catch {
         /* 读不出来就按系统语言 */
       }
+      try {
+        await ensurePack(code);
+      } catch {
+        code = DEFAULT_LOCALE;
+      }
       if (!alive) return;
-      setLocaleState(code);
-      setTLocale(code);
+      if (request.current === 0) {
+        setLocaleState(code);
+        setTLocale(code);
+      }
       setReady(true);
     })();
     return () => {
@@ -108,11 +118,19 @@ export function I18nProvider({
   }, []);
 
   const setLocale = useCallback(
-    (code: LocaleCode) => {
+    async (code: LocaleCode, persist = true) => {
+      const sequence = ++request.current;
+      try {
+        await ensurePack(code);
+      } catch {
+        return false;
+      }
+      if (sequence !== request.current) return false;
       setLocaleState(code);
       setTLocale(code);
       document.documentElement.lang = code;
-      void store.save(code);
+      if (persist) await store.save(code);
+      return true;
     },
     [store],
   );
@@ -150,7 +168,7 @@ export function useI18n(): I18nCtx {
     // 而不是抛错。一个组件放错位置不该让整个界面白屏。
     return {
       locale: DEFAULT_LOCALE,
-      setLocale: () => {},
+      setLocale: async () => false,
       t: (key, vars) => tStatic(key, vars),
       ready: true,
     };

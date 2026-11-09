@@ -31,7 +31,7 @@ export { tip } from "./glossary";
 
 type I18nCtx = {
   locale: LocaleCode;
-  setLocale: (code: LocaleCode) => void;
+  setLocale: (code: LocaleCode, persist?: boolean) => Promise<boolean>;
   t: TranslateFn;
   /** 引擎的 `message_code`（`engine.starting` 或 `msg.engine.starting`）→ 文案。 */
   tMsg: (code: string | undefined | null, fallback?: string, vars?: TVars) => string;

@@ -1,4 +1,5 @@
 import {
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,6 +8,7 @@ import {
 } from "react";
 import { navDirection, type PageId } from "../lib/nav";
 import { PageActive } from "../trm";
+import { PageLoading } from "./PageLoading";
 import { noteMount, noteUnmount } from "../lib/lifecycle";
 
 type Props = {
@@ -138,7 +140,9 @@ function PagePane({
   }, [id]);
   return (
     <div ref={paneRef} className={className} inert={!active} aria-hidden={!active || undefined} data-page-scroll={active ? "" : undefined}>
-      <PageActive value={active}>{children}</PageActive>
+      <PageActive value={active}>
+        <Suspense fallback={<PageLoading />}>{children}</Suspense>
+      </PageActive>
     </div>
   );
 }

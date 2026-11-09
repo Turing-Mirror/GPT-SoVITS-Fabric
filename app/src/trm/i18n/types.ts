@@ -1,4 +1,4 @@
-import { PACKS } from "./packs";
+import { hasPack } from "./packs";
 
 /** 支持的界面语言。语言包放在 `i18n/locales/{code}.json`。 */
 export type LocaleCode =
@@ -23,7 +23,7 @@ const ALL_LOCALES: { id: LocaleCode; labelKey: string }[] = [
   { id: "ru-RU", labelKey: "locale.ru-RU" },
 ];
 
-export const LOCALES = ALL_LOCALES.filter((l) => l.id in PACKS);
+export const LOCALES = ALL_LOCALES.filter((l) => hasPack(l.id));
 
 export const DEFAULT_LOCALE: LocaleCode = "zh-CN";
 

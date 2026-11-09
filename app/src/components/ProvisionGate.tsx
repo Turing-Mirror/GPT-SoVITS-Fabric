@@ -1,3 +1,4 @@
+import { TransferProgress, Warn } from "trm-ui";
 import { Modal } from "./Modal";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -317,29 +318,16 @@ export function ProvisionGate({ open, initial, coreOnly = false, onDone, onDismi
     })();
   };
 
-  const done = Number(progress?.done || 0);
-  const total = Math.max(Number(progress?.total || 0), 1);
-  const pctRaw =
-    progress?.percent != null && !Number.isNaN(Number(progress.percent))
-      ? Number(progress.percent)
-      : (done / total) * 100;
+  const done = progress?.done ?? 0;
+  const total = progress?.total ?? 0;
+  const pctRaw = progress?.percent ?? (total > 0 ? (done / total) * 100 : 0);
   const pct = Math.min(100, Math.max(0, pctRaw));
-  // Multi-GB packages stay under 0.5% for a long time; never show bare "0%" once
-  // any bytes have landed, and keep one decimal under 10%.
-  const pctLabel =
-    done > 0 && pct < 0.1
-      ? "<0.1%"
-      : pct < 10
-        ? `${pct.toFixed(1)}%`
-        : `${Math.round(pct)}%`;
   const speedLabel =
     progress?.speed_label && progress.speed_label !== "—"
       ? progress.speed_label
       : progress?.speed_bps && progress.speed_bps > 0
         ? formatBytes(progress.speed_bps) + "/s"
         : "";
-  const barWidth =
-    done > 0 && pct < 0.5 ? Math.max(pct, 0.5) : Math.min(100, pct);
   const showBar = busy && progress && progress.phase !== "error";
   // Only the download phase reports bytes. Extract emits done=0 total=1.
   const phase = String(progress?.phase || "");
@@ -439,55 +427,23 @@ export function ProvisionGate({ open, initial, coreOnly = false, onDone, onDismi
 
         {showBar ? (
           <div className="mb-4">
-            <div className="flex justify-between gap-3 text-[12px] text-[var(--meta)] mb-1.5">
-              <span className="min-w-0 flex-1 truncate">
-                {progress?.message || progress?.phase || t("s.65188d08a2")}
-              </span>
-              <span className="shrink-0 tabular-nums flex items-center gap-2">
-                {speedLabel ? (
-                  <span className="text-[var(--accent)]">{speedLabel}</span>
-                ) : null}
-                <span>{connecting ? "…" : pctLabel}</span>
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] overflow-hidden">
-              {connecting ? (
-                <div className="h-full w-1/3 bg-[var(--accent)] rounded-full animate-pulse" />
-              ) : (
-                <div
-                  className="h-full bg-[var(--accent)] rounded-full transition-[width] duration-200"
-                  style={{ width: `${barWidth}%` }}
-                />
-              )}
-            </div>
-            {isDownload && done > 0 ? (
-              <div className="mt-1.5 text-[11.5px] text-[var(--meta)] tabular-nums flex justify-between gap-2">
-                <span>
-                  {formatBytes(done)} / {formatBytes(total)}
-                </span>
-                {speedLabel ? <span>{speedLabel}</span> : null}
-              </div>
-            ) : isDownload ? (
-              <div className="mt-1.5 text-[11.5px] text-[var(--meta)]">{t("s.502c5adda6")}</div>
-            ) : null}
-
-            {/* 已用时间。一条不动的进度条配上「已用 6 分 20 秒」，至少能看出
-                软件还活着、这一轮跑了多久。 */}
-            {elapsedMs > 3000 ? (
-              <div className="mt-1.5 text-[11.5px] text-[var(--meta)] tabular-nums">
-                {t("s.fa2f7e5279", { v0: formatDuration(elapsedMs) })}
-              </div>
-            ) : null}
-
-            {/* 真的卡住了就直说。不说的话用户面对的是一条不动的进度条，
-                只能干等或者强退 —— 强退之前下的那部分其实是留着的。 */}
+            <TransferProgress
+              message={progress?.message || progress?.phase || t("s.65188d08a2")}
+              percent={connecting || !progress?.total || (!isDownload && progress.total === 1 && done === 0) ? undefined : pct}
+              speed={isDownload ? speedLabel : undefined}
+              detail={isDownload
+                ? done > 0
+                  ? total > 0 ? `${formatBytes(done)} / ${formatBytes(total)}` : formatBytes(done)
+                  : t("s.502c5adda6")
+                : undefined}
+              elapsed={elapsedMs > 3000 ? t("s.fa2f7e5279", { v0: formatDuration(elapsedMs) }) : undefined}
+            />
             {stalled ? (
-              <div className="mt-2 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--notify)_16%,transparent)] px-3 py-2 text-[11.5px] text-[var(--ink-muted)] leading-relaxed">
+              <Warn className="mt-2">
                 {t("s.2a4fa38f1e", { v0: formatDuration(idleMs) })}
-                {isDownload
-                  ? t("s.7d2fe2ae0a")
-                  : t("s.703e6f531a")}
-                <br />{t("s.de5de9e783")}</div>
+                {isDownload ? t("s.7d2fe2ae0a") : t("s.703e6f531a")}
+                <br />{t("s.de5de9e783")}
+              </Warn>
             ) : null}
           </div>
         ) : null}

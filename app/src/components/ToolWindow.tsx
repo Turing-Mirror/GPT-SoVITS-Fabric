@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Suspense, createContext, lazy, useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { AnnotPage } from "../pages/AnnotPage";
-import { SeparatePanel } from "./SeparatePanel";
+import { AnnotPage } from "../pages/deferred";
+import { PageLoading } from "./PageLoading";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { WebDialogHost } from "./WebDialog";
@@ -12,6 +12,8 @@ import { NativeDialogHint } from "./NativeDialogHint";
 
 /** 地址里带的 `#/tool/<kind>` —— 主窗口和工具窗口用的是同一份前端。 */
 export type ToolKind = "annot" | "separate";
+
+const SeparatePanel = lazy(() => import("./SeparatePanel").then(module => ({ default: module.SeparatePanel })));
 
 function toolTitle(kind: ToolKind): string {
   return kind === "separate" ? t("sep.title") : t("s.annot.title");
@@ -69,8 +71,9 @@ export function ToolWindow({ kind }: { kind: ToolKind }) {
       <ToolTitleBar title={toolTitle(kind)} />
       <ToolFooterSlot.Provider value={footer}>
         <div className="flex-1 overflow-y-auto">
-          {kind === "annot" ? <AnnotPage /> : null}
-          {kind === "separate" ? <SeparatePanel /> : null}
+          <Suspense fallback={<PageLoading />}>
+            {kind === "annot" ? <AnnotPage /> : <SeparatePanel />}
+          </Suspense>
         </div>
       </ToolFooterSlot.Provider>
       <div ref={setFooter} className="flex-none" />

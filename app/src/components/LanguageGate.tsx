@@ -24,6 +24,7 @@ export function LanguageGate({ open, onDone }: Props) {
   const { t, locale, setLocale } = useI18n();
   const system = useMemo(() => detectSystemLocale(), []);
   const [choice, setChoice] = useState<LocaleCode>(locale || system);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (open) setChoice(locale || system);
@@ -31,13 +32,18 @@ export function LanguageGate({ open, onDone }: Props) {
 
   if (!open) return <Modal open={false} />;
 
-  const confirm = () => {
-    const code = choice;
-    setLocale(code);
-    void invoke("config_set", {
-      patch: { ui_locale: code, ui_locale_picked: true },
-    }).catch(() => {});
-    onDone();
+  const confirm = async () => {
+    setConfirming(true);
+    try {
+      if (!(await setLocale(choice, false))) return;
+      await Promise.allSettled([
+        invoke("config_set", { patch: { ui_locale: choice, ui_locale_picked: true } }),
+        invoke("i18n_set_locale", { locale: choice }),
+      ]);
+      onDone();
+    } finally {
+      setConfirming(false);
+    }
   };
 
   return (
@@ -65,10 +71,11 @@ export function LanguageGate({ open, onDone }: Props) {
               <button
                 key={l.id}
                 type="button"
+                disabled={confirming}
                 onClick={() => {
                   setChoice(l.id);
                   // 实时预览文案，确认前不写盘
-                  setLocale(l.id);
+                  void setLocale(l.id, false);
                 }}
                 className={[
                   "text-left border-0 rounded-[var(--rs)] px-3.5 py-2.5 cursor-pointer",
@@ -92,7 +99,7 @@ export function LanguageGate({ open, onDone }: Props) {
         </div>
 
         <div className="flex justify-end">
-          <Btn primary onClick={confirm}>
+          <Btn primary busy={confirming} onClick={() => void confirm()}>
             {t("onboarding.languageContinue")}
           </Btn>
         </div>
