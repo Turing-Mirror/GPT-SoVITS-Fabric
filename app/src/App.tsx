@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePill, SetupGuide, type GuideStep } from "./components/SetupGuide";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { Nudge } from "./components/Nudge";
@@ -242,6 +242,7 @@ export default function App() {
   // 新装 ui_locale_picked===false 时先选语言，再走 Runtime 补全。
   const [showLangGate, setShowLangGate] = useState(false);
   const [langGateChecked, setLangGateChecked] = useState(false);
+  const [guidePending, setGuidePending] = useState(false);
 
   const engine = useEngine();
 
@@ -393,17 +394,68 @@ export default function App() {
   const [guide, setGuide] = useState<{ open: boolean; step: GuideStep; pill: boolean }>({ open: false, step: "runtime", pill: false });
   const openGuide = useCallback((step?: GuideStep) => setGuide((g) => ({ open: true, pill: false, step: step ?? g.step })), []);
   const finishGuide = useCallback(() => {
+    setGuidePending(false);
     setGuide((g) => ({ ...g, open: false, pill: false }));
     void invoke("config_set", { patch: { setup_guide_done: true, onboard_dismiss: true } }).catch(() => {});
   }, []);
+
+  const guideRequested = useRef(false);
+  const { need_provision: needRuntime, runtime_ready: runtimeReady } = engine.provision;
+
   useEffect(() => {
-    void invoke<Record<string, unknown>>("config_get")
-      .then((cfg) => {
-        const fresh = cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true;
-        if (fresh) setGuide((g) => ({ ...g, pill: true }));
-      })
-      .catch(() => {});
-  }, []);
+    if (!langGateChecked || showLangGate || showProvision || provisionDismissed) return;
+    if (needRuntime) {
+      setShowProvision(true);
+      return;
+    }
+    if (!runtimeReady || !guidePending) return;
+    let alive = true;
+    void getAssetsStatus().then(assets => {
+      if (!alive) return;
+      if (assets.engine_core_ready === false) {
+        setCoreOnly(true);
+        setShowProvision(true);
+      } else {
+        setGuide(g => g.open || g.pill ? g : { ...g, pill: true });
+      }
+    });
+    return () => { alive = false; };
+  }, [langGateChecked, showLangGate, showProvision, provisionDismissed, needRuntime, runtimeReady, guidePending]);
+
+  async function startGuide() {
+    if (!runtimeReady) {
+      guideRequested.current = true;
+      setCoreOnly(false);
+      setShowProvision(true);
+      return;
+    }
+    const assets = await getAssetsStatus();
+    if (assets.engine_core_ready === false) {
+      guideRequested.current = true;
+      setCoreOnly(true);
+      setShowProvision(true);
+    } else {
+      openGuide("role");
+    }
+  }
+
+  function closeProvision() {
+    setShowProvision(false);
+    setCoreOnly(false);
+    setProvisionDismissed(true);
+  }
+
+  async function finishProvision() {
+    closeProvision();
+    const provision = await refreshProvision().catch(() => undefined);
+    await engine.refresh();
+    const requested = guideRequested.current;
+    guideRequested.current = false;
+    if (!(provision?.runtime_ready ?? runtimeReady) || (!requested && !guidePending)) return;
+    const assets = await getAssetsStatus();
+    if (assets.engine_core_ready !== false) openGuide("role");
+  }
+
 
   // 不管点的是哪个社媒还是「以后再说」，都不再问第二次。反复问一件用户
   // 已经表过态的事，比不问更让人反感。
@@ -460,9 +512,9 @@ export default function App() {
     void (async () => {
       try {
         const cfg = await invoke<Record<string, unknown>>("config_get");
-        // 仅新装默认 false 弹引导；老配置没有该键 → 不弹。
-        if (alive && cfg.ui_locale_picked === false) {
-          setShowLangGate(true);
+        if (alive) {
+          setShowLangGate(cfg.ui_locale_picked === false);
+          setGuidePending(cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true);
         }
       } catch {
         /* 预览 */
@@ -474,31 +526,6 @@ export default function App() {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    // 语言引导优先于 Runtime 补全，避免补全窗还是默认中文。
-    if (!langGateChecked || showLangGate) return;
-    if (engine.provision.need_provision && !provisionDismissed) {
-      setShowProvision(true);
-    }
-  }, [
-    engine.provision.need_provision,
-    provisionDismissed,
-    langGateChecked,
-    showLangGate,
-  ]);
-
-  useEffect(() => {
-    if (!langGateChecked || showLangGate || !engine.provision.runtime_ready || provisionDismissed) return;
-    let alive = true;
-    void Promise.all([getAssetsStatus(), invoke<Record<string, unknown>>("config_get")]).then(([assets, config]) => {
-      if (alive && assets.engine_core_ready === false && config.setup_guide_done !== true) {
-        setCoreOnly(true);
-        setShowProvision(true);
-      }
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, [langGateChecked, showLangGate, engine.provision.runtime_ready, provisionDismissed]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 520px)");
@@ -651,29 +678,10 @@ export default function App() {
         open={showProvision && !showLangGate}
         initial={engine.provision}
         coreOnly={coreOnly}
-        onDone={async () => {
-          setShowProvision(false);
-          setCoreOnly(false);
-          setProvisionDismissed(true);
-          void invoke<Record<string, unknown>>("config_get")
-            .then((cfg) => { if (cfg.setup_guide_done !== true) openGuide("role"); })
-            .catch(() => {});
-          // 这里以前调的是 getProvisionStatus()，**结果直接扔掉** —— 问了等于
-          // 没问，engine.provision 还是补全之前那份 runtime_ready: false。
-          // 于是运行时装好了，「开启变声」照样被 toggleRun 开头那道闸拦下来
-          // 说「运行时未就绪」，只能重启软件。refreshProvision 会把结果写回
-          // 状态，并且在 false → true 的那一下顺手把引擎拉起来。
-          try {
-            await refreshProvision();
-          } catch {
-            /* 轮询兜底 */
-          }
-          await engine.refresh();
-        }}
+        onDone={() => void finishProvision()}
         onDismiss={() => {
-          setShowProvision(false);
-          setCoreOnly(false);
-          setProvisionDismissed(true);
+          guideRequested.current = false;
+          closeProvision();
         }}
       />
 
@@ -721,7 +729,7 @@ export default function App() {
                   focus={helpFocus}
                   focusNonce={helpFocusNonce}
                   onOpenCommunity={openCommunity}
-                  onStartGuide={() => openGuide("runtime")}
+                  onStartGuide={() => void startGuide()}
                 />
               );
             case "more":
@@ -927,7 +935,7 @@ export default function App() {
       <NativeDialogHint />
 
       <SetupGuide
-        open={guide.open}
+        open={guide.open && !showLangGate && !showProvision}
         step={guide.step}
         onStep={(step) => setGuide((g) => ({ ...g, step }))}
         onMinimize={() => setGuide((g) => ({ ...g, open: false, pill: true }))}
@@ -938,7 +946,7 @@ export default function App() {
           setShowProvision(true);
         }}
       />
-      <Leave>{guide.pill && !guide.open ? <GuidePill step={guide.step} onOpen={() => openGuide()} onClose={finishGuide} /> : null}</Leave>
+      <Leave>{guide.pill && !guide.open && !showLangGate && !showProvision ? <GuidePill step={guide.step} onOpen={() => openGuide()} onClose={finishGuide} /> : null}</Leave>
     </div>
   );
 }
