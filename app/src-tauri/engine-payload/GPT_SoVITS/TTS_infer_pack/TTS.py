@@ -554,28 +554,23 @@ class TTS:
     def _init_models(
         self,
     ):
-        self.init_t2s_weights(self.configs.t2s_weights_path)
-        self.init_vits_weights(self.configs.vits_weights_path)
         self.init_bert_weights(self.configs.bert_base_path)
         self.init_cnhuhbert_weights(self.configs.cnhuhbert_base_path)
+        self.init_t2s_weights(self.configs.t2s_weights_path)
+        self.init_vits_weights(self.configs.vits_weights_path)
         # self.enable_half_precision(self.configs.is_half)
 
     def init_cnhuhbert_weights(self, base_path: str):
         print(f"Loading CNHuBERT weights from {base_path}")
-        self.cnhuhbert_model = CNHubert(base_path)
-        self.cnhuhbert_model = self.cnhuhbert_model.eval()
-        self.cnhuhbert_model = self.cnhuhbert_model.to(self.configs.device)
-        if self.configs.is_half and str(self.configs.device) != "cpu":
-            self.cnhuhbert_model = self.cnhuhbert_model.half()
+        dtype = torch.float16 if self.configs.is_half and str(self.configs.device) != "cpu" else None
+        self.cnhuhbert_model = CNHubert(base_path, torch_dtype=dtype).eval().to(self.configs.device)
 
     def init_bert_weights(self, base_path: str):
         print(f"Loading BERT weights from {base_path}")
         self.bert_tokenizer = AutoTokenizer.from_pretrained(base_path)
-        self.bert_model = AutoModelForMaskedLM.from_pretrained(base_path)
-        self.bert_model = self.bert_model.eval()
-        self.bert_model = self.bert_model.to(self.configs.device)
-        if self.configs.is_half and str(self.configs.device) != "cpu":
-            self.bert_model = self.bert_model.half()
+        dtype = torch.float16 if self.configs.is_half and str(self.configs.device) != "cpu" else None
+        self.bert_model = AutoModelForMaskedLM.from_pretrained(base_path, torch_dtype=dtype).eval()
+        self.bert_model.to(self.configs.device)
 
     def init_vits_weights(self, weights_path: str):
         self.configs.vits_weights_path = weights_path
@@ -667,12 +662,11 @@ class TTS:
 
             vits_model.cfm = vits_model.cfm.merge_and_unload()
 
-        vits_model = vits_model.to(self.configs.device)
-        vits_model = vits_model.eval()
-
-        self.vits_model = vits_model
+        del dict_s2
+        vits_model.eval()
         if self.configs.is_half and str(self.configs.device) != "cpu":
-            self.vits_model = self.vits_model.half()
+            vits_model.half()
+        self.vits_model = vits_model.to(self.configs.device)
 
         self.configs.save_configs()
 
@@ -689,16 +683,16 @@ class TTS:
         self.configs.t2s_weights_path = weights_path
         self.configs.save_configs()
         self.configs.hz = 50
-        dict_s1 = torch.load(weights_path, map_location=self.configs.device, weights_only=False)
+        dict_s1 = torch.load(weights_path, map_location="cpu", weights_only=False)
         config = dict_s1["config"]
         self.configs.max_sec = config["data"]["max_sec"]
         t2s_model = Text2SemanticLightningModule(config, "****", is_train=False)
         t2s_model.load_state_dict(dict_s1["weight"])
-        t2s_model = t2s_model.to(self.configs.device)
-        t2s_model = t2s_model.eval()
-        self.t2s_model = t2s_model
+        del dict_s1
+        t2s_model.eval()
         if self.configs.is_half and str(self.configs.device) != "cpu":
-            self.t2s_model = self.t2s_model.half()
+            t2s_model.half()
+        self.t2s_model = t2s_model.to(self.configs.device)
 
         codebook = t2s_model.model.ar_audio_embedding.weight.clone()
         mute_emb = codebook[self.configs.mute_tokens[self.configs.version]].unsqueeze(0)

@@ -69,6 +69,7 @@ stdout 只走协议行。上游加载权重时会往 stdout 打印（`Loading VI
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import re
 import sys
@@ -314,24 +315,25 @@ class SynthEngine:
             if not self._ensure_tts(req):
                 self._swap_weights(sovits, gpt)
 
-        try:
-            _load()
-        except Exception as exc:  # noqa: BLE001
-            if _is_oom(exc):
-                self._free_memory()
-                try:
-                    # 构造失败的 TTS() 不会留在 self._tts 上，重试仍是新建路径。
-                    _load()
-                except Exception as exc2:  # noqa: BLE001
-                    emit(event="error", job=role_id, message="显存不足",
-                         code="oom", detail=str(exc2))
+        for attempt in range(2):
+            try:
+                _load()
+                break
+            except Exception as exc:  # noqa: BLE001
+                if not _is_oom(exc):
+                    code = "init_failed" if self._tts is None else "load_failed"
+                    emit(event="error", job=role_id,
+                         message="引擎初始化失败" if code == "init_failed" else "模型加载失败",
+                         code=code, detail=str(exc))
                     return
-            else:
-                code = "init_failed" if self._tts is None else "load_failed"
-                emit(event="error", job=role_id,
-                     message="引擎初始化失败" if code == "init_failed" else "模型加载失败",
-                     code=code, detail=str(exc))
-                return
+                if attempt:
+                    emit(event="error", job=role_id, message="显存不足",
+                         code="oom", detail=str(exc))
+                    return
+
+            # The traceback retains the partially loaded model until the handler exits.
+            gc.collect()
+            self._free_memory()
 
         self._current = role_id
         emit(event="ready", role=role_id, cached=False, device=str(getattr(self._config, "device", "")))
