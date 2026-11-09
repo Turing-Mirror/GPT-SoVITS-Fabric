@@ -17,13 +17,17 @@ import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
 import { artOf } from "../lib/art";
 import { Icon, Pager, SearchBox, SegmentControl, useDir, usePaged } from "../trm";
 import { CatalogTransition } from "../components/CatalogTransition";
+import { HelpMark } from "../components/Tooltip";
+import { VulkanResourceAction } from "../components/VulkanResourceAction";
+import { getAssetsStatus, type AssetsStatus } from "../lib/downloadModels";
+import { useExtraJobs } from "../lib/extraJobs";
 
 /**
  * 合成台 —— GPT-SoVITS Fabric 的核心页面。
  *
  * 角色来自本地角色库（`User_Data/characters/<id>/config.json`），参考音频
  * 来自角色包里的 `.list` 标注（和标注管理页读的是同一份解析结果，见
- * DECISIONS D4），合成走常驻的 synth_worker。
+ * DECISIONS D4），合成通过共享任务入口选择推理引擎。
  *
  * 三处和「看起来更漂亮」相反的取舍：
  *
@@ -109,7 +113,7 @@ function demoRoles(): Role[] {
   ): Role => ({
     id,
     name,
-    author: "图灵镜官方",
+    author: "Kara251",
     version: "v2ProPlus",
     cover: "",
     cover_exists: false,
@@ -176,6 +180,8 @@ const STEP_VERSIONS = ["v3", "v4", "v5dev", "v5turbo"];
 const STEP_OPTIONS = ["4", "8", "16", "32", "64", "128"];
 
 type Mode = "single" | "batch";
+type Backend = "cuda" | "vulkan";
+const VULKAN_LANGS = new Set(["auto", "zh", "ja", "all_zh", "all_ja"]);
 type BatchState = "wait" | "run" | "done" | "fail" | "stop";
 type BatchItem = { text: string; state: BatchState; err?: string };
 
@@ -249,6 +255,19 @@ export function SynthPage() {
   const [advOpen, setAdvOpen] = useState(false);
   const [streaming, setStreaming] = useState(true);
   const [format, setFormat] = useState<OutFormat>("wav");
+  const backend: Backend = c.str("synth_backend") === "vulkan" ? "vulkan" : "cuda";
+  const vulkan = backend === "vulkan";
+  const extraJobs = useExtraJobs();
+  const [vulkanAssets, setVulkanAssets] = useState<AssetsStatus | null>(null);
+
+  useEffect(() => {
+    if (!vulkan || !isTauri()) return;
+    let active = true;
+    void getAssetsStatus().then((assets) => {
+      if (active) setVulkanAssets(assets);
+    });
+    return () => { active = false; };
+  }, [vulkan, extraJobs.generation]);
 
   const [batchText, setBatchText] = useState("");
   const [items, setItems] = useState<BatchItem[]>([]);
@@ -345,6 +364,25 @@ export function SynthPage() {
   const langs = role?.version === "v1" ? TEXT_LANGS_V1 : TEXT_LANGS;
   const showSteps = STEP_VERSIONS.includes(role?.version ?? "");
   const showSuper = role?.version === "v3";
+  let vulkanReason = "";
+  let needsVulkanDownload = false;
+  if (vulkan) {
+    if (role && role.version.trim().toLowerCase() !== "v5turbo") {
+      vulkanReason = t("synth.vulkanRole");
+    } else if (auxRows.length > 0) {
+      vulkanReason = t("synth.vulkanReference");
+    } else if (!VULKAN_LANGS.has(adv.text_lang.trim().toLowerCase()) ||
+      (ref && !VULKAN_LANGS.has(ref.lang.trim().toLowerCase()))) {
+      vulkanReason = t("synth.vulkanLanguage");
+    } else if (vulkanAssets?.gsv_cpp_ready === false) {
+      needsVulkanDownload = true;
+      vulkanReason = t("synth.vulkanMissing");
+    } else if (vulkanAssets?.gsv_cpp_ready !== true) {
+      vulkanReason = vulkanAssets == null && isTauri() ? t("s.5fc65af5b3") : t("synth.vulkanUnavailable");
+    }
+  }
+  const runBackend: Backend = vulkanReason ? "cuda" : backend;
+  const runWithVulkan = runBackend === "vulkan";
 
   // 参考音频时长：逐条读元数据，结果随到随显示。
   useEffect(() => {
@@ -477,7 +515,8 @@ export function SynthPage() {
 
   /** 合成一条。返回 "done" 或 "stop"；出错时抛出。 */
   const runOne = useCallback(
-    async (line: string): Promise<"done" | "stop"> => {
+    async (line: string, chosenBackend: Backend): Promise<"done" | "stop"> => {
+      const useVulkan = chosenBackend === "vulkan";
       if (!role || !ref) return "stop";
       setCancelling(false);
       setChunks(0);
@@ -492,7 +531,7 @@ export function SynthPage() {
         text_lang: adv.text_lang,
         text_split_method: adv.text_split_method,
         fragment_interval: adv.fragment_interval,
-        batch_size: adv.batch_size,
+        batch_size: useVulkan ? ADV_DEFAULT.batch_size : adv.batch_size,
         seed,
         ...(showSteps && adv.sample_steps ? { sample_steps: Number(adv.sample_steps) } : {}),
         ...(showSuper ? { super_sampling: adv.super_sampling } : {}),
@@ -506,8 +545,13 @@ export function SynthPage() {
         refText: ref.text,
         refLang: ref.lang,
         params: sent,
-        streaming,
-        opts: { format, aux_refs: auxRows.map((x) => x.abs), role_name: role.name },
+        streaming: !useVulkan && streaming,
+        opts: {
+          backend: chosenBackend,
+          format: useVulkan ? "wav" : format,
+          aux_refs: auxRows.map((x) => x.abs),
+          role_name: role.name,
+        },
       });
       if (r?.out) {
         setLatest(r.out);
@@ -529,14 +573,14 @@ export function SynthPage() {
     setBusy(true);
     setErr("");
     try {
-      await runOne(text.trim());
+      await runOne(text.trim(), runBackend);
     } catch (e) {
       setErr(String(e));
     } finally {
       setBusy(false);
       setCancelling(false);
     }
-  }, [ready, text, runOne]);
+  }, [ready, text, runOne, runBackend]);
 
   /** 批量：逐条顺序合成。`only` 给出时只跑这些下标（重试失败项）。 */
   const startBatch = useCallback(
@@ -561,7 +605,7 @@ export function SynthPage() {
           if (stopBatch.current) break;
           put(i, { state: "run" });
           try {
-            const state = await runOne(cur[i].text);
+            const state = await runOne(cur[i].text, runBackend);
             put(i, { state });
             if (state === "stop") break;
           } catch (e) {
@@ -575,7 +619,7 @@ export function SynthPage() {
         setCancelling(false);
       }
     },
-    [ready, runOne],
+    [ready, runOne, runBackend],
   );
 
   const cancelSynth = useCallback(() => {
@@ -651,11 +695,39 @@ export function SynthPage() {
       </div>
     ) : null;
 
-  const runBar = (count: string, start: () => void, canStart: boolean) => (
+  const runBar = (count: string, start: () => void, canStart: boolean) => (<>
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--meta)]">
+        {t("synth.backend")}
+        <HelpMark title={t("synth.backendTip")} />
+      </span>
+      <div role="group" aria-label={t("synth.backend")}>
+        <SegmentControl<Backend>
+          role="group"
+          value={backend}
+          options={[
+            { id: "cuda", label: "CUDA", disabled: busy || !c.loaded },
+            { id: "vulkan", label: "Vulkan", disabled: busy || !c.loaded },
+          ]}
+          onChange={(next) => {
+            if (busy || !c.loaded) return;
+            setErr("");
+            void c.set("synth_backend", next, true);
+          }}
+        />
+      </div>
+    </div>
+    {vulkanReason ? (
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <p role="status" className="m-0 text-[12px] leading-relaxed text-[var(--help)]">{vulkanReason}</p>
+        {needsVulkanDownload ? <VulkanResourceAction jobs={extraJobs} disabled={busy} /> : null}
+      </div>
+    ) : null}
     <div className="flex items-center gap-3 mt-3 flex-wrap">
       <span className="text-[12px] text-[var(--meta)] tabular-nums">{count}</span>
       <Toggle
-        checked={streaming}
+        checked={!runWithVulkan && streaming}
+        disabled={runWithVulkan || busy}
         onChange={(v) => {
           setStreaming(v);
           void c.set("synth_streaming", v);
@@ -669,11 +741,11 @@ export function SynthPage() {
           </Btn>
         ) : null}
         <Btn primary busy={busy} onClick={start} disabled={!canStart}>
-          {busy ? t("synth.synthesizing") : t("synth.synthesize")}
+          {busy ? t("synth.synthesizing") : vulkanReason ? t("synth.useCuda") : t("synth.synthesize")}
         </Btn>
       </div>
     </div>
-  );
+  </>);
 
   const textArea = (value: string, onChange: (v: string) => void, placeholder: string) => (
     <textarea
@@ -822,7 +894,7 @@ export function SynthPage() {
                                 : refLang(row.lang)}
                           </span>
                         </span>
-                        {row.exists && !on ? (
+                        {row.exists && !on && !runWithVulkan ? (
                           <button
                             type="button"
                             title={isAux ? t("synth.auxRemove") : t("synth.auxAdd")}
@@ -849,7 +921,7 @@ export function SynthPage() {
               <Pager page={refPaged.page} pages={refPaged.pages} onChange={refPaged.setPage} />
             </>
           )}
-          <div className="flex-none mt-3">
+          {!runWithVulkan ? <div className="flex-none mt-3">
             <div className="flex items-center gap-1.5 text-[12.5px] font-medium mb-1.5">
               {t("synth.auxTitle")}
               <span className="text-[11.5px] font-normal text-[var(--meta)]">{auxRows.length}</span>
@@ -876,7 +948,7 @@ export function SynthPage() {
                 ))}
               </div>
             )}
-          </div>
+          </div> : null}
         </div>
 
         {/* 中栏：文本与参数 */}
@@ -942,7 +1014,9 @@ export function SynthPage() {
                 <span className="text-[12.5px] font-medium">{t("synth.batchList")}</span>
                 {failed.length && !busy ? (
                   <span className="ml-auto">
-                    <Btn onClick={() => void startBatch(items, failed)}>{t("synth.batchRetry", { n: failed.length })}</Btn>
+                    <Btn disabled={!ready} onClick={() => void startBatch(items, failed)}>
+                      {vulkanReason ? t("synth.retryCuda", { n: failed.length }) : t("synth.batchRetry", { n: failed.length })}
+                    </Btn>
                   </span>
                 ) : null}
               </div>
@@ -1047,7 +1121,7 @@ export function SynthPage() {
                 <Field
                   label={t("synth.pBatch")}
                   tip={t("synth.pBatchTip")}
-                  control={<Slider value={adv.batch_size} min={1} max={200} step={1} defaultValue={ADV_DEFAULT.batch_size} onChange={(v) => setAdvKey("batch_size", v)} />}
+                  control={<Slider value={runWithVulkan ? ADV_DEFAULT.batch_size : adv.batch_size} disabled={runWithVulkan} min={1} max={200} step={1} defaultValue={ADV_DEFAULT.batch_size} onChange={(v) => setAdvKey("batch_size", v)} />}
                 />
                 {showSteps ? (
                   <Field
@@ -1080,7 +1154,8 @@ export function SynthPage() {
           <SynthResults
             tick={resultTick}
             latest={latest}
-            format={format}
+            format={runWithVulkan ? "wav" : format}
+            formatDisabled={runWithVulkan || busy}
             onFormat={(f) => {
               setFormat(f);
               void c.set("synth_format", f);

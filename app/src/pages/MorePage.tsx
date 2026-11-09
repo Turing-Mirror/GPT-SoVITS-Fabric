@@ -73,6 +73,7 @@ export function MorePage({
   const backendLabel = backend
     ? ({
         cuda: "CUDA",
+        vulkan: "Vulkan",
         mps: "Metal",
         xpu: "XPU",
         cpu: "CPU",
@@ -88,6 +89,7 @@ export function MorePage({
   const backendMismatch =
     backend !== "" &&
     backend !== "cuda" &&
+    backend !== "vulkan" &&
     String(provision?.installed_variant || "").startsWith("nvidia");
 
   const pickMainGpu = (v: number) => {

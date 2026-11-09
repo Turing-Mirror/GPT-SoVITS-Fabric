@@ -224,6 +224,13 @@
       "no_audio": "None of the audio files could be read. Check that the files are intact."
     },
     "synth": {
+      "vulkan_unsupported": "Vulkan supports v5turbo with one reference clip and complete WAV output.",
+      "vulkan_resources_missing": "Download the Vulkan inference resources.",
+      "vulkan_unavailable": "The Vulkan engine is currently unavailable.",
+      "vulkan_model_failed": "Could not prepare this voice for Vulkan.",
+      "vulkan_reference_failed": "Could not read the reference audio.",
+      "vulkan_synth_failed": "Vulkan synthesis failed.",
+      "backend_invalid": "Invalid inference engine.",
       "bad_request": "Incomplete synthesis request.",
       "not_loaded": "No voice model is loaded yet.",
       "init_failed": "The synthesis engine failed to initialize.",
@@ -956,6 +963,18 @@
     "qr": "QR code"
   },
   "synth": {
+    "backend": "Inference engine",
+    "backendTip": "CUDA is the default. Vulkan uses gsv.cpp for v5turbo in Chinese and Japanese with one reference clip and WAV output.",
+    "vulkanRole": "Vulkan requires a v5turbo voice.",
+    "vulkanReference": "Remove auxiliary references to use Vulkan.",
+    "vulkanLanguage": "Vulkan supports Chinese, Japanese, and automatic detection.",
+    "vulkanMissing": "Download the resources to use Vulkan.",
+    "vulkanUnavailable": "Vulkan is currently unavailable.",
+    "useCuda": "Synthesize with CUDA",
+    "retryCuda": "Retry {n} with CUDA",
+    "vulkanResources": "Vulkan inference resources",
+    "vulkanResourcesNote": "Optional inference engine for v5turbo voices.",
+    "vulkanDownload": "Download Vulkan resources",
     "advTitle": "Advanced settings",
     "auxAdd": "Add as auxiliary reference",
     "auxEmpty": "Hover a reference and click the plus button to add it as an auxiliary reference for timbre blending.",
@@ -1158,6 +1177,9 @@
     "queueChanged": "The task status has changed. Try again."
   },
   "help": {
+    "synthEngineQ": "How do I choose an inference engine?",
+    "synthEngineH": "Switch between CUDA and Vulkan on the Synthesis page",
+    "synthEngineA": "CUDA is the default engine. Download Vulkan resources from Synthesis or the Plaza. Vulkan synthesizes Chinese and Japanese with v5turbo voices, uses one reference clip, and returns a complete WAV file. The voice is prepared on first use.",
     "title": "Help",
     "subtitle": "Complete instructions from installation to training. Hints in the app link directly to the matching section.",
     "firstrunTitle": "First run",
@@ -1455,6 +1477,9 @@
     }
   },
   "storage": {
+    "vulkanCache": "Vulkan cache",
+    "vulkanCacheNote": "The cache is rebuilt when you use the voice again.",
+    "vulkanCacheConfirm": "This will clear {size} of Vulkan cache.",
     "characters": "Characters",
     "training": "Training files",
     "outputs": "Synthesized audio",

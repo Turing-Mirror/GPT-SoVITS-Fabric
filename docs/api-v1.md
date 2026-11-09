@@ -29,9 +29,9 @@ tools/list 返回可调用能力、输入 JSON Schema、任务返回格式及最
 | gsv_characters | 查询真实角色、权重与参考音频 |
 | gsv_synthesize | 使用所选角色合成语音 |
 
-gsv_synthesize 接收 roleId、text、referenceAudio、referenceText、referenceLanguage，以及 parameters、format、outputDirectory 等可选参数，具体必填项由 tools/list 的 Schema 给出。先用 gsv_characters 查看已有角色及可用参考资料。
+gsv_synthesize 接收 roleId、text、referenceAudio、referenceText、referenceLanguage，以及 backend、parameters、format、outputDirectory 等可选参数，具体必填项由 tools/list 的 Schema 给出。先用 gsv_characters 查看已有角色及可用参考资料。
 
-合成复用本软件常驻 Python worker，不默认启动另一套 api_v2.py 进程。原生 GPT-SoVITS HTTP API 可作为参数参考，本 API 提供角色资源、任务、取消与产物查询。
+`backend` 默认 `cuda`，使用 Fabric 原版推理。传 `vulkan` 使用 gsv.cpp，支持 Windows 上的 V5 Turbo 角色、中文和日文、单条参考音频和完整 WAV 输出。请先在合成页安装 Vulkan 推理资源。首次使用该角色时，应用将权重转换为本机 GGUF 缓存。`vulkan_unsupported` 表示请求超出此引擎支持范围，`vulkan_resources_missing` 表示需要安装资源。任务返回的 `timing.backend` 记录所用引擎。
 
 音频操作立即返回 jobId，使用 job_get 读取进度和结果。断开 MCP 不会取消任务。job_cancel 只请求取消指定任务，最终状态通过 job_get 确认。输出位于独立任务目录；完成的 artifacts 包含真实路径、格式、采样率、声道及长度。
 

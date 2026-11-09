@@ -632,14 +632,16 @@ fn diag_entry_text(e: &DiagEntry, redaction: Option<&(String, String)>) -> Optio
 pub fn storage_usage(root: &Path) -> Value {
     let ud = paths::user_data(root);
     let names = ["characters", "training", "outputs", "runtime", "pretrained", "separation", "cache", "other"];
+    let vulkan_cache = crate::gsv_cpp::cache_root(root);
+    let vulkan_cache_bytes = storage_bytes(&vulkan_cache, &mut std::collections::BTreeSet::new());
     let groups = [
         vec![crate::synth::characters_dir(root)],
         vec![crate::train::exp_root(root)],
         vec![ud.join("synth"), ud.join("api"), ud.join("separate")],
         vec![paths::legacy_runtime_dir(root), paths::user_data(root).join("runtimes")],
-        vec![root.join("GPT_SoVITS/pretrained_models"), root.join("GPT_SoVITS/text/G2PWModel")],
+        vec![root.join("GPT_SoVITS/pretrained_models"), root.join("GPT_SoVITS/text/G2PWModel"), crate::gsv_cpp::asset_root(root)],
         vec![crate::separate::model_dir(root)],
-        vec![paths::update_cache(root), paths::temp_dir(root), paths::ch_banner_dir(root)],
+        vec![paths::update_cache(root), paths::temp_dir(root), paths::ch_banner_dir(root), vulkan_cache],
     ];
     let mut locations: Vec<(usize, PathBuf)> = groups.into_iter().enumerate()
         .flat_map(|(index, paths)| paths.into_iter().map(move |path| (index, path))).collect();
@@ -680,7 +682,27 @@ pub fn storage_usage(root: &Path) -> Value {
         json!({"name":name,"bytes":bytes,"kind":name})).collect();
     let total: u64 = sizes.iter().sum();
     json!({"items":items,"total_bytes":total,"total_gb":total as f64 / 1073741824.0,
+        "vulkan_cache_bytes":vulkan_cache_bytes,
         "free_bytes":paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null)})
+}
+
+pub fn clear_gsv_cpp_cache(root: &Path) -> Result<Value, String> {
+    crate::synth::while_idle(|| {
+        let cache = crate::gsv_cpp::cache_root(root);
+        let resolved = match std::fs::canonicalize(&cache) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(json!({"freed_bytes": 0})),
+            Err(err) => return Err(err.to_string()),
+        };
+        let user_data = std::fs::canonicalize(paths::user_data(root)).map_err(|err| err.to_string())?;
+        if resolved != user_data.join("cache").join("gsv-cpp") {
+            return Err("The Vulkan cache is outside the application data directory.".into());
+        }
+        crate::synth::shutdown_vulkan();
+        let bytes = storage_bytes(&resolved, &mut std::collections::BTreeSet::new());
+        std::fs::remove_dir_all(&resolved).map_err(|err| err.to_string())?;
+        Ok(json!({"freed_bytes": bytes}))
+    })
 }
 
 /// Resolve directory links once: developer Runtime/model junctions are real usage,
@@ -1390,7 +1412,8 @@ mod tests {
             ("User_Data/train/voice/checkpoint.pth",13), ("User_Data/synth/sample.wav",17),
             ("Runtime/python.exe",19), ("GPT_SoVITS/pretrained_models/base.pth",23),
             ("assets/pymss/model.pth",29), ("User_Data/update_cache/partial.zip",31),
-            ("User_Data/logs/shell/test.log",37)] {
+            ("User_Data/logs/shell/test.log",37), ("User_Data/cache/gsv-cpp/role/ar.gguf",41),
+            ("GSV_CPP/shared/bert-f16.gguf",43)] {
             let path = root.join(path);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, vec![0u8;bytes]).unwrap();
@@ -1398,13 +1421,19 @@ mod tests {
         let stats = storage_usage(&root);
         let items=stats["items"].as_array().unwrap();
         for (name, bytes) in [("characters",11u64),("training",13),("outputs",17),
-            ("runtime",19),("pretrained",23),("separation",29),("cache",31)] {
+            ("runtime",19),("pretrained",66),("separation",29),("cache",72)] {
             let item=items.iter().find(|v|v["name"]==name).unwrap();
             assert_eq!(item["bytes"],bytes,"{name}");
         }
         let mut seen=std::collections::BTreeSet::new();
         assert_eq!(storage_bytes(&root.join("User_Data/synth"),&mut seen),17);
         assert_eq!(storage_bytes(&root.join("User_Data/synth/sample.wav"),&mut seen),0);
+        assert_eq!(stats["vulkan_cache_bytes"], 41);
+        let cleared = clear_gsv_cpp_cache(&root).unwrap();
+        assert_eq!(cleared["freed_bytes"], 41);
+        assert_eq!(storage_usage(&root)["vulkan_cache_bytes"], 0);
+        assert!(root.join("GSV_CPP/shared/bert-f16.gguf").is_file());
+        assert!(root.join("User_Data/characters/voice/models/sovits.pth").is_file());
         let _=std::fs::remove_dir_all(root);
     }
 

@@ -64,6 +64,7 @@ CNB_ORG_REPO = "Turing-Mirror/GPT-SoVITS-Fabric-Releases"
 TAG_RUNTIME = "GSV-runtime"
 TAG_CORE = "GSV-engine-core"
 TAG_ROLES = "GSV-roles"
+TAG_GSV_CPP = "GSV-cpp"
 TAG_SETUP = "GSV-setup"
 #: 封面走 Release 附件，不走 git raw：raw 对图片不给正确的 Content-Type，
 #: 而 Release 附件按扩展名给 image/jpeg，也没有 nosniff。
@@ -325,6 +326,22 @@ def build(src: dict, rep: Report) -> dict:
     # Older Fabric clients read the same role entries under voices.
     out["voices"] = out["roles"]
     out["extras"] = build_extras(src, rep)
+    if cpp := src.get("gsv-cpp"):
+        out["gsv-cpp"] = {}
+        for part in ("engine", "shared"):
+            node = cpp.get(part) or {}
+            name = str(node.get("name", "")).strip()
+            who = f"gsv-cpp.{part}"
+            if not name or name != Path(name).name or not name.endswith(".zip"):
+                rep.error(f"{who}: 缺少有效 ZIP 文件名")
+                continue
+            out["gsv-cpp"][part] = {
+                "name": name,
+                "size_bytes": need_size(rep, who, node),
+                "sha256": need_sha(rep, who, node),
+                "release_tag": TAG_GSV_CPP,
+                "urls": [asset_url(TAG_GSV_CPP, name)],
+            }
     return out
 
 
@@ -418,7 +435,7 @@ def main() -> int:
         bp = Path(args.bundle)
         bundled = json.loads(bp.read_text(encoding="utf-8")) if bp.is_file() else {}
         for k in ("schema", "format", "cnb_repo", "runtime_release_tag", "manifest_urls",
-                  "app", "engine_core", "runtimes", "roles", "voices", "extras"):
+                  "app", "engine_core", "runtimes", "roles", "voices", "extras", "gsv-cpp"):
             if k in doc:
                 bundled[k] = doc[k]
         bp.write_text(json.dumps(bundled, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

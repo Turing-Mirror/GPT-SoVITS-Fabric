@@ -13,6 +13,7 @@ mod crash;
 mod download;
 mod engine_assets;
 mod extra_assets;
+mod gsv_cpp;
 mod extract;
 mod gpu_pref;
 mod hf;
@@ -62,7 +63,34 @@ fn root_clone(state: &State<'_, Mutex<AppState>>) -> Result<PathBuf, String> {
 /// engine-core readiness for the first-run gate.
 #[tauri::command]
 fn assets_status(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
-    Ok(engine_assets::assets_status(&root_clone(&state)?))
+    let root = root_clone(&state)?;
+    let mut status = engine_assets::assets_status(&root);
+    if let (Some(status), Some(vulkan)) = (status.as_object_mut(), gsv_cpp::status(&root).as_object()) {
+        status.extend(vulkan.clone());
+    }
+    Ok(status)
+}
+
+#[tauri::command]
+async fn assets_ensure_gsv_cpp(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let progress: download::ProgressFn = Arc::new(move |done, total, _| {
+            let percent = (done as f64 / total.max(1) as f64 * 100.0).clamp(0.0, 100.0);
+            let _ = app.emit("provision-progress", json!({
+                "phase": "gsv-cpp", "done": done, "total": total, "percent": percent,
+            }));
+        });
+        gsv_cpp::ensure(&root, progress)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn assets_cancel_gsv_cpp() {
+    gsv_cpp::cancel();
 }
 
 /// 下载进度文案用的体积格式（与 provision 侧保持一致）。
@@ -371,6 +399,14 @@ async fn storage_usage(state: State<'_, Mutex<AppState>>) -> Result<Value, Strin
     tauri::async_runtime::spawn_blocking(move || shell_extras::storage_usage(&root))
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn gsv_cpp_clear_cache(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || shell_extras::clear_gsv_cpp_cache(&root))
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 /// 选完数据集立刻数一遍：这个目录里到底有几个音频。
@@ -1490,6 +1526,7 @@ pub fn run() {
             train_cleanup_scan,
             train_cleanup_apply,
             storage_usage,
+            gsv_cpp_clear_cache,
             diagnostics_preview,
             diagnostics_summary_text,
             cache_status,
@@ -1500,6 +1537,8 @@ pub fn run() {
             close_finish,
             assets_status,
             assets_ensure_engine_core,
+            assets_ensure_gsv_cpp,
+            assets_cancel_gsv_cpp,
             vcredist_installed,
             assets_ensure_vcredist,
             vcredist_install,

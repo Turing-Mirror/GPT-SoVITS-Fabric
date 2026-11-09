@@ -15,6 +15,8 @@ export type AssetsStatus = {
   engine_core_ready?: boolean;
   engine_core_missing?: string[];
   engine_core_packs?: { name: string; size_bytes: number }[];
+  gsv_cpp_ready?: boolean;
+  gsv_cpp_size_bytes?: number;
 };
 
 export type OpenDownloadModelsOpts = {

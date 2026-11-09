@@ -68,6 +68,7 @@ const SECTIONS: {
       { id: "synth2", q: "help.synthQ2", h: "help.synthH2", a: "help.synthA2" },
       { id: "synth3", q: "help.synthQ3", h: "help.synthH3", a: "help.synthA3" },
       { id: "synth4", q: "help.synthQ4", h: "help.synthH4", a: "help.synthA4" },
+      { id: "synthEngine", q: "help.synthEngineQ", h: "help.synthEngineH", a: "help.synthEngineA" },
     ],
   },
   {

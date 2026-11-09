@@ -224,6 +224,13 @@
       "no_audio": "Aucun fichier audio n'a pu être lu. Vérifiez que les fichiers sont intacts."
     },
     "synth": {
+      "vulkan_unsupported": "Vulkan prend en charge v5turbo avec une référence et une sortie WAV complète.",
+      "vulkan_resources_missing": "Téléchargez les ressources d’inférence Vulkan.",
+      "vulkan_unavailable": "Le moteur Vulkan est actuellement indisponible.",
+      "vulkan_model_failed": "Impossible de préparer cette voix pour Vulkan.",
+      "vulkan_reference_failed": "Impossible de lire l’audio de référence.",
+      "vulkan_synth_failed": "La synthèse avec Vulkan a échoué.",
+      "backend_invalid": "Moteur d’inférence invalide.",
       "bad_request": "Requête de synthèse incomplète.",
       "not_loaded": "Aucun modèle vocal n'est encore chargé.",
       "init_failed": "Échec de l'initialisation du moteur de synthèse.",
@@ -956,6 +963,18 @@
     "qr": "Code QR"
   },
   "synth": {
+    "backend": "Moteur d’inférence",
+    "backendTip": "CUDA est le moteur par défaut. Vulkan utilise gsv.cpp avec les voix v5turbo en chinois et en japonais, une référence et une sortie WAV.",
+    "vulkanRole": "Vulkan requiert une voix v5turbo.",
+    "vulkanReference": "Retirez les références auxiliaires pour utiliser Vulkan.",
+    "vulkanLanguage": "Vulkan prend en charge le chinois, le japonais et la détection automatique.",
+    "vulkanMissing": "Téléchargez les ressources pour utiliser Vulkan.",
+    "vulkanUnavailable": "Vulkan est actuellement indisponible.",
+    "useCuda": "Synthétiser avec CUDA",
+    "retryCuda": "Relancer {n} avec CUDA",
+    "vulkanResources": "Ressources d’inférence Vulkan",
+    "vulkanResourcesNote": "Moteur d’inférence facultatif pour les voix v5turbo.",
+    "vulkanDownload": "Télécharger les ressources Vulkan",
     "advTitle": "Paramètres avancés",
     "auxAdd": "Ajouter comme référence auxiliaire",
     "auxEmpty": "Survolez une référence et cliquez sur le bouton plus pour l'ajouter comme référence auxiliaire de timbre.",
@@ -1158,6 +1177,9 @@
     "queueChanged": "L’état de la tâche a changé. Réessayez."
   },
   "help": {
+    "synthEngineQ": "Comment choisir un moteur d’inférence ?",
+    "synthEngineH": "Passez de CUDA à Vulkan sur la page Synthèse",
+    "synthEngineA": "CUDA est le moteur par défaut. Téléchargez les ressources Vulkan depuis Synthèse ou la Place. Vulkan synthétise du chinois et du japonais avec les voix v5turbo, utilise une référence et renvoie un fichier WAV complet. La voix est préparée lors de sa première utilisation.",
     "title": "Aide",
     "subtitle": "Instructions complètes, de l’installation à l’entraînement. Les indications de l’application renvoient directement à la section concernée.",
     "firstrunTitle": "Premier lancement",
@@ -1455,6 +1477,9 @@
     }
   },
   "storage": {
+    "vulkanCache": "Cache Vulkan",
+    "vulkanCacheNote": "Le cache est recréé lors de la prochaine utilisation de la voix.",
+    "vulkanCacheConfirm": "Cette action effacera {size} du cache Vulkan.",
     "characters": "Personnages",
     "training": "Fichiers d’entraînement",
     "outputs": "Audio synthétisé",

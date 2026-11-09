@@ -1,10 +1,7 @@
 # GPT-SoVITS Fabric desktop shell (`app/`)
 
 Tauri 2 + React + TypeScript + Tailwind UI host for GPT-SoVITS Fabric.
-Speech synthesis runs in the embedded Runtime (`pythonw` + `tools/synth_worker.py`).
-
-This host **is** the product shell (Tk / `launcher/` UI removed). Only the speech synthesis
-worker stays on Python under `Runtime\pythonw.exe`.
+The synthesis page defaults to CUDA through the embedded Runtime. It also offers Vulkan through gsv.cpp for supported v5turbo voices.
 
 ## Requirements
 
@@ -38,8 +35,7 @@ Product behaviour and decisions: see internal `docs/项目白皮书.md` (gitigno
 
 ## Worker bridge
 
-The shell spawns `Runtime\\pythonw.exe tools\\synth_worker.py --resident` and talks
-JSON lines over stdin/stdout; training and separation are one-shot child workers.
+The CUDA engine runs `Runtime\\pythonw.exe tools\\synth_worker.py --resident` over JSON lines on stdin/stdout. The Vulkan engine runs the downloaded gsv.cpp server and text process on the loopback interface. Both use the same task and output flow. Training and separation use one-shot child workers.
 
 ## Voice catalog & community store
 

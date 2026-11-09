@@ -43,6 +43,7 @@ export function SynthResults({
   tick,
   latest,
   format,
+  formatDisabled = false,
   onFormat,
   onReuse,
   onError,
@@ -52,6 +53,7 @@ export function SynthResults({
   /** 刚合成出的文件：重读后自动选中。 */
   latest: string;
   format: OutFormat;
+  formatDisabled?: boolean;
   onFormat: (f: OutFormat) => void;
   onReuse: (rec: SynthRecord) => void;
   onError: (msg: string) => void;
@@ -124,8 +126,9 @@ export function SynthResults({
           <Select
             width={84}
             value={format}
+            disabled={formatDisabled}
             options={OUT_FORMATS.map((f) => ({ id: f, label: f }))}
-            onChange={(v) => onFormat(v as OutFormat)}
+            onChange={(v) => { if (!formatDisabled) onFormat(v as OutFormat); }}
           />
         </div>
       </div>

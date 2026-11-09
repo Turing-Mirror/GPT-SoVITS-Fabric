@@ -32,6 +32,10 @@ export type ExtraJobsSnap = {
   coreBusy: boolean;
   progByKey: Record<string, ExtraProgress>;
   coreProg: CoreProgress | null;
+  vulkanBusy: boolean;
+  vulkanCancelling: boolean;
+  vulkanProgress: CoreProgress | null;
+  vulkanError: string;
   msg: string;
   generation: number;
 };
@@ -45,13 +49,17 @@ let busyKeys: Record<string, true> = {};
 let coreBusy = false;
 let progByKey: Record<string, ExtraProgress> = {};
 let coreProg: CoreProgress | null = null;
+let vulkanBusy = false;
+let vulkanCancelling = false;
+let vulkanProgress: CoreProgress | null = null;
+let vulkanError = "";
 let msg = "";
 let generation = 0;
 let listening = false;
 const listeners = new Set<() => void>();
 
 function snap(): ExtraJobsSnap {
-  return { busyKeys, coreBusy, progByKey, coreProg, msg, generation };
+  return { busyKeys, coreBusy, progByKey, coreProg, vulkanBusy, vulkanCancelling, vulkanProgress, vulkanError, msg, generation };
 }
 
 function emit() {
@@ -71,7 +79,10 @@ function ensureListen() {
     listening = false;
   });
   void listen<CoreProgress>("provision-progress", (ev) => {
-    if (ev.payload?.phase === "engine-core" || String(ev.payload?.phase || "").includes("engine")) {
+    if (ev.payload?.phase === "gsv-cpp" && vulkanBusy) {
+      vulkanProgress = ev.payload;
+      emit();
+    } else if (ev.payload?.phase === "engine-core" || String(ev.payload?.phase || "").includes("engine")) {
       coreProg = ev.payload;
       emit();
     }
@@ -80,7 +91,7 @@ function ensureListen() {
 
 export function startExtraDownload(key: string): void {
   ensureListen();
-  if (coreBusy || Object.keys(busyKeys).length > 0 || starting.has(key)) return;
+  if (coreBusy || vulkanBusy || Object.keys(busyKeys).length > 0 || starting.has(key)) return;
 
   starting.add(key);
   busyKeys = { ...busyKeys, [key]: true };
@@ -106,7 +117,7 @@ export function startExtraDownload(key: string): void {
 
 export function startEngineCoreDownload(): void {
   ensureListen();
-  if (coreBusy || Object.keys(busyKeys).length > 0) return;
+  if (coreBusy || vulkanBusy || Object.keys(busyKeys).length > 0) return;
   coreBusy = true;
   msg = "";
   coreProg = {
@@ -130,6 +141,37 @@ export function startEngineCoreDownload(): void {
       emit();
     }
   })();
+}
+
+export function startVulkanDownload(): void {
+  if (!isTauri() || coreBusy || vulkanBusy || Object.keys(busyKeys).length > 0) return;
+  ensureListen();
+  vulkanBusy = true;
+  vulkanProgress = null;
+  vulkanError = "";
+  emit();
+  void invoke<{ ok: boolean }>("assets_ensure_gsv_cpp")
+    .then((result) => {
+      if (result.ok) generation += 1;
+    })
+    .catch((e) => { vulkanError = String(e); })
+    .finally(() => {
+      vulkanBusy = false;
+      vulkanCancelling = false;
+      vulkanProgress = null;
+      emit();
+    });
+}
+
+export function cancelVulkanDownload(): void {
+  if (!vulkanBusy || vulkanCancelling) return;
+  vulkanCancelling = true;
+  emit();
+  void invoke("assets_cancel_gsv_cpp").catch((e) => {
+    vulkanCancelling = false;
+    vulkanError = String(e);
+    emit();
+  });
 }
 
 export function subscribeExtraJobs(fn: () => void): () => void {

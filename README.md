@@ -10,14 +10,21 @@
 - 角色库 + 合成台 + 训练台 + 社区广场（CNB 分发）一站式
 - `.list` 标注文件一等公民：同一份标注贯穿「广场分发 → 本地角色库 → 合成参考 → 训练数据集」
 
+## 推理引擎
+
+在「合成」页选择推理引擎。CUDA 是默认选项，沿用现有运行环境和模型。Vulkan 使用 [gsv.cpp](https://github.com/KakaruHayate/gsv.cpp)，首版支持 Windows 上的 v5turbo 中文和日文合成，使用一条参考音频并输出完整 WAV。
+
+可在合成页或「广场 → 下载模型 → 引擎资源」下载 Vulkan 推理资源。首次合成时，程序为当前角色准备 GGUF 缓存。可在「其他 → 存储占用」清理 Vulkan 缓存，再次使用相应角色时会重建。使用旧版角色、辅助参考、流式合成或 FLAC 时，选择 CUDA。当前任务不适用 Vulkan 时，可直接点击「用 CUDA 合成」。
+
 ## 架构
 
 ```
-GPT-SoVITS Fabric.exe (Tauri + Rust + React)
-    │ JSON 文件协议 / stdout 行协议
-Runtime\pythonw.exe tools\synth_worker.py --resident
-    └─> GPT_SoVITS.TTS_infer_pack.TTS（进程内常驻推理）
+GPT-SoVITS Fabric.exe（Tauri + Rust + React）
+├─ CUDA → 常驻 Python worker → GPT-SoVITS TTS
+└─ Vulkan → 本机 gsv.cpp 服务与文本进程 → GPT-SoVITS v5turbo
 ```
+
+两套引擎共用合成入口、取消操作和输出记录。桌面与本机 API 使用同一任务流程。
 
 ## 开发
 

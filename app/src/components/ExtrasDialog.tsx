@@ -24,6 +24,7 @@ import {
 import { useI18n } from "../i18n";
 import { Modal } from "./Modal";
 import { joinClauses } from "../lib/text";
+import { VulkanResourceAction } from "./VulkanResourceAction";
 
 export type ExtraGroup = Category;
 
@@ -116,7 +117,7 @@ export function ExtrasPanel({
 }) {
   useI18n();
   const jobs = useExtraJobs();
-  const { busyKeys, coreBusy, progByKey, coreProg } = jobs;
+  const { busyKeys, coreBusy, progByKey, coreProg, vulkanBusy } = jobs;
   const [list, setList] = useState<List | null>(null);
   const [assets, setAssets] = useState<AssetsStatus | null>(null);
   const [msg, setMsg] = useState("");
@@ -195,7 +196,7 @@ export function ExtrasPanel({
    * 点错一下的代价太大。确认框里把体积写出来，别让用户去猜删的是什么。
    */
   const remove = async (it: Item) => {
-    if (coreBusy || removeKey || Object.keys(busyKeys).length) return;
+    if (coreBusy || vulkanBusy || removeKey || Object.keys(busyKeys).length) return;
     const ok = await askConfirm(
       t("s.extraRemoveConfirm", {
         v0: extraLabel(it),
@@ -233,7 +234,7 @@ export function ExtrasPanel({
       : category === "separate" ? t("s.7e9782377b") : category === "synth" ? t("extras.synthEmpty") : t("s.extraEmptyOther");
 
   const coreMissing = engineReady === false;
-  const anyBusy = downloading.length > 0 || !!removeKey || coreBusy;
+  const anyBusy = downloading.length > 0 || !!removeKey || coreBusy || vulkanBusy;
   useEffect(() => {
     onBusyChange?.(anyBusy);
   }, [anyBusy, onBusyChange]);
@@ -319,7 +320,7 @@ export function ExtrasPanel({
               <Btn
                 primary
                 className="shrink-0"
-                disabled={coreBusy || downloading.length > 0}
+                disabled={coreBusy || vulkanBusy || downloading.length > 0}
                 onClick={() => void downloadEngineCore()}
               >
                 {coreBusy ? t("s.65188d08a2") : t("s.cbf7f4dada")}
@@ -329,6 +330,24 @@ export function ExtrasPanel({
             ) : null}
           </div>
         </div>
+        ) : null}
+
+        {category === "synth" && typeof assets?.gsv_cpp_ready === "boolean" ? (
+          <div className="mb-4 rounded-[var(--rs)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] px-3.5 py-3">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-semibold">{t("synth.vulkanResources")}</div>
+                <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-[var(--help)]">
+                  {joinClauses([t("synth.vulkanResourcesNote"), mb(assets.gsv_cpp_size_bytes ?? 0)])}
+                </p>
+              </div>
+              {assets.gsv_cpp_ready ? (
+                <span className="shrink-0 px-2 py-1 text-[13px] text-[var(--ink-muted)]">{t("s.eb88ff57c9")}</span>
+              ) : (
+                <VulkanResourceAction jobs={jobs} disabled={!!removeKey} />
+              )}
+            </div>
+          </div>
         ) : null}
 
         <CatalogTransition scope={category} page={pageClamped + 1} order={categories}>

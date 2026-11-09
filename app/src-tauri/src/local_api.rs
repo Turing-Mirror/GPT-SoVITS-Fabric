@@ -36,10 +36,11 @@ pub fn manifest() -> Manifest {
     }});
     let mut caps = json!([
         {"id":"gsv.characters","description":"List installed character models and their reference recordings","kind":"query","contractVersion":1,"inputSchema":{"type":"object","title":"本机角色","description":"查看已安装的角色和参考音频。","properties":{},"additionalProperties":false},"resultSchema":{"type":"object","required":["roles"],"properties":{"roles":{"type":"array"}}}},
-        {"id":"gsv.synthesize","description":"Synthesize speech using an installed character and a local reference recording. Reuses the application's resident model worker. Returns a job ID.","kind":"job","contractVersion":1,"cancelable":true,"effects":["write_output","gpu_inference"],"inputSchema":{"type":"object","additionalProperties":false,"description":"使用所选角色与参考音频合成语音。","required":["roleId","text","referenceAudio","referenceText","referenceLanguage"],"properties":{
+        {"id":"gsv.synthesize","description":"Synthesize speech using an installed character and a local reference recording. Uses the requested CUDA or Vulkan engine. Returns a job ID.","kind":"job","contractVersion":1,"cancelable":true,"effects":["write_output","gpu_inference"],"inputSchema":{"type":"object","additionalProperties":false,"description":"使用所选角色与参考音频合成语音。","required":["roleId","text","referenceAudio","referenceText","referenceLanguage"],"properties":{
             "roleId":{"type":"string","minLength":1,"x-trm-kind":"resource","x-trm-resource":"gsv.character"},
             "text":{"type":"string","minLength":1},"referenceAudio":{"type":"string","minLength":1,"x-trm-kind":"file","x-trm-media":"audio"},
             "referenceText":{"type":"string"},"referenceLanguage":{"type":"string","enum":["zh","en","ja","ko","yue","all_zh","all_ja","all_ko","all_yue","auto"]},
+            "backend":{"type":"string","enum":["cuda","vulkan"],"default":"cuda"},
             "parameters":parameters,"format":{"type":"string","enum":["wav","flac","mp3","m4a"],"default":"wav"},"outputDirectory":{"type":"string","x-trm-kind":"directory"}
         }},"resultSchema":audio_result_schema(&["speech"])}
     ]);
@@ -195,7 +196,24 @@ impl Application for AudioApp {
         if let Some(input) = args["parameters"].as_object() {
             params.extend(input.clone());
         }
-        let opts = json!({"owner":ctx.id,"job_id":ctx.id,"output_dir":output,"format":args["format"].as_str().unwrap_or("wav"),"role_name":role["name"].as_str().unwrap_or(role_id)});
+        let backend = args["backend"].as_str().unwrap_or("cuda");
+        let opts = json!({
+            "owner": ctx.id, "job_id": ctx.id, "output_dir": output, "backend": backend,
+            "format": args["format"].as_str().unwrap_or("wav"),
+            "role_name": role["name"].as_str().unwrap_or(role_id),
+        });
+        let params = Value::Object(params);
+        if backend == "vulkan" {
+            if let Some((code, fallback)) = crate::gsv_cpp::request_error(
+                &self.root, role["version"].as_str().unwrap_or("v2ProPlus"),
+                args["text"].as_str().unwrap_or_default(),
+                args["referenceText"].as_str().unwrap_or_default(),
+                args["referenceLanguage"].as_str().unwrap_or("zh"),
+                &params, false, &opts,
+            ) {
+                return Err(ApiError::new(code, crate::gsv_cpp::message(code, fallback)));
+            }
+        }
         let mut listeners = Vec::new();
         for event in ["synth-chunk", "synth-done", "synth-error"] {
             let observer = ctx.clone();
@@ -228,7 +246,7 @@ impl Application for AudioApp {
             args["referenceAudio"].as_str().unwrap(),
             args["referenceText"].as_str().unwrap(),
             args["referenceLanguage"].as_str().unwrap(),
-            &Value::Object(params),
+            &params,
             false,
             &opts,
         );

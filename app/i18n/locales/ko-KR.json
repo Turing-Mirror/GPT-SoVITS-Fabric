@@ -224,6 +224,13 @@
       "no_audio": "오디오 파일을 하나도 읽을 수 없습니다. 파일이 손상되지 않았는지 확인하세요."
     },
     "synth": {
+      "vulkan_unsupported": "Vulkan은 v5turbo의 참조 음성 1개와 완성된 WAV 출력을 지원합니다.",
+      "vulkan_resources_missing": "Vulkan 추론 리소스를 다운로드하세요.",
+      "vulkan_unavailable": "현재 Vulkan 엔진을 사용할 수 없습니다.",
+      "vulkan_model_failed": "이 음성 모델을 Vulkan용으로 준비할 수 없습니다.",
+      "vulkan_reference_failed": "참조 음성을 읽을 수 없습니다.",
+      "vulkan_synth_failed": "Vulkan 합성에 실패했습니다.",
+      "backend_invalid": "유효하지 않은 추론 엔진입니다.",
       "bad_request": "합성 요청 매개변수가 누락되었습니다.",
       "not_loaded": "캐릭터 모델이 아직 로드되지 않았습니다.",
       "init_failed": "합성 엔진 초기화에 실패했습니다.",
@@ -956,6 +963,18 @@
     "qr": "QR 코드"
   },
   "synth": {
+    "backend": "추론 엔진",
+    "backendTip": "기본값은 CUDA입니다. Vulkan은 gsv.cpp를 사용하며 v5turbo의 중국어와 일본어, 참조 음성 1개, WAV 출력을 지원합니다.",
+    "vulkanRole": "Vulkan에는 v5turbo 음성 모델이 필요합니다.",
+    "vulkanReference": "Vulkan을 사용하려면 보조 참조 음성을 제거하세요.",
+    "vulkanLanguage": "Vulkan은 중국어, 일본어, 자동 감지를 지원합니다.",
+    "vulkanMissing": "리소스를 다운로드하면 Vulkan을 사용할 수 있습니다.",
+    "vulkanUnavailable": "현재 Vulkan을 사용할 수 없습니다.",
+    "useCuda": "CUDA로 합성",
+    "retryCuda": "CUDA로 {n}개 다시 시도",
+    "vulkanResources": "Vulkan 추론 리소스",
+    "vulkanResourcesNote": "v5turbo 음성 모델용 선택 추론 엔진입니다.",
+    "vulkanDownload": "Vulkan 리소스 다운로드",
     "advTitle": "고급 설정",
     "auxAdd": "보조 참조에 추가",
     "auxEmpty": "참조 행에 마우스를 올리고 더하기를 누르면 음색 혼합용 보조 참조로 추가됩니다.",
@@ -1158,6 +1177,9 @@
     "queueChanged": "작업 상태가 변경되었습니다. 다시 시도하세요."
   },
   "help": {
+    "synthEngineQ": "추론 엔진은 어떻게 선택하나요?",
+    "synthEngineH": "합성 페이지에서 CUDA와 Vulkan 전환",
+    "synthEngineA": "기본 엔진은 CUDA입니다. 합성 페이지나 광장에서 Vulkan 리소스를 다운로드할 수 있습니다. Vulkan은 v5turbo로 중국어와 일본어를 합성하고 참조 음성 1개를 사용해 완성된 WAV를 출력합니다. 모델은 처음 사용할 때 준비됩니다.",
     "title": "도움말",
     "subtitle": "설치부터 학습까지의 전체 사용 설명입니다. 앱 안의 안내에서 해당 절로 바로 이동할 수 있습니다.",
     "firstrunTitle": "첫 실행",
@@ -1455,6 +1477,9 @@
     }
   },
   "storage": {
+    "vulkanCache": "Vulkan 캐시",
+    "vulkanCacheNote": "해당 음성 모델을 다시 사용하면 캐시가 다시 생성됩니다.",
+    "vulkanCacheConfirm": "Vulkan 캐시 {size}를 지웁니다.",
     "characters": "캐릭터",
     "training": "학습 파일",
     "outputs": "합성 오디오",

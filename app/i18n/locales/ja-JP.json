@@ -224,6 +224,13 @@
       "no_audio": "どの音声ファイルも読み込めませんでした。ファイルが壊れていないか確認してください。"
     },
     "synth": {
+      "vulkan_unsupported": "Vulkan は v5turbo の参照音声 1 件と、完成した WAV の出力に対応します。",
+      "vulkan_resources_missing": "Vulkan の推論リソースをダウンロードしてください。",
+      "vulkan_unavailable": "現在 Vulkan エンジンは使用できません。",
+      "vulkan_model_failed": "この音声モデルを Vulkan 用に準備できませんでした。",
+      "vulkan_reference_failed": "参照音声を読み取れませんでした。",
+      "vulkan_synth_failed": "Vulkan での合成に失敗しました。",
+      "backend_invalid": "無効な推論エンジンです。",
       "bad_request": "合成リクエストのパラメーターが不足しています。",
       "not_loaded": "キャラクターモデルがまだ読み込まれていません。",
       "init_failed": "合成エンジンの初期化に失敗しました。",
@@ -956,6 +963,18 @@
     "qr": "QR コード"
   },
   "synth": {
+    "backend": "推論エンジン",
+    "backendTip": "既定は CUDA です。Vulkan は gsv.cpp を使い、v5turbo の中国語と日本語、参照音声 1 件、WAV 出力に対応します。",
+    "vulkanRole": "Vulkan には v5turbo の音声モデルが必要です。",
+    "vulkanReference": "Vulkan を使うには補助参照音声を削除してください。",
+    "vulkanLanguage": "Vulkan は中国語、日本語、自動判定に対応します。",
+    "vulkanMissing": "リソースをダウンロードすると Vulkan を使用できます。",
+    "vulkanUnavailable": "現在 Vulkan は使用できません。",
+    "useCuda": "CUDA で合成",
+    "retryCuda": "CUDA で {n} 件を再試行",
+    "vulkanResources": "Vulkan 推論リソース",
+    "vulkanResourcesNote": "v5turbo 用のオプションの推論エンジンです。",
+    "vulkanDownload": "Vulkan リソースをダウンロード",
     "advTitle": "詳細設定",
     "auxAdd": "補助参照に追加",
     "auxEmpty": "参照行にカーソルを合わせて＋を押すと、音色ブレンド用の補助参照に追加されます。",
@@ -1158,6 +1177,9 @@
     "queueChanged": "タスクの状態が変わりました。再試行してください。"
   },
   "help": {
+    "synthEngineQ": "推論エンジンはどう選びますか？",
+    "synthEngineH": "合成ページで CUDA と Vulkan を切り替え",
+    "synthEngineA": "既定は CUDA です。Vulkan のリソースは合成ページまたは広場からダウンロードできます。Vulkan は v5turbo で中国語と日本語を合成し、参照音声 1 件を使って完成した WAV を出力します。モデルは初回使用時に準備されます。",
     "title": "ヘルプ",
     "subtitle": "インストールから学習までの使い方です。アプリ内のヒントから該当する節へ直接移動できます。",
     "firstrunTitle": "初回起動",
@@ -1455,6 +1477,9 @@
     }
   },
   "storage": {
+    "vulkanCache": "Vulkan キャッシュ",
+    "vulkanCacheNote": "対象の音声モデルを再使用するとキャッシュが再作成されます。",
+    "vulkanCacheConfirm": "Vulkan キャッシュを {size} 消去します。",
     "characters": "キャラクター",
     "training": "学習ファイル",
     "outputs": "合成音声",

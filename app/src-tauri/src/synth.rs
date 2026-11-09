@@ -23,10 +23,41 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
-use crate::paths;
+use crate::{gsv_cpp, paths};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Backend {
+    Cuda,
+    Vulkan,
+}
+
+impl Backend {
+    fn from_options(opts: &Value) -> Result<Self, String> {
+        match opts.get("backend").map(Value::as_str) {
+            None | Some(Some("cuda")) => Ok(Self::Cuda),
+            Some(Some("vulkan")) => Ok(Self::Vulkan),
+            _ => Err(gsv_cpp::message("backend_invalid", "无效的推理引擎。")),
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Cuda => "cuda",
+            Self::Vulkan => "vulkan",
+        }
+    }
+
+    fn script(self) -> &'static str {
+        match self {
+            Self::Cuda => "synth_worker.py",
+            Self::Vulkan => "gsv_cpp_worker.py",
+        }
+    }
+}
 
 /// 常驻 worker 句柄。stdout 在 spawn 时被接管，之后所有读取都走它。
 struct Resident {
+    backend: Backend,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<std::process::ChildStdout>,
@@ -44,10 +75,6 @@ fn cancel_flag() -> Arc<AtomicBool> {
     CANCEL
         .get_or_init(|| Arc::new(AtomicBool::new(false)))
         .clone()
-}
-
-fn script(root: &Path) -> PathBuf {
-    root.join("tools").join("synth_worker.py")
 }
 
 /// 角色包根：`User_Data/characters/<id>/`（docs/DECISIONS.md D4）。
@@ -223,14 +250,16 @@ fn worker_alive_mut(g: &mut Option<Resident>) -> bool {
 
 /// 起常驻 worker（已活着就是 no-op）。ready 行当场读掉 —— GPT_SoVITS 懒加载，
 /// 这一行来得很快；它同时也是「python 能跑、脚本能跑」的第一次体检。
-fn ensure_worker(root: &Path) -> Result<(), String> {
+fn ensure_worker(root: &Path, backend: Backend) -> Result<(), String> {
     let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
-    if worker_alive_mut(&mut g) {
+    if worker_alive_mut(&mut g) && g.as_ref().is_some_and(|r| r.backend == backend) {
         return Ok(());
     }
-    *g = None;
+    if let Some(r) = g.take() {
+        stop_resident(r);
+    }
 
-    let script = script(root);
+    let script = root.join("tools").join(backend.script());
     if !script.is_file() {
         return Err(crate::i18n::t("s.synthErrNoWorker"));
     }
@@ -275,6 +304,7 @@ fn ensure_worker(root: &Path) -> Result<(), String> {
     let _guard = crate::worker::ToolPidGuard::new(pid);
 
     let mut resident = Resident {
+        backend,
         child,
         stdin,
         stdout: BufReader::new(stdout),
@@ -374,14 +404,31 @@ fn send(g: &mut Resident, req: &Value) -> Result<(), String> {
 
 /// 杀掉常驻 worker（引擎强杀、设置变更时调用方决定要不要重建）。
 pub fn shutdown() {
-    let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(mut r) = g.take() {
+    shutdown_matching(None);
+}
+
+pub(crate) fn shutdown_vulkan() {
+    shutdown_matching(Some(Backend::Vulkan));
+}
+
+fn shutdown_matching(backend: Option<Backend>) {
+    let mut resident = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
+    if resident.as_ref().is_some_and(|r| backend.is_none_or(|b| r.backend == b)) {
+        stop_resident(resident.take().unwrap());
+    }
+}
+
+fn stop_resident(mut r: Resident) {
+    if matches!(r.child.try_wait(), Ok(None)) {
         let _ = writeln!(r.stdin, r#"{{"cmd":"quit"}}"#);
         let _ = r.stdin.flush();
         std::thread::sleep(Duration::from_millis(300));
+        if matches!(r.child.try_wait(), Ok(None)) && r.backend == Backend::Vulkan {
+            kill_pid(r.child.id());
+        }
         let _ = r.child.kill();
-        let _ = r.child.wait();
     }
+    let _ = r.child.wait();
 }
 
 /// Hold the synthesis admission lock while changing role files.
@@ -599,7 +646,17 @@ fn synthesize_inner(
     let stop = stop_file(root);
     let _ = std::fs::remove_file(&stop);
 
-    ensure_worker(root)?;
+    let backend = Backend::from_options(opts)?;
+    if backend == Backend::Vulkan {
+        if let Some((code, fallback)) = gsv_cpp::request_error(
+            root, version, text, ref_text, ref_lang, params, streaming, opts,
+        ) {
+            let message = gsv_cpp::message(code, fallback);
+            emit_progress(app, "synth-error", json!({"job": job, "code": code, "message": message}));
+            return Err(message);
+        }
+    }
+    ensure_worker(root, backend)?;
 
     let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
     let Some(resident) = g.as_mut() else {
@@ -615,6 +672,7 @@ fn synthesize_inner(
             "sovits": sovits.to_string_lossy(),
             "gpt": gpt.to_string_lossy(),
             "version": version,
+            "gsv_cache": gsv_cpp::cache_root(root),
             // 两个都得是**目录**：worker 那边最终走的是
             // `HubertModel.from_pretrained()` / `AutoTokenizer.from_pretrained()`，
             // 指到 pretrained_model2.pth 这种具体权重文件上会当场报错。
@@ -633,8 +691,15 @@ fn synthesize_inner(
         if cancel_flag().load(Ordering::SeqCst) {
             let _ = std::fs::write(&stop, b"stop");
         }
-        let line = read_line_with_deadline(resident, Duration::from_secs(180))
-            .map_err(|_| crate::i18n::t("s.synthErrLoadTimeout"))?;
+        let timeout = Duration::from_secs(if backend == Backend::Vulkan { 600 } else { 180 });
+        let line = match read_line_with_deadline(resident, timeout) {
+            Ok(line) => line,
+            Err(_) if backend == Backend::Vulkan && cancel_flag().load(Ordering::SeqCst) => {
+                *g = None;
+                return Ok(json!({"ok": true, "cancelled": true, "job": job}));
+            }
+            Err(_) => return Err(crate::i18n::t("s.synthErrLoadTimeout")),
+        };
         let Some(v) = parse_event(&line) else {
             continue;
         };
@@ -649,6 +714,10 @@ fn synthesize_inner(
                 // worker 报文带 message_code（msg.synth.* 语言包）+ detail
                 // （异常原文）；翻译不到时 t_worker_msg 回退 message。
                 let msg = crate::i18n::t_worker_msg(&v);
+                if backend == Backend::Vulkan {
+                    emit_progress(app, "synth-error", json!({"job": job, "code": v["code"], "message": msg}));
+                    return Err(msg);
+                }
                 let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
                 let msg = if detail.is_empty() {
                     msg
@@ -659,6 +728,10 @@ fn synthesize_inner(
             }
             _ => {}
         }
+    }
+
+    if backend == Backend::Vulkan && cancel_flag().load(Ordering::SeqCst) {
+        return Ok(json!({"ok": true, "cancelled": true, "job": job}));
     }
 
     // 2) synth：分片经事件转发，done/error 收尾。
@@ -698,7 +771,13 @@ fn synthesize_inner(
             Err(_) => {
                 // worker 没了（看门狗杀的或崩溃）：按取消/失败收场，别把互斥卡死。
                 *g = None;
-                if cancelled {
+                if backend == Backend::Vulkan {
+                    let _ = std::fs::remove_file(out_path.with_extension("wav.part"));
+                }
+                if cancelled || cancel_flag().load(Ordering::SeqCst) {
+                    if backend == Backend::Vulkan {
+                        let _ = std::fs::remove_file(&out_path);
+                    }
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
                 return Err(crate::i18n::t("s.synthErrWorkerGone"));
@@ -712,6 +791,10 @@ fn synthesize_inner(
                 emit_progress(app, "synth-chunk", v);
             }
             "done" => {
+                if backend == Backend::Vulkan && cancel_flag().load(Ordering::SeqCst) {
+                    let _ = std::fs::remove_file(&out_path);
+                    return Ok(json!({"ok": true, "cancelled": true, "job": job}));
+                }
                 emit_progress(app, "synth-done", v.clone());
                 let out = v
                     .get("out")
@@ -726,6 +809,7 @@ fn synthesize_inner(
                         "role_name": opts.get("role_name").cloned().unwrap_or(json!(role_id)),
                         "ref_wav": ref_wav,
                         "params": params,
+                        "backend": backend.id(),
                         "audio_sec": v.get("audio_sec").cloned().unwrap_or(json!(0)),
                         "t_first_ms": v.get("t_first_ms").cloned().unwrap_or(json!(0)),
                         "t_total_ms": v.get("t_total_ms").cloned().unwrap_or(json!(0)),
@@ -734,6 +818,7 @@ fn synthesize_inner(
                 return Ok(json!({
                     "ok": true,
                     "job": job,
+                    "backend": backend.id(),
                     "out": v.get("out").cloned().unwrap_or(json!(out_path.to_string_lossy())),
                     "t_first_ms": v.get("t_first_ms").cloned().unwrap_or(json!(0)),
                     "t_total_ms": v.get("t_total_ms").cloned().unwrap_or(json!(0)),

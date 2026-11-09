@@ -224,6 +224,13 @@
       "no_audio": "所有音訊都無法讀取，請檢查音訊檔案是否完好。"
     },
     "synth": {
+      "vulkan_unsupported": "Vulkan 支援 v5turbo 的單一參考音訊與完整 WAV 輸出。",
+      "vulkan_resources_missing": "請下載 Vulkan 推論資源。",
+      "vulkan_unavailable": "目前無法使用 Vulkan 引擎。",
+      "vulkan_model_failed": "無法準備此角色的 Vulkan 模型。",
+      "vulkan_reference_failed": "無法讀取參考音訊。",
+      "vulkan_synth_failed": "Vulkan 合成失敗。",
+      "backend_invalid": "無效的推論引擎。",
       "bad_request": "合成請求參數不完整。",
       "not_loaded": "尚未載入角色模型。",
       "init_failed": "合成引擎初始化失敗。",
@@ -956,6 +963,18 @@
     "qr": "二維碼"
   },
   "synth": {
+    "backend": "推論引擎",
+    "backendTip": "預設使用 CUDA。Vulkan 採用 gsv.cpp，支援 v5turbo 的中日文、單一參考音訊與 WAV 輸出。",
+    "vulkanRole": "Vulkan 需要 v5turbo 角色。",
+    "vulkanReference": "使用 Vulkan 前，請移除輔助參考。",
+    "vulkanLanguage": "Vulkan 支援中文、日文與自動辨識。",
+    "vulkanMissing": "下載資源後即可使用 Vulkan。",
+    "vulkanUnavailable": "目前無法使用 Vulkan。",
+    "useCuda": "用 CUDA 合成",
+    "retryCuda": "用 CUDA 重試 {n} 筆",
+    "vulkanResources": "Vulkan 推論資源",
+    "vulkanResourcesNote": "適用於 v5turbo 的選用推論引擎。",
+    "vulkanDownload": "下載 Vulkan 資源",
     "advTitle": "進階設定",
     "auxAdd": "加入輔助參考",
     "auxEmpty": "懸停參考行並點擊加號，可加入輔助參考，用於融合音色。",
@@ -1158,6 +1177,9 @@
     "queueChanged": "任務狀態已改變，請重試。"
   },
   "help": {
+    "synthEngineQ": "如何選擇推論引擎？",
+    "synthEngineH": "在合成頁切換 CUDA 和 Vulkan",
+    "synthEngineA": "CUDA 是預設引擎。可在合成頁或廣場下載 Vulkan 推論資源。Vulkan 支援 v5turbo 的中日文合成，使用一條參考音訊，並在完成後輸出 WAV。首次使用角色時會準備模型，之後可直接合成。",
     "title": "說明",
     "subtitle": "從安裝到訓練的完整使用說明。軟體內的提示可直接跳轉到對應分節。",
     "firstrunTitle": "首次執行",
@@ -1455,6 +1477,9 @@
     }
   },
   "storage": {
+    "vulkanCache": "Vulkan 快取",
+    "vulkanCacheNote": "再次使用相應角色時會重建快取。",
+    "vulkanCacheConfirm": "將清理 {size} 的 Vulkan 快取。",
     "characters": "角色庫",
     "training": "訓練檔案",
     "outputs": "合成音訊",

@@ -23,6 +23,7 @@ pub fn defaults() -> Map<String, Value> {
     // 合成台（GPT-SoVITS 自己的键）。参数在角色推荐值与用户手调值之间
     // 由前端合并，这里存的是用户最后用过的那份。
     m.insert("synth_role".into(), json!(""));
+    m.insert("synth_backend".into(), json!("cuda"));
     m.insert("synth_out_dir".into(), json!(""));
     m.insert("synth_streaming".into(), json!(true));
     m.insert("synth_speed".into(), json!(1.0));

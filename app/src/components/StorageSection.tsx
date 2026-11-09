@@ -11,6 +11,7 @@ type Usage = {
   items: { name: string; bytes: number }[];
   total_bytes: number;
   free_bytes: number | null;
+  vulkan_cache_bytes?: number;
 };
 
 type Row = {
@@ -44,6 +45,7 @@ function human(n: number): string {
 export function StorageSection() {
   const request = useRef(0);
   const [usage, setUsage] = useState<Usage | null>(null);
+  const vulkanCacheBytes = usage?.vulkan_cache_bytes ?? 0;
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -137,6 +139,24 @@ export function StorageSection() {
     } finally { setBusy(false); }
   };
 
+  const clearVulkanCache = async () => {
+    if (busy || vulkanCacheBytes <= 0) return;
+    setBusy(true);
+    let result = "";
+    try {
+      if (!(await askConfirm(t("storage.vulkanCacheConfirm", { size: human(vulkanCacheBytes) })))) return;
+      setMsg("");
+      const { freed_bytes } = await invoke<{ freed_bytes: number }>("gsv_cpp_clear_cache");
+      result = t("s.cleanupDone", { v0: human(freed_bytes) });
+      setUsage(await invoke<Usage>("storage_usage"));
+      setMsg(result);
+    } catch (e) {
+      setMsg([result, String(e)].filter(Boolean).join("\n"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Block title={t("s.storageTitle")} action={
       <Btn onClick={() => void scan()} busy={busy}>{t("s.storageScan")}</Btn>
@@ -156,6 +176,14 @@ export function StorageSection() {
             </p>
           </div>
         ) : <p className="m-0 px-4 py-3 text-[12.5px] text-[var(--help)]">{busy ? t("s.valueLoading") : t("s.cleanupDesc")}</p>}
+        {vulkanCacheBytes > 0 ? (
+          <ListItem
+            title={t("storage.vulkanCache")}
+            desc={t("storage.vulkanCacheNote")}
+            meta={human(vulkanCacheBytes)}
+            right={<Btn disabled={busy} onClick={() => void clearVulkanCache()}>{t("s.cacheClear")}</Btn>}
+          />
+        ) : null}
         {rows && rows.length === 0 ? (
           <ListItem title={t("s.cleanupTitle")} desc={t("s.cleanupNothing")} />
         ) : null}

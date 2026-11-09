@@ -572,7 +572,7 @@ class TTS:
         self.bert_model = AutoModelForMaskedLM.from_pretrained(base_path, torch_dtype=dtype).eval()
         self.bert_model.to(self.configs.device)
 
-    def init_vits_weights(self, weights_path: str):
+    def init_vits_weights(self, weights_path: str, *, load_vocoder: bool = True):
         self.configs.vits_weights_path = weights_path
         version, model_version, if_lora_v3 = get_sovits_version_from_path_fast(weights_path)
         if "Pro" in model_version:
@@ -634,7 +634,8 @@ class TTS:
                 **kwargs,
             )
             self.configs.use_vocoder = True
-            self.init_vocoder(model_version)
+            if load_vocoder:
+                self.init_vocoder(model_version)
             if "pretrained" not in weights_path and hasattr(vits_model, "enc_q"):
                 del vits_model.enc_q
 
