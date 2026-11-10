@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 const PRODUCT_ID: &str = "com.turingmirror.gpt-sovits-fabric";
 const FAMILY: &str = "gpt-sovits";
+const DEFAULT_WEB: &str = "https://community.turingmirror.com";
 const DEFAULT_API: &str = "https://api.turingmirror.com/v1/community";
 
 fn setting(root: &Path, env: &str, key: &str) -> Option<String> {
@@ -55,7 +56,9 @@ fn endpoint(api: &Url, segments: &[&str]) -> Url {
 }
 
 pub fn links(root: &Path) -> Value {
+    let api = api_setting(root);
     let web = setting(root, "TRM_COMMUNITY_WEB_URL", "community_web_url")
+        .or_else(|| (api.trim_end_matches('/') == DEFAULT_API).then(|| DEFAULT_WEB.to_owned()))
         .and_then(|value| public_url(&value).ok());
     let mut publish = web.clone();
     if let Some(url) = &mut publish {
@@ -71,7 +74,7 @@ pub fn links(root: &Path) -> Value {
     let account = std::env::var("TRM_ACCOUNT_URL")
         .unwrap_or_else(|_| "https://account.turingmirror.com".into());
     json!({
-        "enabled": !api_setting(root).is_empty(),
+        "enabled": !api.is_empty(),
         "publishUrl": publish.as_ref().map(Url::as_str),
         "submissionsUrl": submissions.as_ref().map(Url::as_str),
         "accountUrl": public_url(&account).ok().as_ref().map(Url::as_str),
@@ -151,6 +154,7 @@ fn entry(asset: &Value, api: &Url) -> Option<Value> {
         "series": field(meta, "series"),
         "series_i18n": meta["seriesI18n"],
         "group": field(meta, "group"),
+        "group_i18n": meta["groupI18n"],
         "date": field(asset, "createdAt"),
         "source_url": field(asset, "upstreamUrl"),
         "license": asset["license"],

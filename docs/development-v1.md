@@ -87,6 +87,6 @@ Neptune uses the main TRM Community catalog and TRM Account by default. Set thes
 | TRM_ACCOUNT_URL | The Account site base. Use the test Account site for local sign-in. |
 | TRM_ACCOUNT_CLIENT_ID | The registered desktop client ID when the test site uses a different one. |
 
-The character section reads the Community catalog. The page also shows app announcements, runtime resources, and release notes. An empty Community API override uses the old character feed. When a Community website is configured, Publish appears before Sign in and Refresh. The account name replaces Sign in after authorization.
+The character section reads the Community catalog. The page also shows app announcements, runtime resources, and release notes. An empty Community API override uses the old character feed. The main catalog opens the TRM Community website for publishing. Custom catalog deployments can set their own Community website. Publish appears before Sign in and Refresh. The account name replaces Sign in after authorization.
 
 Guests can download a public character pack. Community packs use the existing staging and installation controls. Updates install a separate copy so the current character and its settings stay available.
