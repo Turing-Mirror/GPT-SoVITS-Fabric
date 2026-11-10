@@ -76,9 +76,9 @@ SVG 原稿位于 `app/src/assets/brand/`：`gsvf-main-logo.svg` 用于标题栏�
 
 新安装的 CPU 与 NVIDIA 环境分别位于 User_Data/runtimes/cpu 和 User_Data/runtimes/nvidia，使用与 RVC Fabric 一致的目录结构。既有 Runtime 仍可识别和使用。在「其他 → 运行环境 → 管理」选择已安装环境可直接切换。新环境先解压并检查完整性，再写入当前选择。首次运行引导在运行环境可用后提示安装引擎基础资源，支持稍后下载和完成退出。
 
-## Community preview
+## Community
 
-Set these environment variables before launching the desktop program for an isolated test.
+Neptune uses the main TRM Community catalog and TRM Account by default. Set these environment variables to use a separate test service.
 
 | Variable | Value |
 | --- | --- |
@@ -87,6 +87,6 @@ Set these environment variables before launching the desktop program for an isol
 | TRM_ACCOUNT_URL | The Account site base. Use the test Account site for local sign-in. |
 | TRM_ACCOUNT_CLIENT_ID | The registered desktop client ID when the test site uses a different one. |
 
-With a Community API configured, the character section reads that catalog. The page still shows app announcements, runtime resources, and release notes. Without a configured API, the existing character feed remains available. The new header puts Publish and Sign in before Refresh. The account name replaces Sign in after authorization.
+The character section reads the Community catalog. The page also shows app announcements, runtime resources, and release notes. An empty Community API override uses the old character feed. When a Community website is configured, Publish appears before Sign in and Refresh. The account name replaces Sign in after authorization.
 
 Guests can download a public character pack. Community packs use the existing staging and installation controls. Updates install a separate copy so the current character and its settings stay available.

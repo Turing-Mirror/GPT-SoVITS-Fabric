@@ -9,8 +9,9 @@ use sha2::{Digest, Sha256};
 
 const PRODUCT_ID: &str = "com.turingmirror.gpt-sovits-fabric";
 const FAMILY: &str = "gpt-sovits";
+const DEFAULT_API: &str = "https://api.turingmirror.com/v1/community";
 
-fn setting(root: &Path, env: &str, key: &str) -> String {
+fn setting(root: &Path, env: &str, key: &str) -> Option<String> {
     std::env::var(env)
         .ok()
         .or_else(|| {
@@ -19,9 +20,7 @@ fn setting(root: &Path, env: &str, key: &str) -> String {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
-        .unwrap_or_default()
-        .trim()
-        .to_owned()
+        .map(|value| value.trim().to_owned())
 }
 
 fn public_url(value: &str) -> Result<Url, String> {
@@ -39,6 +38,7 @@ fn public_url(value: &str) -> Result<Url, String> {
 
 fn api_setting(root: &Path) -> String {
     setting(root, "TRM_COMMUNITY_API_URL", "community_api_url")
+        .unwrap_or_else(|| DEFAULT_API.to_owned())
 }
 
 fn endpoint(api: &Url, segments: &[&str]) -> Url {
@@ -55,7 +55,8 @@ fn endpoint(api: &Url, segments: &[&str]) -> Url {
 }
 
 pub fn links(root: &Path) -> Value {
-    let web = public_url(&setting(root, "TRM_COMMUNITY_WEB_URL", "community_web_url")).ok();
+    let web = setting(root, "TRM_COMMUNITY_WEB_URL", "community_web_url")
+        .and_then(|value| public_url(&value).ok());
     let mut publish = web.clone();
     if let Some(url) = &mut publish {
         url.query_pairs_mut()
@@ -134,6 +135,7 @@ fn entry(asset: &Value, api: &Url) -> Option<Value> {
     let mut entry = json!({
         "id": id,
         "name": field(asset, "title"),
+        "name_i18n": meta["nameI18n"],
         "tag": family_version,
         "version": family_version,
         "community_release": field(version, "label"),
@@ -147,6 +149,7 @@ fn entry(asset: &Value, api: &Url) -> Option<Value> {
         "description": field(asset, "description"),
         "author": field(asset, "originalAuthor"),
         "series": field(meta, "series"),
+        "series_i18n": meta["seriesI18n"],
         "group": field(meta, "group"),
         "date": field(asset, "createdAt"),
         "source_url": field(asset, "upstreamUrl"),
