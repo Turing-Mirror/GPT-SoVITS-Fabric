@@ -11,6 +11,7 @@ mod role_assets;
 mod config;
 mod community_account;
 mod community_catalog;
+mod community_publish;
 mod crash;
 mod download;
 mod engine_assets;
@@ -1560,6 +1561,7 @@ pub fn run() {
             community_account::community_account_status,
             community_account::community_account_sign_in,
             community_account::community_account_sign_out,
+            community_publish::community_publication,
             store_install,
             store_cancel,
             store_staged,

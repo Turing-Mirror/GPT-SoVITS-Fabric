@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type UIEventHandler,
 } from "react";
 import { navDirection, type PageId } from "../lib/nav";
 import { PageActive } from "../trm";
@@ -42,11 +43,18 @@ export function PageHost({ page, children }: Props) {
     leaving: null,
     dir: 0,
   });
+  const [visitedCommunity, setVisitedCommunity] = useState(page === "plaza");
   const reduce = usePrefersReducedMotion();
   const leaveTimer = useRef<number | null>(null);
+  const communityPane = useRef<HTMLDivElement>(null);
+  const communityScroll = useRef(0);
 
   useEffect(() => {
+    if (page === "plaza") setVisitedCommunity(true);
     if (page === phase.page) return;
+    if (phase.page === "plaza" && communityPane.current) {
+      communityScroll.current = communityPane.current.scrollTop;
+    }
     const dir = navDirection(phase.page, page);
     if (reduce || dir === 0) {
       setPhase({ page, leaving: null, dir: 0 });
@@ -77,7 +85,11 @@ export function PageHost({ page, children }: Props) {
   // not be scrolled at all with the voice changer running.
   const paneRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    if (paneRef.current) paneRef.current.scrollTop = 0;
+    if (phase.page === "plaza" && communityPane.current) {
+      communityPane.current.scrollTop = communityScroll.current;
+    } else if (phase.page !== "plaza" && paneRef.current) {
+      paneRef.current.scrollTop = 0;
+    }
   }, [phase.page]);
 
   const enterCls =
@@ -92,20 +104,26 @@ export function PageHost({ page, children }: Props) {
     phase.leaving && phase.leaving !== phase.page
       ? [phase.leaving, phase.page]
       : [phase.page];
+  if (visitedCommunity && !shown.includes("plaza")) shown.push("plaza");
 
   return (
     <div className="relative flex-1 overflow-hidden">
       {shown.map((id) => {
         const leaving = id === phase.leaving;
+        const parked = id !== phase.page && !leaving;
+        const active = id === phase.page && id === page;
         return (
           <PagePane
             key={id}
             id={id}
-            active={!leaving && id === page}
-            paneRef={leaving ? undefined : paneRef}
+            active={active}
+            paneRef={id === "plaza" ? communityPane : id === phase.page ? paneRef : undefined}
+            onScroll={id === "plaza" && active ? (event) => { communityScroll.current = event.currentTarget.scrollTop; } : undefined}
             className={
-              leaving
-                ? `absolute inset-0 overflow-hidden pointer-events-none z-[1] ${leaveCls}`
+              parked
+                ? "absolute inset-0 overflow-y-auto invisible pointer-events-none"
+                : leaving
+                ? `absolute inset-0 ${id === "plaza" ? "overflow-y-auto" : "overflow-hidden"} pointer-events-none z-[1] ${leaveCls}`
                 : `absolute inset-0 ${id === "home" ? "overflow-hidden" : "overflow-y-auto"} z-[2] ${enterCls}`
             }
           >
@@ -126,12 +144,14 @@ function PagePane({
   paneRef,
   active,
   className,
+  onScroll,
   children,
 }: {
   id: PageId;
   active: boolean;
   paneRef?: React.RefObject<HTMLDivElement | null>;
   className: string;
+  onScroll?: UIEventHandler<HTMLDivElement>;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -139,7 +159,7 @@ function PagePane({
     return () => noteUnmount(`page:${id}`);
   }, [id]);
   return (
-    <div ref={paneRef} className={className} inert={!active} aria-hidden={!active || undefined} data-page-scroll={active ? "" : undefined}>
+    <div ref={paneRef} className={className} onScroll={onScroll} inert={!active} aria-hidden={!active || undefined} data-page-scroll={active ? "" : undefined}>
       <PageActive value={active}>
         <Suspense fallback={<PageLoading />}>{children}</Suspense>
       </PageActive>

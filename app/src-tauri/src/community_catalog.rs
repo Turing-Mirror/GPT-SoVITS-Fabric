@@ -6,10 +6,10 @@ use std::time::Duration;
 use reqwest::{blocking::Client, Url};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use trm_app_protocol::{ApiError, ApiResult};
 
 const PRODUCT_ID: &str = "com.turingmirror.gpt-sovits-fabric";
-const FAMILY: &str = "gpt-sovits";
-const DEFAULT_WEB: &str = "https://community.turingmirror.com";
+pub(crate) const FAMILY: &str = "gpt-sovits";
 const DEFAULT_API: &str = "https://api.turingmirror.com/v1/community";
 
 fn setting(root: &Path, env: &str, key: &str) -> Option<String> {
@@ -42,7 +42,7 @@ fn api_setting(root: &Path) -> String {
         .unwrap_or_else(|| DEFAULT_API.to_owned())
 }
 
-fn endpoint(api: &Url, segments: &[&str]) -> Url {
+pub(crate) fn endpoint(api: &Url, segments: &[&str]) -> Url {
     let mut url = api.clone();
     url.set_query(None);
     url.set_fragment(None);
@@ -56,29 +56,30 @@ fn endpoint(api: &Url, segments: &[&str]) -> Url {
 }
 
 pub fn links(root: &Path) -> Value {
-    let api = api_setting(root);
-    let web = setting(root, "TRM_COMMUNITY_WEB_URL", "community_web_url")
-        .or_else(|| (api.trim_end_matches('/') == DEFAULT_API).then(|| DEFAULT_WEB.to_owned()))
-        .and_then(|value| public_url(&value).ok());
-    let mut publish = web.clone();
-    if let Some(url) = &mut publish {
-        url.query_pairs_mut()
-            .append_pair("community", "publish")
-            .append_pair("kind", "model")
-            .append_pair("family", FAMILY);
-    }
-    let submissions = web.map(|mut url| {
-        url.query_pairs_mut().append_pair("community", "mine");
-        url
-    });
     let account = std::env::var("TRM_ACCOUNT_URL")
         .unwrap_or_else(|_| "https://account.turingmirror.com".into());
     json!({
-        "enabled": !api.is_empty(),
-        "publishUrl": publish.as_ref().map(Url::as_str),
-        "submissionsUrl": submissions.as_ref().map(Url::as_str),
+        "enabled": publication_base(root).is_ok(),
         "accountUrl": public_url(&account).ok().as_ref().map(Url::as_str),
     })
+}
+
+pub(crate) fn publication_base(root: &Path) -> ApiResult<Url> {
+    let base = public_url(&api_setting(root)).map_err(ApiError::invalid)?;
+    let production = base.as_str().trim_end_matches('/') == DEFAULT_API;
+    let local = cfg!(debug_assertions)
+        && matches!(base.host_str(), Some("localhost" | "127.0.0.1"))
+        && std::env::var("TRM_ACCOUNT_URL")
+            .ok()
+            .and_then(|value| Url::parse(&value).ok())
+            .is_some_and(|url| matches!(url.host_str(), Some("localhost" | "127.0.0.1")));
+    if !(production || local) {
+        return Err(ApiError::new(
+            "unavailable",
+            "Publishing is unavailable for this catalog.",
+        ));
+    }
+    Ok(base)
 }
 
 fn request(client: &Client, url: Url) -> Result<Value, String> {
@@ -151,11 +152,12 @@ fn entry(asset: &Value, api: &Url) -> Option<Value> {
         "cover_url": cover,
         "description": field(asset, "description"),
         "author": field(asset, "originalAuthor"),
+        "author_url": public_url(field(asset, "authorUrl")).ok().filter(|url| url.scheme() == "https").map(|url| url.to_string()),
         "series": field(meta, "series"),
         "series_i18n": meta["seriesI18n"],
         "group": field(meta, "group"),
         "group_i18n": meta["groupI18n"],
-        "date": field(asset, "createdAt"),
+        "date": version["createdAt"].as_str().filter(|date| !date.is_empty()).unwrap_or(field(asset, "createdAt")),
         "source_url": field(asset, "upstreamUrl"),
         "license": asset["license"],
         "official": false,

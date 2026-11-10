@@ -29,7 +29,7 @@ import { Select } from "./controls";
 import { SegmentControl } from "./SegmentControl";
 import { Pager } from "./Pager";
 import { CatalogTransition } from "./CatalogTransition";
-import { CatalogCover, useDir, useMenu, type MenuItem } from "trm-ui";
+import { CatalogCover, Collapse, useDir, useMenu, type MenuItem } from "trm-ui";
 import { resolveCover, useCoverCache } from "../lib/cover";
 import { t, getTLocale } from "../i18n/t";
 import {
@@ -44,10 +44,9 @@ import {
   voiceGroupRaw,
   voiceParentSeries,
   voiceSearchText,
-  voiceVersionLabel,
 } from "../lib/voiceDisplay";
 import { askConfirm } from "../lib/webDialog";
-import { openExternal } from "../lib/plaza";
+import { formatDate, openExternal } from "../lib/plaza";
 import { synthWithRole } from "../lib/intent";
 import { AuthorsDialog } from "./AuthorsDialog";
 import type { VoiceAuthor } from "../lib/voices";
@@ -125,6 +124,7 @@ type Grouping = "time" | "series";
 const SERIES_PREVIEW_ROWS = 1;
 /** 一页几行。和模型页一样。 */
 const PAGE_ROWS = 3;
+const DEPARTMENTS_PER_PAGE = 8;
 
 type Props = {
   /**
@@ -154,6 +154,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   const [seriesFocus, setSeriesFocus] = useState("");
   /** 某个系列「查看全部」之后的页码。 */
   const [seriesPage, setSeriesPage] = useState<Record<string, number>>({});
+  const [departmentPages, setDepartmentPages] = useState<Record<string, number>>({});
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [cols, setCols] = useState(5);
@@ -616,12 +617,17 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
                 const groups = focusGroup
                   ? node.groups.filter((g) => g.raw === focusGroup)
                   : node.groups;
+                const departmentTotal = Math.max(1, Math.ceil(groups.length / DEPARTMENTS_PER_PAGE));
+                const departmentPage = Math.min(departmentPages[node.key] ?? 1, departmentTotal);
+                const departmentStart = (departmentPage - 1) * DEPARTMENTS_PER_PAGE;
+                const shownGroups = groups.slice(departmentStart, departmentStart + DEPARTMENTS_PER_PAGE);
                 return (
                   <div key={node.key} className="mb-3">
                     {seriesFocus ? null : (
                       <button
                         type="button"
                         className="w-full text-left border-0 bg-[var(--group)] rounded-[var(--rs)] px-3 py-2.5 cursor-pointer flex justify-between items-center"
+                        aria-expanded={openS}
                         onClick={() =>
                           setExpanded((prev) => {
                             const n = new Set(prev);
@@ -631,7 +637,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
                           })
                         }
                       >
-                          <span className="font-semibold text-[14px]">{node.label}</span>
+                        <span className="font-semibold text-[14px]">{node.label}</span>
                         <span className="text-[12px] text-[var(--meta)]">
                           {t("s.c8542337dc", {
                             v0: node.voices.length,
@@ -640,55 +646,66 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
                         </span>
                       </button>
                     )}
-                    {openS ? (
-                      nested && !parentAll ? (
-                        groups.map((g) => {
-                          const gk = groupFocusKey(node.key, g.raw);
-                          const openG = !!focusGroup || expandedGroups.has(gk);
-                          return (
-                            <div key={gk} className="pl-3 mt-1.5">
-                              {focusGroup ? null : (
-                                <button
-                                  type="button"
-                                  className="w-full text-left border-0 bg-[var(--group)] rounded-[var(--rs)] px-3 py-2 cursor-pointer flex justify-between items-center"
-                                  onClick={() =>
-                                    setExpandedGroups((prev) => {
-                                      const n = new Set(prev);
-                                      if (n.has(gk)) n.delete(gk);
-                                      else n.add(gk);
-                                      return n;
-                                    })
-                                  }
-                                >
-                                  <span className="text-[13px]">{g.label}</span>
-                                  <span className="text-[12px] text-[var(--meta)]">
-                                    {t("s.c8542337dc", {
-                                      v0: g.voices.length,
-                                      v1: openG
-                                        ? t("s.5d5815647c")
-                                        : t("s.b0e24833f7"),
-                                    })}
-                                  </span>
-                                </button>
-                              )}
-                              {openG ? (
-                                <SeriesPageGrid
-                                  seriesKey={gk}
-                                  voices={g.voices}
-                                  cols={cols}
-                                  perPage={perPage}
-                                  forcedFull={!!focusGroup}
-                                  seriesFull={seriesFull}
-                                  setSeriesFull={setSeriesFull}
-                                  seriesPage={seriesPage}
-                                  setSeriesPage={setSeriesPage}
-                                  cardProps={cardProps}
-                                  gridStyle={gridStyle}
-                                />
-                              ) : null}
-                            </div>
-                          );
-                        })
+                    <Collapse open={openS}>
+                      {nested && !parentAll ? (
+                        <>
+                          <CatalogTransition scope={node.key + ":departments"} page={departmentPage}>
+                            {shownGroups.map((g) => {
+                              const gk = groupFocusKey(node.key, g.raw);
+                              const openG = !!focusGroup || expandedGroups.has(gk);
+                              return (
+                                <div key={gk} className="pl-3 mt-1.5">
+                                  {focusGroup ? null : (
+                                    <button
+                                      type="button"
+                                      className="w-full text-left border-0 bg-[var(--group)] rounded-[var(--rs)] px-3 py-2 cursor-pointer flex justify-between items-center"
+                                      aria-expanded={openG}
+                                      onClick={() =>
+                                        setExpandedGroups((prev) => {
+                                          const n = new Set(prev);
+                                          if (n.has(gk)) n.delete(gk);
+                                          else n.add(gk);
+                                          return n;
+                                        })
+                                      }
+                                    >
+                                      <span className="text-[13px]">{g.label}</span>
+                                      <span className="text-[12px] text-[var(--meta)]">
+                                        {t("s.c8542337dc", {
+                                          v0: g.voices.length,
+                                          v1: openG
+                                            ? t("s.5d5815647c")
+                                            : t("s.b0e24833f7"),
+                                        })}
+                                      </span>
+                                    </button>
+                                  )}
+                                  <Collapse open={openG}>
+                                    <SeriesPageGrid
+                                      seriesKey={gk}
+                                      voices={g.voices}
+                                      cols={cols}
+                                      perPage={perPage}
+                                      forcedFull={!!focusGroup}
+                                      seriesFull={seriesFull}
+                                      setSeriesFull={setSeriesFull}
+                                      seriesPage={seriesPage}
+                                      setSeriesPage={setSeriesPage}
+                                      cardProps={cardProps}
+                                      gridStyle={gridStyle}
+                                    />
+                                  </Collapse>
+                                </div>
+                              );
+                            })}
+                          </CatalogTransition>
+                          <Pager
+                            className="pt-3"
+                            page={departmentPage}
+                            pages={departmentTotal}
+                            onChange={(next) => setDepartmentPages((old) => ({ ...old, [node.key]: next }))}
+                          />
+                        </>
                       ) : (
                         <SeriesPageGrid
                           seriesKey={node.key}
@@ -703,8 +720,8 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
                           cardProps={cardProps}
                           gridStyle={gridStyle}
                         />
-                      )
-                    ) : null}
+                      )}
+                    </Collapse>
                   </div>
                 );
               })
@@ -884,7 +901,7 @@ function VoiceCard({
   const parentLabel = voiceParentSeries(v, loc);
   const childLabel = voiceChildGroup(v, loc);
   const base = /^v(?:[1-5]|2Pro(?:Plus)?|5dev|5turbo)$/.test(v.version ?? "") ? v.version : "";
-  const ver = v.community_release || voiceVersionLabel(v.date);
+  const date = formatDate(v.date || "").split("T", 1)[0];
   const meta = joinClauses([parentLabel, childLabel, v.size_label]);
   const installedRoleId = v.installed_role_id;
   const license = v.license?.id || v.license?.text;
@@ -923,7 +940,7 @@ function VoiceCard({
       <CatalogCover
         sources={sources}
         placeholder={(title || v.id || "?").slice(0, 4)}
-        release={ver}
+        release={date}
         detail={base ? t("s.roleBaseVersion", { v0: base }) : undefined}
         progress={busy && !staged ? progress?.percent ?? 0 : undefined}
         connecting={busy && !staged && (progress?.done ?? 0) <= 0}

@@ -48,7 +48,7 @@
 
 广场在“引擎资源”下列出基础组件与各版本底模，包括 GPT-SoVITS v3 和 v4。v3 包含 SoVITS 权重和 BigVGAN 的配置及权重。v4 包含 SoVITS 权重和 v4 声码器。两组共用引擎资源中已有的 GPT s1v3。各文件沿用上游路径，v4 与 v5 的同名声码器按不同 Release 标签发布。
 
-角色卡片左上角保留原有发布版本号，左下角用同样样式显示清单登记的底模版本。无法确认底模版本时省略左下角角标。文件体积直接显示，作者主页与来源仓库收在下载旁的更多菜单。
+角色卡片左上角显示发布日期，左下角用同样样式显示清单登记的底模版本。无法确认底模版本时省略左下角角标。文件体积直接显示，作者主页与来源仓库收在下载旁的更多菜单。
 
 对照固定上游版本表和公开附件，v2、v3、v4、v2ProPlus、v5dev 和 v5turbo 所需底模已有对应资源。v1 的 GPT 与 SoVITS 底模、v2Pro 的 SoVITS G/D，以及 v3 可选的 AP-BWE 超采样权重仍无广场下载项。现有 v1 和 v2Pro 成品角色可用各自随包权重。v2Pro 合成所需的声纹模型随基础引擎资源提供。
 
@@ -57,3 +57,9 @@
 隔离客户端从公开广场下载五个文件并校验哈希，两组均显示已安装。使用下载所得权重完成真实 CUDA 短句合成，v3 输出 24 kHz，v4 输出 48 kHz。训练页 v4 底模缺失列表为空。前端 107 项测试和完整构建通过。
 
 原训练与合成分类共用引擎资源页签，旧的训练入口仍可直接跳到这里。基础组件集中安装，各版本底模按需选择。人声分离保留独立页签。
+
+## Community publishing
+
+Open Publish from Community to choose a public v5turbo character ZIP, add an author page, and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions shows local drafts and review status.
+
+Community keeps the current search, filters, department page, and scroll position when you switch tabs. Departments display eight at a time. Catalog filters and pagination use the shared TRM UI slide.

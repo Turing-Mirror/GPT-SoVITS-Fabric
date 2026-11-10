@@ -34,3 +34,31 @@ it("keeps the outgoing page inert while a first visit loads, and ignores a load 
     vi.useRealTimers();
   }
 });
+
+it("keeps Community mounted and restores the same scroll and form after changing tabs", async () => {
+  vi.useFakeTimers();
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const render = (page: PageId) => act(() => root.render(
+    <PageHost page={page}>{id => id === "plaza" ? <input aria-label="Community search" /> : <button>Home</button>}</PageHost>,
+  ));
+  try {
+    render("plaza");
+    const initialPane = container.querySelector<HTMLElement>("[data-page-scroll]")!;
+    const field = initialPane.querySelector("input")!;
+    field.value = "Yuuka";
+    initialPane.scrollTop = 130;
+    render("home");
+    await act(async () => { await vi.advanceTimersByTimeAsync(450); });
+    expect(initialPane.inert).toBe(true);
+    expect(initialPane.querySelector("input")).toBe(field);
+    initialPane.scrollTop = 0;
+    render("plaza");
+    expect(container.querySelector("[data-page-scroll]")).toBe(initialPane);
+    expect(field.value).toBe("Yuuka");
+    expect(initialPane.scrollTop).toBe(130);
+  } finally {
+    act(() => root.unmount());
+    vi.useRealTimers();
+  }
+});

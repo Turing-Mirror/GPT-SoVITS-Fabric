@@ -15,9 +15,7 @@ vi.mock("../components/ExtrasDialog", () => ({ ExtrasPanel: () => null }));
 const feed = { items: [], banner: null, changelog: [], errors: [], app_version: "", newest: "", unread: false };
 const guest = { signedIn: false, displayName: null, email: null, offline: false };
 const signedIn = { signedIn: true, displayName: "Test publisher", email: "publisher@example.test", offline: false };
-const publishUrl = "https://community.example.test/?community=publish&kind=model&family=gpt-sovits";
 const accountUrl = "https://account.example.test/";
-const submissionsUrl = "https://community.example.test/?community=mine";
 let host: HTMLDivElement;
 let root: Root;
 
@@ -27,9 +25,10 @@ beforeEach(async () => {
   localStorage.setItem("trm.ui.locale", "en-US");
   await ensurePack("en-US");
   invoke.mockReset().mockImplementation(async (command: string) => {
-    if (command === "community_links") return { enabled: true, publishUrl, submissionsUrl, accountUrl };
+    if (command === "community_links") return { enabled: true, accountUrl };
     if (command === "community_account_status" || command === "community_account_sign_out") return guest;
     if (command === "community_account_sign_in") return signedIn;
+    if (command === "community_publication") return { items: [], page: 1, totalPages: 1 };
     return {};
   });
   host = document.createElement("div");
@@ -40,6 +39,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   localStorage.removeItem("trm.ui.locale");
+  localStorage.removeItem("fabric.community.characterDrafts.v1");
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
 });
 
@@ -54,8 +54,6 @@ it("keeps Publish and account before Refresh and replaces Sign in after authenti
   const toolbar = button("Refresh").parentElement!;
   const labels = () => [...toolbar.querySelectorAll("button")].map(node => node.textContent?.trim());
   expect(labels()).toEqual(["Publish", "Sign in", "Refresh"]);
-  await act(async () => button("Publish").click());
-  expect(invoke).toHaveBeenCalledWith("open_external", { url: publishUrl });
   await act(async () => button("Sign in").click());
   expect(invoke).toHaveBeenCalledWith("community_account_sign_in");
   expect(labels()).toEqual(["Publish", "Test publisher", "Refresh"]);
@@ -65,4 +63,26 @@ it("keeps Publish and account before Refresh and replaces Sign in after authenti
   await act(async () => button("Sign out", document.body).click());
   expect(invoke).toHaveBeenCalledWith("community_account_sign_out");
   expect(labels()).toEqual(["Publish", "Sign in", "Refresh"]);
+});
+
+it("opens character publishing and My submissions in the signed-in desktop window", async () => {
+  await act(async () => root.render(<I18nProvider><NoticeProvider><PlazaPage feed={feed} /></NoticeProvider></I18nProvider>));
+  await act(async () => button("Sign in").click());
+  await act(async () => button("Publish").click());
+  const editor = host.querySelector<HTMLElement>('[data-trm-pane="publish"]')!;
+  expect(editor.hidden).toBe(false);
+  expect(editor.textContent).toContain("Publish character");
+  expect(editor.querySelector('[aria-label="Source link"]')).not.toBeNull();
+
+  await act(async () => {
+    button("My submissions", editor).click();
+    await new Promise(resolve => setTimeout(resolve, 450));
+  });
+  await act(async () => {});
+  const list = host.querySelector<HTMLElement>('[data-trm-pane="submissions"]')!;
+  expect(list.hidden).toBe(false);
+  expect(list.textContent).toContain("No drafts yet.");
+  await act(async () => button("Under review", list).click());
+  expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "mine", state: "pending", page: 1, limit: 8 } });
+  expect(invoke.mock.calls.some(([command]) => command === "open_external")).toBe(false);
 });

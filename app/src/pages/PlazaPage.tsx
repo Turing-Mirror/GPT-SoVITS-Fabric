@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useRef, useState, memo, type ReactNode } from "react";
 import { Block, Btn, Group, PageHead, PagePad, Warn } from "../components/ui";
-import { CommunityActions } from "../components/CommunityActions";
+import { Pane, Panes, useNotify, usePaneOn } from "trm-ui";
+import { CommunityActions, useCommunityAccount } from "../components/CommunityActions";
+import { CommunityPublisher } from "../components/CommunityPublisher";
+import { CommunitySubmissions } from "../components/CommunitySubmissions";
+import { loadDrafts, newDraft, storeDrafts, type Draft, type Submission } from "../lib/communityPublication";
 import { StoreSection } from "../components/StoreSection";
 import { Pager } from "../components/Pager";
 import { CatalogTransition } from "../components/CatalogTransition";
@@ -21,29 +25,105 @@ import { useI18n } from "../i18n";
 /** 更新日志二级页每页几条。够看又不至于把滚动条拉成一条线。 */
 const PER_PAGE = 5;
 
-function PlazaPageImpl({
-  feed,
-  loading = false,
-  onReload,
-  downloadReason = "",
-  extrasFilter = "all",
-  scrollToDownloads = 0,
-}: {
+type PlazaProps = {
   feed: PlazaFeed;
   loading?: boolean;
   onReload?: () => void;
-  /** 从工具入口跳过来时的说明（缺引擎资源等）。 */
   downloadReason?: string;
-  /** 从分离/训练跳过来时预选对应分类。 */
   extrasFilter?: ExtrasFilter;
-  /** 加一就滚到「下载模型」。用计数而不是布尔：连着跳两次也得再滚一次。 */
   scrollToDownloads?: number;
-}) {
+};
+
+const communityPages = ["catalog", "changelog", "publish", "submissions"] as const;
+type CommunityPage = (typeof communityPages)[number];
+
+function PlazaPageImpl(props: PlazaProps) {
+  const auth = useCommunityAccount();
+  const { t } = useI18n();
+  const { tip } = useNotify();
+  const [page, setPage] = useState<CommunityPage>("catalog");
+  const [editor, setEditor] = useState<Draft>();
+  const [drafts, setDrafts] = useState(loadDrafts);
+  const [recent, setRecent] = useState<Submission>();
+  const [request, setRequest] = useState(props.scrollToDownloads);
+  if (request !== props.scrollToDownloads) {
+    setRequest(props.scrollToDownloads);
+    if (props.scrollToDownloads) setPage("catalog");
+  }
+
+  function persist(next: Draft[]) {
+    try {
+      storeDrafts(next);
+      setDrafts(next);
+      return true;
+    } catch {
+      tip(t("publication.saveFailed"));
+      return false;
+    }
+  }
+
+  function save(draft: Draft) {
+    return persist([{ ...draft, updatedAt: new Date().toISOString() }, ...drafts.filter((item) => item.id !== draft.id)]);
+  }
+
+  function openEditor(draft = newDraft()) {
+    setEditor(draft);
+    setPage("publish");
+  }
+
+  function leaveEditor(draft: Draft, next: "catalog" | "submissions") {
+    const hasContent = draft.url || draft.title || draft.description || draft.originalAuthor || draft.cover || draft.updatedAt;
+    if (!hasContent || save(draft)) setPage(next);
+  }
+
+  return (
+    <Panes value={page} order={communityPages} transition="slide" keepScroll>
+      <Pane id="catalog">
+        <Catalog
+          {...props}
+          actions={<CommunityActions auth={auth} onPublish={() => openEditor()} onSubmissions={() => setPage("submissions")} />}
+          onChangelog={() => setPage("changelog")}
+        />
+      </Pane>
+      <Pane id="changelog">
+        <ChangelogPage changelog={props.feed.changelog ?? []} onBack={() => setPage("catalog")} />
+      </Pane>
+      <Pane id="publish">
+        {editor && (
+          <CommunityPublisher
+            key={editor.id}
+            initial={editor}
+            auth={auth}
+            onBack={(draft) => leaveEditor(draft, "catalog")}
+            onSave={save}
+            onMySubmissions={(draft) => leaveEditor(draft, "submissions")}
+            onSubmitted={(draft, submission) => {
+              persist(drafts.filter((item) => item.id !== draft.id));
+              setRecent(submission);
+              setPage("submissions");
+            }}
+          />
+        )}
+      </Pane>
+      <Pane id="submissions">
+        <CommunitySubmissions
+          auth={auth}
+          drafts={drafts}
+          recent={recent}
+          onBack={() => setPage("catalog")}
+          onNew={() => openEditor()}
+          onEdit={openEditor}
+          onRemove={(id) => persist(drafts.filter((item) => item.id !== id))}
+          onRevise={(previous) => openEditor(newDraft(previous))}
+        />
+      </Pane>
+    </Panes>
+  );
+}
+
+function Catalog({ feed, loading = false, onReload, downloadReason = "", extrasFilter = "all", scrollToDownloads = 0, actions, onChangelog }: PlazaProps & { actions: ReactNode; onChangelog: () => void }) {
   useI18n();
-  // 「查看全部」进的是独立一页，不是在原地展开一条长列表 —— 版本多了以后
-  // 原地展开会把「投放」挤到看不见的地方，而且没有尽头。
-  const [showAll, setShowAll] = useState(false);
-  const [pageNo, setPageNo] = useState(0);
+  const active = usePaneOn();
   // 加一就是「再拉一次音色清单」。父组件不需要拿到 StoreSection 的方法。
   const [reloadToken, setReloadToken] = useState(0);
   // 被置顶卡片点中的那条投放。高亮完就清掉，不是持久状态。
@@ -51,15 +131,16 @@ function PlazaPageImpl({
   const spotTimer = useRef<number | null>(null);
   // 从别处跳过来找「下载模型」的：这一页很长，不滚过去等于没跳。
   const extrasRef = useRef<HTMLDivElement>(null);
+  const lastScroll = useRef(0);
   useEffect(() => {
-    if (!scrollToDownloads) return;
-    setShowAll(false);
+    if (!active || !scrollToDownloads || lastScroll.current === scrollToDownloads) return;
     const frame = requestAnimationFrame(() => {
+      lastScroll.current = scrollToDownloads;
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       extrasRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [scrollToDownloads]);
+  }, [active, scrollToDownloads]);
   useEffect(
     () => () => {
       if (spotTimer.current) window.clearTimeout(spotTimer.current);
@@ -88,41 +169,6 @@ function PlazaPageImpl({
     spotTimer.current = window.setTimeout(() => setSpotlight(""), 1600);
   }, []);
 
-  if (showAll) {
-    const total = Math.max(1, Math.ceil(changelog.length / PER_PAGE));
-    // 数据刷新后条目变少，页码可能已经越界；夹住而不是显示空白页。
-    const cur = Math.min(pageNo, total - 1);
-    const slice = changelog.slice(cur * PER_PAGE, cur * PER_PAGE + PER_PAGE);
-    return (
-      <PagePad>
-        <PageHead
-          title={t("s.185368440e")}
-          sub={t("s.6ca99d2c45", { v0: changelog.length })}
-          actions={
-            <Btn
-              onClick={() => {
-                setShowAll(false);
-                setPageNo(0);
-              }}
-            >{t("s.5b254c438b")}</Btn>
-          }
-        />
-        <Block title={t("s.pageOf", { cur: cur + 1, total })}>
-          <CatalogTransition scope="changelog" page={cur + 1}>
-            <Group>
-              {slice.length ? (
-                slice.map((e) => <Notes key={e.version} entry={e} />)
-              ) : (
-                <p className="py-3 m-0 text-[13.5px] text-[var(--help)]">{t("s.0a432092e4")}</p>
-              )}
-            </Group>
-          </CatalogTransition>
-        </Block>
-        <Pager className="py-5" page={cur + 1} pages={total} onChange={(p) => setPageNo(p - 1)} />
-      </PagePad>
-    );
-  }
-
   const shown = changelog.slice(0, 1);
 
   return (
@@ -131,7 +177,7 @@ function PlazaPageImpl({
         title={t("s.a8776899a4")}
         actions={
           <>
-            <CommunityActions />
+            {actions}
             <Btn
               onClick={() => {
                 onReload?.();
@@ -180,10 +226,7 @@ function PlazaPageImpl({
         action={
           changelog.length > 1 ? (
             <Btn
-              onClick={() => {
-                setPageNo(0);
-                setShowAll(true);
-              }}
+              onClick={onChangelog}
             >{t("s.ed2172fd78")}</Btn>
           ) : undefined
         }
@@ -199,6 +242,40 @@ function PlazaPageImpl({
         </Group>
       </Block>
 
+    </PagePad>
+  );
+}
+
+function ChangelogPage({ changelog, onBack }: { changelog: ChangelogEntry[]; onBack: () => void }) {
+  useI18n();
+  const [pageNo, setPageNo] = useState(0);
+  const total = Math.max(1, Math.ceil(changelog.length / PER_PAGE));
+  // 数据刷新后条目变少，页码可能已经越界；夹住而不是显示空白页。
+  const cur = Math.min(pageNo, total - 1);
+  const slice = changelog.slice(cur * PER_PAGE, cur * PER_PAGE + PER_PAGE);
+  return (
+    <PagePad>
+      <PageHead
+        title={t("s.185368440e")}
+        sub={t("s.6ca99d2c45", { v0: changelog.length })}
+        actions={
+          <Btn
+            onClick={onBack}
+          >{t("s.5b254c438b")}</Btn>
+        }
+      />
+      <Block title={t("s.pageOf", { cur: cur + 1, total })}>
+        <CatalogTransition scope="changelog" page={cur + 1}>
+          <Group>
+            {slice.length ? (
+              slice.map((e) => <Notes key={e.version} entry={e} />)
+            ) : (
+              <p className="py-3 m-0 text-[13.5px] text-[var(--help)]">{t("s.0a432092e4")}</p>
+            )}
+          </Group>
+        </CatalogTransition>
+      </Block>
+      <Pager className="py-5" page={cur + 1} pages={total} onChange={(p) => setPageNo(p - 1)} />
     </PagePad>
   );
 }

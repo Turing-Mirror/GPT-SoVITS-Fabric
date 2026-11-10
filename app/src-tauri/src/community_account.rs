@@ -1,6 +1,9 @@
 //! Native external-browser OIDC. Credentials never cross the webview IPC boundary.
 use openidconnect::{
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreUserInfoClaims},
+    core::{
+        CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreTokenResponse,
+        CoreUserInfoClaims,
+    },
     reqwest, AccessTokenHash, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce,
     OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, RefreshToken, Scope, SubjectIdentifier,
     TokenResponse,
@@ -16,7 +19,28 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use trm_app_protocol::{ApiError, ApiResult};
 static BUSY: AtomicBool = AtomicBool::new(false);
 static CANCEL: AtomicBool = AtomicBool::new(false);
-static CACHE: OnceLock<tokio::sync::Mutex<Option<(Value, std::time::Instant)>>> = OnceLock::new();
+struct Session {
+    profile: Value,
+    access: String,
+    expires: std::time::Instant,
+    checked: std::time::Instant,
+}
+impl Session {
+    fn new(profile: Value, token: &CoreTokenResponse) -> Self {
+        let checked = std::time::Instant::now();
+        let lifetime = token
+            .expires_in()
+            .unwrap_or(std::time::Duration::from_secs(60));
+        let expires = checked + lifetime.saturating_sub(std::time::Duration::from_secs(10));
+        Self {
+            profile,
+            access: token.access_token().secret().clone(),
+            expires,
+            checked,
+        }
+    }
+}
+static CACHE: OnceLock<tokio::sync::Mutex<Option<Session>>> = OnceLock::new();
 #[derive(Serialize, Deserialize)]
 struct Saved {
     issuer: String,
@@ -81,7 +105,7 @@ fn http() -> ApiResult<reqwest::Client> {
         .build()
         .map_err(|_| ApiError::new("account_unavailable", "无法连接账号服务。"))
 }
-fn cache() -> &'static tokio::sync::Mutex<Option<(Value, std::time::Instant)>> {
+fn cache() -> &'static tokio::sync::Mutex<Option<Session>> {
     CACHE.get_or_init(|| tokio::sync::Mutex::new(None))
 }
 async fn cancelable_request<T, E>(
@@ -273,7 +297,7 @@ async fn sign_in(app: tauri::AppHandle) -> ApiResult {
             refresh,
             profile: profile.clone(),
         })?;
-        *cached = Some((profile.clone(), std::time::Instant::now()));
+        *cached = Some(Session::new(profile.clone(), &token));
     }
     let html="<!doctype html><meta charset=utf-8><title>图灵镜账号</title><p>登录完成，可以返回应用。</p>";
     let response=format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{html}",html.len());
@@ -305,14 +329,40 @@ fn profile_after_user_info<E: std::error::Error + 'static>(
     }
 }
 async fn current() -> ApiResult {
-    let issuer = issuer()?;
     let mut cached = cache().lock().await;
-    if let Some((profile, at)) = cached.as_ref() {
-        if at.elapsed() < std::time::Duration::from_secs(60) {
-            return Ok(json!({"profile":profile,"offline":false}));
+    if let Some(session) = cached.as_ref() {
+        if session.checked.elapsed() < std::time::Duration::from_secs(60) {
+            return Ok(json!({"profile":session.profile,"offline":false}));
         }
     }
+    refresh_session(issuer()?, &mut cached).await
+}
+
+pub(crate) async fn access_token() -> ApiResult<String> {
+    let mut cached = cache().lock().await;
+    if let Some(session) = cached
+        .as_ref()
+        .filter(|session| session.expires > std::time::Instant::now())
+    {
+        return Ok(session.access.clone());
+    }
+    let status = refresh_session(issuer()?, &mut cached).await?;
+    if status["offline"] == true {
+        return Err(ApiError::new(
+            "unavailable",
+            "Could not connect to TRM Account.",
+        ));
+    }
+    cached
+        .as_ref()
+        .filter(|session| session.expires > std::time::Instant::now())
+        .map(|session| session.access.clone())
+        .ok_or_else(|| ApiError::new("auth_required", "Sign in to TRM Account."))
+}
+
+async fn refresh_session(issuer: String, cached: &mut Option<Session>) -> ApiResult {
     let Some(mut saved) = load(&issuer)? else {
+        *cached = None;
         return Ok(json!({"profile":null}));
     };
     let http = http()?;
@@ -362,7 +412,7 @@ async fn current() -> ApiResult {
     }
     saved.profile = current["profile"].clone();
     save(&saved)?;
-    *cached = Some((saved.profile.clone(), std::time::Instant::now()));
+    *cached = Some(Session::new(saved.profile.clone(), &token));
     Ok(current)
 }
 
