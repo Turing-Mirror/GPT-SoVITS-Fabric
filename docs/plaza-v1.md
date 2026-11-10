@@ -60,6 +60,6 @@
 
 ## Community publishing
 
-Open Publish from Community to choose a public v5turbo character ZIP, add an author page, and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions shows local drafts and review status.
+Open Publish from Community to choose a public v5turbo character ZIP, add an author page, and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions shows local drafts and paginated review history.
 
 Community keeps the current search, filters, department page, and scroll position when you switch tabs. Departments display eight at a time. Catalog filters and pagination use the shared TRM UI slide.

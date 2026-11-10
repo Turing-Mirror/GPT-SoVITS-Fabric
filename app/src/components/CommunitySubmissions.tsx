@@ -45,8 +45,14 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onEd
     setBusy(true);
     setError("");
     try {
-      const result = await publication<{ items: Submission[]; page: number; totalPages: number }>({
+      const read = () => publication<{ items: Submission[]; page: number; totalPages: number }>({
         action: "mine", state, page, limit: PER_PAGE,
+      });
+      const result = await read().catch(async (error: unknown) => {
+        if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "unavailable" || request.current !== current) throw error;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 450));
+        if (request.current !== current) throw error;
+        return read();
       });
       if (request.current !== current) return;
       setSnapshot({ account: owner, state, ...result });
@@ -131,7 +137,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onEd
       } />
       <SegmentControl className="mb-5" value={filter} options={states.map((id) => ({ id, label: labels[id] }))}
         onChange={(next) => { setFilter(next); setPage(1); }} />
-      {error && account !== null && <Warn className="mb-3">{error}</Warn>}
+      {error && account !== null && filter !== "draft" && <Warn className="mb-3">{error}</Warn>}
       <CatalogTransition scope={filter} order={states} page={current}>
         {filter !== "draft" && account === null ? (
           <div className="flex items-center gap-3">
@@ -168,7 +174,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onEd
               );
             })}
           </Group>
-        ) : (
+        ) : filter !== "draft" && error ? null : (
           <p className="py-6 text-[13px] text-[var(--help)]">
             {filter === "draft" ? t("publication.noDrafts") : busy ? t("s.f950213ab7") : t("publication.noSubmissions")}
           </p>
