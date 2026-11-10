@@ -332,6 +332,9 @@ fn is_voice_installed(root: &Path, voice_id: &str) -> bool {
 /// Fetch / merge online catalog; annotate installed flags.
 pub fn fetch_store_catalog(root: &Path, prefer_remote: bool) -> Value {
     let _ = paths::ensure_user_dirs(root);
+    if let Some(catalog) = crate::community_catalog::catalog(root, prefer_remote) {
+        return catalog;
+    }
     let mut data = json!({});
     let mut source = "empty";
     let mut fetch_error = String::new();
@@ -583,7 +586,7 @@ fn local_banner_for_hint(root: &Path, hint: &str) -> Option<String> {
     None
 }
 
-fn format_size(n: u64) -> String {
+pub(crate) fn format_size(n: u64) -> String {
     if n == 0 {
         return String::new();
     }
@@ -679,7 +682,11 @@ pub fn install_voice_pack_zip(
     if !zip_path.is_file() {
         return Err(crate::i18n::te("s.760364197e", &(zip_path.display())));
     }
-    let mut info = crate::characters::install_zip(root, zip_path)?;
+    let role_id = entry.and_then(crate::community_catalog::version_role_id);
+    let mut info = match role_id {
+        Some(ref role_id) => crate::characters::install_zip_as(root, zip_path, Some(role_id))?,
+        None => crate::characters::install_zip(root, zip_path)?,
+    };
 
     // 广场条目里的 id / 名字优先于包内声明：清单是我们自己维护的，包是别人打的。
     let id = info
@@ -706,6 +713,9 @@ pub fn install_voice_pack_zip(
     }
     if !voice_id.is_empty() {
         cfg.insert("catalog_id".into(), json!(voice_id));
+    }
+    if let Some(version) = entry.and_then(|e| e.get("community_version_id")) {
+        cfg.insert("community_version_id".into(), version.clone());
     }
     cfg.insert("id".into(), json!(id));
     cfg.insert(
@@ -775,11 +785,12 @@ pub fn install_voice_entry(
         .get("official")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
-    let pack_url = entry
-        .get("pack_url")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let pack_url = if entry.get("community_file_id").and_then(Value::as_str).is_some() {
+        crate::community_catalog::download_url(&root, &entry)
+            .map_err(|_| crate::i18n::t("community.refreshBeforeDownload"))?
+    } else {
+        entry.get("pack_url").and_then(Value::as_str).unwrap_or("").to_owned()
+    };
     let sha = entry
         .get("sha256")
         .and_then(|v| v.as_str())
@@ -820,8 +831,9 @@ pub fn install_voice_entry(
     // HF 清单写规范域；下载时扩成镜像列表 —— 见 `voice_download_urls`。
     if !pack_url.is_empty() {
         let vid = safe_model_dir_name(if id.is_empty() { &name } else { &id })?;
+        let community_stage = crate::community_catalog::version_role_id(&entry);
         let cache = if stage_only {
-            staged_dir(&root, if id.is_empty() { &name } else { &id })?
+            staged_dir(&root, community_stage.as_deref().unwrap_or(if id.is_empty() { &name } else { &id }))?
         } else {
             paths::update_cache(&root).join("voice_packs")
         };
@@ -965,7 +977,8 @@ pub fn install_staged(
     let tag = entry.get("tag").and_then(|v| v.as_str()).unwrap_or(&crate::i18n::t("s.c4301894a2")).to_string();
     let official = entry.get("official").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    let dir = staged_dir(&root, if id.is_empty() { &name } else { &id })?;
+    let community_stage = crate::community_catalog::version_role_id(&entry);
+    let dir = staged_dir(&root, community_stage.as_deref().unwrap_or(if id.is_empty() { &name } else { &id }))?;
     let payload = match staged_payload(&dir) {
         Some(p) => p,
         // 目录不是空的但找不到 zip：用户丢进来的是裸权重或别的文件，
@@ -984,6 +997,10 @@ pub fn install_staged(
         );
     };
     emit("extract", &crate::i18n::t("s.e0ce99ef5b"));
+    if community_stage.is_some() {
+        let expected = entry.get("sha256").and_then(Value::as_str).unwrap_or_default();
+        download::verify_sha256(&payload, expected)?;
+    }
 
     let info = install_voice_pack_zip(&root, &payload, &id, &name, &tag, official, Some(&entry))?;
     // 装完就把暂存清掉，不然用户的 User_Data 会慢慢堆满几百 MB 的重复文件。

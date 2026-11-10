@@ -6,7 +6,7 @@
   },
   "nav": {
     "home": "首頁",
-    "plaza": "廣場",
+    "plaza": "社群",
     "models": "模型",
     "settings": "設定",
     "help": "說明",
@@ -459,7 +459,7 @@
     "a636b86646": "開啟原版 WebUI",
     "a6af760282": "更新包缺少有效的 sha256，已拒絕應用",
     "a6df38586d": "檢查更新",
-    "a8776899a4": "廣場",
+    "a8776899a4": "社群",
     "a8f48b775b": "GPT-SoVITS Fabric 版本",
     "a97cbce3c5": "統計結果用於向贊助商說明使用者數量，以維持軟體免費開發。",
     "a9fa441818": "備份舊介面失敗：{e}",
@@ -1453,7 +1453,7 @@
       "title": "角色",
       "body": "合成至少需要一個角色。角色可以從廣場下載，可以匯入角色包，也可以用自己的錄音訓練。",
       "done": "已有可用的角色。",
-      "plaza": "前往廣場",
+      "plaza": "前往社群",
       "import": "匯入角色包",
       "train": "訓練角色"
     },
@@ -1489,5 +1489,21 @@
     "cache": "快取",
     "other": "其他檔案",
     "free": "磁碟可用空間：{size}"
+  },
+  "community": {
+    "publish": "發佈",
+    "signIn": "登入",
+    "account": "帳號",
+    "manageAccount": "管理帳號",
+    "submissions": "我的發佈",
+    "signOut": "登出",
+    "signInFailed": "登入失敗，請重試。",
+    "signOutFailed": "登出失敗，請重試。",
+    "linkFailed": "無法開啟連結。",
+    "catalogUnavailable": "無法重新整理社群目錄。",
+    "refreshBeforeDownload": "請重新整理社群後再下載此版本。",
+    "update": "更新",
+    "downloadAgain": "重新下載",
+    "license": "授權條款"
   }
 }

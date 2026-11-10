@@ -160,6 +160,10 @@ fn str_field(v: &Value, key: &str) -> String {
 
 /// 解析并落盘。返回装好的角色摘要（id / name / dir）。
 pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
+    install_zip_as(root, zip_path, None)
+}
+
+pub(crate) fn install_zip_as(root: &Path, zip_path: &Path, role_id: Option<&str>) -> Result<Value, String> {
     let z = read_zip(zip_path)?;
 
     let cfg_bytes = z
@@ -189,11 +193,11 @@ pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
         .unwrap_or("role")
         .trim_end_matches("_voice")
         .to_string();
-    let id = safe_id(if declared.trim().is_empty() {
+    let id = safe_id(role_id.unwrap_or_else(|| if declared.trim().is_empty() {
         &fallback
     } else {
         &declared
-    });
+    }));
 
     let parent = paths::user_data(root).join("characters");
     let dest = parent.join(&id);

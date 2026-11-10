@@ -6,7 +6,7 @@
   },
   "nav": {
     "home": "Accueil",
-    "plaza": "Place",
+    "plaza": "Communauté",
     "models": "Modèles",
     "settings": "Paramètres",
     "help": "Aide",
@@ -459,7 +459,7 @@
     "a636b86646": "Ouvrir le WebUI d'origine",
     "a6af760282": "Le pack de mise à jour n'a pas de sha256 valide ; application refusée",
     "a6df38586d": "Rechercher des mises à jour",
-    "a8776899a4": "Place",
+    "a8776899a4": "Communauté",
     "a8f48b775b": "Version de GPT-SoVITS Fabric",
     "a97cbce3c5": "Le décompte sert à indiquer aux sponsors le nombre d'utilisateurs, ce qui permet de garder le développement gratuit.",
     "a9fa441818": "Échec de la sauvegarde de l'ancienne interface : {e}",
@@ -1453,7 +1453,7 @@
       "title": "Voix",
       "body": "La synthèse nécessite au moins une voix. Téléchargez-en une depuis la Place, importez un pack de voix ou entraînez-en une avec vos propres enregistrements.",
       "done": "Une voix est disponible.",
-      "plaza": "Ouvrir la Place",
+      "plaza": "Ouvrir la communauté",
       "import": "Importer un pack",
       "train": "Entraîner une voix"
     },
@@ -1489,5 +1489,21 @@
     "cache": "Cache",
     "other": "Autres fichiers",
     "free": "Espace disque disponible : {size}"
+  },
+  "community": {
+    "publish": "Publier",
+    "signIn": "Se connecter",
+    "account": "Compte",
+    "manageAccount": "Gérer le compte",
+    "submissions": "Mes publications",
+    "signOut": "Se déconnecter",
+    "signInFailed": "Connexion impossible. Réessayez.",
+    "signOutFailed": "Déconnexion impossible. Réessayez.",
+    "linkFailed": "Impossible d’ouvrir le lien.",
+    "catalogUnavailable": "Impossible d’actualiser le catalogue de la communauté.",
+    "refreshBeforeDownload": "Actualisez le catalogue avant de télécharger cette version.",
+    "update": "Mettre à jour",
+    "downloadAgain": "Télécharger à nouveau",
+    "license": "Licence"
   }
 }

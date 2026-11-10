@@ -6,7 +6,7 @@
   },
   "nav": {
     "home": "首页",
-    "plaza": "广场",
+    "plaza": "社区",
     "models": "模型",
     "settings": "设置",
     "help": "说明",
@@ -459,7 +459,7 @@
     "a636b86646": "打开原版 WebUI",
     "a6af760282": "更新包缺少有效的 sha256，已拒绝应用",
     "a6df38586d": "检查更新",
-    "a8776899a4": "广场",
+    "a8776899a4": "社区",
     "a8f48b775b": "GPT-SoVITS Fabric 版本",
     "a97cbce3c5": "统计结果用于向赞助商说明用户数量，以维持软件免费开发。",
     "a9fa441818": "备份旧界面失败：{e}",
@@ -1453,7 +1453,7 @@
       "title": "角色",
       "body": "合成至少需要一个角色。角色可以从广场下载，可以导入角色包，也可以用自己的录音训练。",
       "done": "已有可用的角色。",
-      "plaza": "前往广场",
+      "plaza": "前往社区",
       "import": "导入角色包",
       "train": "训练角色"
     },
@@ -1489,5 +1489,21 @@
     "cache": "缓存",
     "other": "其他文件",
     "free": "磁盘可用空间：{size}"
+  },
+  "community": {
+    "publish": "发布",
+    "signIn": "登录",
+    "account": "账号",
+    "manageAccount": "管理账号",
+    "submissions": "我的发布",
+    "signOut": "退出登录",
+    "signInFailed": "登录失败，请重试。",
+    "signOutFailed": "退出登录失败，请重试。",
+    "linkFailed": "无法打开链接。",
+    "catalogUnavailable": "无法刷新社区目录。",
+    "refreshBeforeDownload": "请刷新社区后再下载此版本。",
+    "update": "更新",
+    "downloadAgain": "重新下载",
+    "license": "许可证"
   }
 }

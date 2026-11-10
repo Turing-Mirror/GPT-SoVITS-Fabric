@@ -6,7 +6,7 @@
   },
   "nav": {
     "home": "Home",
-    "plaza": "Plaza",
+    "plaza": "Community",
     "models": "Models",
     "synth": "Synthesize",
     "train": "Train",
@@ -459,7 +459,7 @@
     "a636b86646": "Open the upstream WebUI",
     "a6af760282": "Update package has no valid sha256. Rejected",
     "a6df38586d": "Check for updates",
-    "a8776899a4": "Plaza",
+    "a8776899a4": "Community",
     "a8f48b775b": "GPT-SoVITS Fabric version",
     "a97cbce3c5": "The count is used to show sponsors how many people use the app, which keeps development free.",
     "a9fa441818": "Failed to back up old UI: {e}",
@@ -1453,7 +1453,7 @@
       "title": "Voice",
       "body": "Synthesis requires at least one voice. Download one from the Plaza, import a voice pack, or train one from your own recordings.",
       "done": "A voice is available.",
-      "plaza": "Open Plaza",
+      "plaza": "Open Community",
       "import": "Import pack",
       "train": "Train a voice"
     },
@@ -1489,5 +1489,21 @@
     "cache": "Cache",
     "other": "Other files",
     "free": "Free disk space: {size}"
+  },
+  "community": {
+    "publish": "Publish",
+    "signIn": "Sign in",
+    "account": "Account",
+    "manageAccount": "Manage account",
+    "submissions": "My submissions",
+    "signOut": "Sign out",
+    "signInFailed": "Could not sign in. Try again.",
+    "signOutFailed": "Could not sign out. Try again.",
+    "linkFailed": "Could not open the link.",
+    "catalogUnavailable": "Could not refresh the Community catalog.",
+    "refreshBeforeDownload": "Refresh Community before downloading this version.",
+    "update": "Update",
+    "downloadAgain": "Download again",
+    "license": "License"
   }
 }

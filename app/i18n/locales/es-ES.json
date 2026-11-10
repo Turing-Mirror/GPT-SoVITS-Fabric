@@ -6,7 +6,7 @@
   },
   "nav": {
     "home": "Inicio",
-    "plaza": "Plaza",
+    "plaza": "Comunidad",
     "models": "Modelos",
     "settings": "Ajustes",
     "help": "Ayuda",
@@ -459,7 +459,7 @@
     "a636b86646": "Abrir el WebUI original",
     "a6af760282": "El paquete de actualización no tiene sha256 válido; aplicación rechazada",
     "a6df38586d": "Buscar actualizaciones",
-    "a8776899a4": "Plaza",
+    "a8776899a4": "Comunidad",
     "a8f48b775b": "Versión de GPT-SoVITS Fabric",
     "a97cbce3c5": "El recuento sirve para mostrar a los patrocinadores cuántas personas usan la aplicación, lo que mantiene el desarrollo gratuito.",
     "a9fa441818": "Error al respaldar la interfaz anterior: {e}",
@@ -1453,7 +1453,7 @@
       "title": "Voz",
       "body": "La síntesis necesita al menos una voz. Descárguela de la Plaza, importe un paquete de voz o entrénela con sus propias grabaciones.",
       "done": "Hay una voz disponible.",
-      "plaza": "Abrir Plaza",
+      "plaza": "Abrir la comunidad",
       "import": "Importar paquete",
       "train": "Entrenar una voz"
     },
@@ -1489,5 +1489,21 @@
     "cache": "Caché",
     "other": "Otros archivos",
     "free": "Espacio libre en disco: {size}"
+  },
+  "community": {
+    "publish": "Publicar",
+    "signIn": "Iniciar sesión",
+    "account": "Cuenta",
+    "manageAccount": "Gestionar cuenta",
+    "submissions": "Mis publicaciones",
+    "signOut": "Cerrar sesión",
+    "signInFailed": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+    "signOutFailed": "No se pudo cerrar sesión. Inténtalo de nuevo.",
+    "linkFailed": "No se pudo abrir el enlace.",
+    "catalogUnavailable": "No se pudo actualizar el catálogo de la comunidad.",
+    "refreshBeforeDownload": "Actualiza el catálogo antes de descargar esta versión.",
+    "update": "Actualizar",
+    "downloadAgain": "Descargar de nuevo",
+    "license": "Licencia"
   }
 }

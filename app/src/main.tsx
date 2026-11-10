@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getConfig, type Config } from "./lib/config";
 import { configSnapshot } from "./lib/configSnapshot";
 import React from "react";
+import { NoticeProvider, Notices } from "trm-ui";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { logToHost } from "./trm";
@@ -62,7 +63,12 @@ ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <I18nProvider>
       <ErrorBoundary onError={logToHost}>
-        {tool ? <ToolWindow kind={tool} /> : <App />}
+        {tool ? <ToolWindow kind={tool} /> : (
+          <NoticeProvider>
+            <App />
+            <Notices />
+          </NoticeProvider>
+        )}
       </ErrorBoundary>
     </I18nProvider>
   </React.StrictMode>,

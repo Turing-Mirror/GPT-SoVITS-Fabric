@@ -9,6 +9,8 @@ pub mod catalog;
 mod characters;
 mod role_assets;
 mod config;
+mod community_account;
+mod community_catalog;
 mod crash;
 mod download;
 mod engine_assets;
@@ -1298,6 +1300,11 @@ fn provision_cancel() -> Result<(), String> {
 // ----- Stage 4: voices + store ------------------------------------------------
 
 #[tauri::command]
+fn community_links(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+    Ok(community_catalog::links(&root_clone(&state)?))
+}
+
+#[tauri::command]
 async fn store_catalog(
     state: State<'_, Mutex<AppState>>,
     prefer_remote: Option<bool>,
@@ -1549,6 +1556,10 @@ pub fn run() {
             provision_start,
             provision_cancel,
             store_catalog,
+            community_links,
+            community_account::community_account_status,
+            community_account::community_account_sign_in,
+            community_account::community_account_sign_out,
             store_install,
             store_cancel,
             store_staged,

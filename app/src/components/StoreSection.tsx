@@ -48,6 +48,7 @@ import {
 } from "../lib/voiceDisplay";
 import { askConfirm } from "../lib/webDialog";
 import { openExternal } from "../lib/plaza";
+import { synthWithRole } from "../lib/intent";
 import { AuthorsDialog } from "./AuthorsDialog";
 import type { VoiceAuthor } from "../lib/voices";
 import { useI18n } from "../i18n";
@@ -214,12 +215,13 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   }, [jobs.generation, jobs.lastCompleted, jobs.lastCompletedThird, loadStaged, refresh, onInstalled]);
 
   useEffect(() => {
-    if (!scrollToId || !staged[scrollToId]) return;
+    if (!scrollToId) return;
     const el = document.getElementById(`store-voice-${scrollToId}`);
+    const btn = el?.querySelector<HTMLElement>(".confirm-install");
+    if (!btn) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-    const btn = el?.querySelector<HTMLElement>(".confirm-install");
-    btn?.focus();
+    btn.focus();
     setScrollToId("");
   }, [scrollToId, staged]);
 
@@ -429,14 +431,15 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
 
   const viewStaged = async (v: StoreVoice) => {
     try {
-      await revealStagedVoice(v.id);
+      await revealStagedVoice(v.community_staging_id ?? v.id);
     } catch (e) {
       setErr(String(e));
     }
   };
 
   const discard = async (v: StoreVoice) => {
-    const s = staged[v.id];
+    const stageId = v.community_staging_id ?? v.id;
+    const s = staged[stageId];
     if (
       !(await askConfirm(
         t("s.de94f39aff", { v0: s?.file || v.name }),
@@ -444,7 +447,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
     )
       return;
     try {
-      await discardStagedVoice(v.id);
+      await discardStagedVoice(stageId);
       await loadStaged();
     } catch (e) {
       setErr(String(e));
@@ -452,7 +455,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   };
 
   const install = async (v: StoreVoice) => {
-    if (v.installed || running.includes(v.id) || queued.includes(v.id)) return;
+    if (running.includes(v.id) || queued.includes(v.id)) return;
     if (v.official !== false && !officialAck) {
       const ok = await askConfirm(
         t("s.9a9349a407") +
@@ -464,7 +467,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
       if (!ok) return;
       setOfficialAck(true);
     }
-    if (v.official === false && !thirdAck) {
+    if (v.official === false && !v.community_staging_id && !thirdAck) {
       const ok = await askConfirm(
         t("s.ba1368fee3") +
           t("s.1229f8d52c") +
@@ -484,7 +487,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
     progress: prog[v.id],
     onInstall: () => void install(v),
     onCancel: () => cancelOne(v.id),
-    staged: staged[v.id],
+    staged: staged[v.community_staging_id ?? v.id],
     onView: () => void viewStaged(v),
     onInstallStaged: () => void installStaged(v),
     onDiscard: () => void discard(v),
@@ -492,6 +495,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   });
 
   const hasVoices = Boolean(cat?.voices?.length || cat?.thirdparty_voices?.length);
+  const hasUnreviewedVoices = cat?.thirdparty_voices?.some(voice => !voice.community_staging_id);
   const gridStyle = { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` };
 
   return (
@@ -581,7 +585,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
           />{t("s.85b3f0512b")}</label>
       </div> : null}
 
-      {hasVoices && source !== "official" && Boolean(cat?.thirdparty_voices?.length) ? (
+      {source !== "official" && hasUnreviewedVoices ? (
         <Warn className="mb-3">{t("s.7fe9bcf336")}</Warn>
       ) : null}
 
@@ -880,8 +884,11 @@ function VoiceCard({
   const parentLabel = voiceParentSeries(v, loc);
   const childLabel = voiceChildGroup(v, loc);
   const base = /^v(?:[1-5]|2Pro(?:Plus)?|5dev|5turbo)$/.test(v.version ?? "") ? v.version : "";
-  const ver = voiceVersionLabel(v.date);
+  const ver = v.community_release || voiceVersionLabel(v.date);
   const meta = joinClauses([parentLabel, childLabel, v.size_label]);
+  const installedRoleId = v.installed_role_id;
+  const license = v.license?.id || v.license?.text;
+  const licenseUrl = v.license?.url;
   // 第三方音色下下来是别人的东西：作者是谁、从哪个仓库发的，得在**下载之前**
   // 就能点开看，不能等装完了才在模型页的「⋯」里找得到。清单里两个地址常常
   // 只有一个，有哪条给哪条。作者可以有多位 —— 多位时点了先问一声开哪个。
@@ -903,6 +910,12 @@ function VoiceCard({
   }
   if (/^https?:\/\//i.test(sourceUrl)) {
     links.push({ id: "source", label: t("s.voiceLinkSource"), onSelect: () => void openExternal(sourceUrl) });
+  }
+  if (licenseUrl && /^https?:\/\//i.test(licenseUrl)) {
+    links.push({ id: "license", label: t("community.license"), onSelect: () => void openExternal(licenseUrl) });
+  }
+  if (installedRoleId && !v.update_available && !staged && !busy && !queued) {
+    links.push({ id: "download", label: t("community.downloadAgain"), onSelect: onInstall });
   }
 
   return (
@@ -929,11 +942,13 @@ function VoiceCard({
           {meta}
         </div>
       ) : null}
+      {license ? <div className="text-[11.5px] text-[var(--meta)] truncate" title={license}>{license}</div> : null}
       <Leave>{authorPick ? (
         <AuthorsDialog authors={authorPick} onClose={() => setAuthorPick(null)} />
       ) : null}</Leave>
       <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-        {v.installed ? (
+        {installedRoleId ? <Btn onClick={() => synthWithRole(installedRoleId)}>{t("nav.synth")}</Btn> : null}
+        {v.installed && !installedRoleId ? (
           <Btn on disabled>
             {t("s.eb88ff57c9")}
           </Btn>
@@ -967,11 +982,11 @@ function VoiceCard({
             </Btn>
             <Btn onClick={onCancel}>{t("s.4d0b4688c7")}</Btn>
           </>
-        ) : (
+        ) : !installedRoleId || v.update_available ? (
           <Btn primary onClick={onInstall}>
-            {t("s.2b9d013177")}
+            {v.update_available ? t("community.update") : t("s.2b9d013177")}
           </Btn>
-        )}
+        ) : null}
         {links.length ? (
           <Btn className="shrink-0 px-2.5" ariaLabel={t("ui.common.more")} onClick={event => menu.open(event.currentTarget, links)}>
             ⋯

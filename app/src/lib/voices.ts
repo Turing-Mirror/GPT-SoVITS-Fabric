@@ -66,6 +66,11 @@ export type StoreVoice = {
   source_url?: string;
   official?: boolean;
   installed?: boolean;
+  installed_role_id?: string;
+  update_available?: boolean;
+  community_release?: string;
+  community_staging_id?: string;
+  license?: { id?: string; text?: string; url?: string };
 };
 
 export type StoreCatalog = {

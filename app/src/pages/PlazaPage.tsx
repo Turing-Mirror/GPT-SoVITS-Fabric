@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, memo } from "react";
 import { Block, Btn, Group, PageHead, PagePad, Warn } from "../components/ui";
+import { CommunityActions } from "../components/CommunityActions";
 import { StoreSection } from "../components/StoreSection";
 import { Pager } from "../components/Pager";
 import { CatalogTransition } from "../components/CatalogTransition";
@@ -129,15 +130,18 @@ function PlazaPageImpl({
       <PageHead
         title={t("s.a8776899a4")}
         actions={
-          <Btn
-            onClick={() => {
-              onReload?.();
-              setReloadToken((n) => n + 1);
-            }}
-            disabled={loading}
-          >
-            {loading ? t("s.d47379f917") : t("s.38108eaa1d")}
-          </Btn>
+          <>
+            <CommunityActions />
+            <Btn
+              onClick={() => {
+                onReload?.();
+                setReloadToken((n) => n + 1);
+              }}
+              disabled={loading}
+            >
+              {loading ? t("s.d47379f917") : t("s.38108eaa1d")}
+            </Btn>
+          </>
         }
       />
 
