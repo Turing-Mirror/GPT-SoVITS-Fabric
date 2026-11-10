@@ -12,12 +12,11 @@ GPT-SoVITS 的 SoVITS 与 GPT 权重？不验的话，上架一个把 RVC 的 .p
 1. **结构**：zip 条目路径合法（无绝对路径 / `..` / 盘符）、必需文件齐全、
    体积在导入侧的上限内 —— 和 `characters::install_zip` 同一套判据。
 2. **权重指纹**：不加载模型，只读 torch 序列化格式的头几个字节。
-   两份权重都是 zip 容器格式（`PK\\x03\\x04`）或老式 pickle（`\\x80`），
-   两者都不是就说明这根本不是 torch 存出来的东西。
+   支持 torch ZIP、旧式 pickle 和 GPT-SoVITS 带版本头的 SoVITS ZIP。
 3. **可加载**（`--deep`，需要 torch）：`torch.load(map_location="cpu")`
-   真的读一遍，再看 SoVITS 的 `config.model.version` 和 GPT 的
+   读取常规权重，再看 SoVITS 的 `config.model.version` 和 GPT 的
    `config.model` 在不在 —— 这两处正是 `TTS.init_vits_weights` /
-   `init_t2s_weights` 会去读的地方。
+   `init_t2s_weights` 会去读的地方。带版本头的角色包复用客户端的权重配对校验。
 
 用法::
 
@@ -30,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from importlib.util import module_from_spec, spec_from_file_location
 import json
 import sys
 import tempfile
@@ -42,6 +42,12 @@ REQUIRED = ["config.json", "models/sovits.pth", "models/gpt.ckpt"]
 #: 权重最小体积。SoVITS 大约 100 MB 量级、GPT 150 MB 量级；给一个很松的
 #: 下限，只为挡住「改名的空文件」和 Git LFS 没拉下来的指针文件（130 字节）。
 MIN_WEIGHT_BYTES = 1024 * 1024
+ENGINE_PAYLOAD = Path(__file__).resolve().parents[1] / "app/src-tauri/engine-payload"
+_inspector_spec = spec_from_file_location("weight_inspect", ENGINE_PAYLOAD / "tools/weight_inspect.py")
+assert _inspector_spec is not None and _inspector_spec.loader is not None
+weight_inspect = module_from_spec(_inspector_spec)
+_inspector_spec.loader.exec_module(weight_inspect)
+SOVITS_HEADERS = weight_inspect._tables(ENGINE_PAYLOAD)["head2version"]
 
 
 def bad_path(rel: str) -> str | None:
@@ -66,10 +72,12 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
-def torch_magic(data: bytes) -> str | None:
+def torch_magic(data: bytes, *, sovits: bool = False) -> str | None:
     """torch 存出来的东西开头长什么样。返回 None 表示不像。"""
     if data[:4] == b"PK\x03\x04":
         return "zip"          # torch>=1.6 的默认容器
+    if sovits and data[:2] in SOVITS_HEADERS and data[2:4] == b"\x03\x04":
+        return "sovits_zip"
     if data[:1] == b"\x80":
         return "pickle"       # 老式 torch.save
     return None
@@ -139,13 +147,13 @@ def verify(path: Path, expect_sha: str | None, deep: bool) -> list[str]:
                 continue
             with z.open(w) as f:
                 head = f.read(8)
-            if torch_magic(head) is None:
+            if torch_magic(head, sovits=(w == "models/sovits.pth")) is None:
                 problems.append(
                     f"{w} 开头不是 torch 序列化格式（拿到 {head[:4]!r}）—— "
                     "这不是 torch.save 存出来的东西"
                 )
 
-        if deep:
+        if deep and not problems:
             problems += deep_check(z, names)
 
     return problems
@@ -160,6 +168,16 @@ def deep_check(z: zipfile.ZipFile, names: list[str]) -> list[str]:
 
     out: list[str] = []
     with tempfile.TemporaryDirectory() as td:
+        with z.open("models/sovits.pth") as f:
+            tagged = torch_magic(f.read(4), sovits=True) == "sovits_zip"
+        if tagged:
+            sovits = Path(z.extract("models/sovits.pth", td))
+            gpt = Path(z.extract("models/gpt.ckpt", td))
+            try:
+                pair = weight_inspect.validate_replacement(sovits, "sovits", gpt, root=ENGINE_PAYLOAD)
+            except Exception as e:  # noqa: BLE001
+                return [f"权重配对校验失败：{type(e).__name__}: {e}"]
+            return [f"[信息] sovits 版本标记：{pair['version']}"]
         for w, kind in (("models/sovits.pth", "sovits"), ("models/gpt.ckpt", "gpt")):
             if w not in names:
                 continue

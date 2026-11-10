@@ -32,7 +32,7 @@ index.json 有 7000 行，其中相当一部分现在没有任何代码在读：
       "app":         {"name","version","sha256","size_bytes"},
       "engine_core": {"version","packs":[{name,sha256,size_bytes}]},  # 旧形：{"name",...} 单包
       "runtimes":    {"nvidia": {"label","version","parts":[{name,sha256,size_bytes}]}},
-      "roles":       [{"id","name","author","version","pack","sha256","cover"}],
+      "roles":       [{"id","name","author","version","pack","pack_url"?,"sha256","cover"}],
       "extras":      {"<key>": {"label","dest","group","tag","repo"?,"files":[{name,sha256,size_bytes}]}}
     }
 
@@ -53,6 +53,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -188,6 +189,16 @@ def build_roles(src: dict, rep: Report) -> list[dict]:
         if not pack:
             rep.error(f"{who}: 缺 pack（zip 文件名）")
             continue
+        pack_url = str(v.get("pack_url") or "").strip()
+        if pack_url:
+            try:
+                url = urlsplit(pack_url)
+                valid = url.scheme == "https" and bool(url.hostname) and url.username is None
+            except ValueError:
+                valid = False
+            if not valid:
+                rep.error(f"{who}: pack_url 必须是可直接下载的 HTTPS 地址")
+                continue
         entry = {
             "id": rid,
             "name": v.get("name") or rid,
@@ -197,7 +208,7 @@ def build_roles(src: dict, rep: Report) -> list[dict]:
             "released": v.get("released", ""),
             "version": str(v.get("version", "v2ProPlus")),
             "package_type": "role_pack",
-            "pack_url": asset_url(TAG_ROLES, pack),
+            "pack_url": pack_url or asset_url(TAG_ROLES, pack),
             "sha256": need_sha(rep, who, v),
             "size_bytes": need_size(rep, who, v),
             "dest": "characters",
