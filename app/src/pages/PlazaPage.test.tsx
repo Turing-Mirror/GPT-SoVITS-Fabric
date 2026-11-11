@@ -6,7 +6,6 @@ import { NoticeProvider } from "trm-ui";
 import { I18nProvider } from "../i18n";
 import { ensurePack } from "../trm/i18n/packs";
 import { PlazaPage } from "./PlazaPage";
-import { newDraft, prepareSubmission, type Draft } from "../lib/communityPublication";
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -74,10 +73,6 @@ it("opens character publishing and My submissions in the signed-in desktop windo
   expect(editor.hidden).toBe(false);
   expect(editor.textContent).toContain("Publish character");
   expect(editor.querySelector('[aria-label="Source link"]')).not.toBeNull();
-  const baseModel = editor.querySelector<HTMLSelectElement>('select[aria-label="Base model"]')!;
-  expect(baseModel.value).toBe("");
-  expect([...baseModel.options].map((option) => option.value)).toEqual(["", "v1", "v2", "v2Pro", "v2ProPlus", "v3", "v4", "v5dev", "v5turbo"]);
-  expect(editor.textContent).toContain("Choose a character ZIP from a public repository.");
 
   await act(async () => {
     button("My submissions", editor).click();
@@ -90,25 +85,4 @@ it("opens character publishing and My submissions in the signed-in desktop windo
   await act(async () => button("Under review", list).click());
   expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "mine", state: "pending", page: 1, limit: 8 } });
   expect(invoke.mock.calls.some(([command]) => command === "open_external")).toBe(false);
-});
-
-it("records the chosen base version and preserves the original request on retry", async () => {
-  const draft: Draft = {
-    ...newDraft(),
-    baseVersion: "v2",
-    selection: {
-      account: signedIn.email,
-      resolveId: "source",
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      canonicalUrl: "https://modelscope.cn/models/example/characters",
-      revision: "fixed-revision",
-      file: { id: "character.zip", path: "character.zip", sizeBytes: 128 },
-    },
-  };
-
-  await expect(prepareSubmission({ ...draft, baseVersion: undefined }, signedIn.email))
-    .rejects.toMatchObject({ code: "base_version_required" });
-  const pending = await prepareSubmission(draft, signedIn.email);
-  expect(pending.body.asset.metadata.familyVersion).toBe("v2");
-  expect(await prepareSubmission({ ...draft, baseVersion: undefined, pending }, signedIn.email)).toBe(pending);
 });

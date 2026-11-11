@@ -72,7 +72,7 @@ function PlazaPageImpl(props: PlazaProps) {
   }
 
   function leaveEditor(draft: Draft, next: "catalog" | "submissions") {
-    const hasContent = draft.url || draft.title || draft.description || draft.originalAuthor || draft.cover || draft.baseVersion || draft.updatedAt;
+    const hasContent = draft.url || draft.title || draft.description || draft.originalAuthor || draft.cover || draft.updatedAt;
     if (!hasContent || save(draft)) setPage(next);
   }
 
