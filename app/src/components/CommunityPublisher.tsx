@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Field, Pane, Panes, SegmentControl, Select, useNotify } from "trm-ui";
 import { useI18n } from "../i18n";
 import {
-  characterFamily,
+  characterBaseVersions,
+  draftBaseVersion,
   isSha256,
   prepareSubmission,
   providerHash,
@@ -63,7 +64,8 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
   const account = auth.account?.email || "";
   const pack = draft.selection?.file;
   const digest = pack ? providerHash(pack) : undefined;
-  const usablePack = Boolean(pack && (digest || isSha256(draft.checksum)));
+  const baseVersion = draftBaseVersion(draft);
+  const sourceComplete = Boolean(pack && baseVersion && (digest || isSha256(draft.checksum)));
   const license = draft.license;
   const hasDetails = Boolean(draft.title.trim() && draft.description.trim() && draft.originalAuthor.trim() &&
     draft.label.trim() && (license.id?.trim() || license.url?.trim() || license.text?.trim()) &&
@@ -82,13 +84,19 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
     setSource(undefined);
     setPage(1);
     setQuery("");
-    update({ selection: undefined, checksum: "", ...changes });
+    update({ selection: undefined, checksum: "", baseVersion: pack || draft.previousSubmissionId ? undefined : baseVersion, ...changes });
   }
 
   function select(source: Source, file: SourceFile) {
     const { canonicalUrl, resolveId, revision, expiresAt } = source;
     const checksum = draft.selection?.file.path === file.path || draft.previousSubmissionId ? draft.checksum : "";
-    update({ selection: { canonicalUrl, resolveId, revision, expiresAt, file, account }, checksum });
+    const previous = draft.selection;
+    const sameFile = previous?.canonicalUrl === canonicalUrl && previous.revision === revision && previous.file.path === file.path;
+    update({
+      selection: { canonicalUrl, resolveId, revision, expiresAt, file, account },
+      checksum,
+      baseVersion: !previous || sameFile ? baseVersion : undefined,
+    });
   }
 
   async function readSource() {
@@ -102,7 +110,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
       const files = next.files.filter((file) => file.path.toLowerCase().endsWith(".zip"));
       const matchingFile = files.find((file) => file.path === draft.selection?.file.path) ?? (files.length === 1 ? files[0] : undefined);
       if (matchingFile) select(next, matchingFile);
-      else update({ selection: undefined });
+      else if (draft.selection) update({ selection: undefined, baseVersion: undefined });
       if (!draft.licenseEdited) update({ license: next.detectedLicense?.license ?? {} });
     } catch (error) {
       setError(publicationError(error, "resolve"));
@@ -142,6 +150,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
     </Btn>
   );
   const sourceReady = validUrl(draft.url) && signedIn;
+  const baseModelLabel = t("publication.baseModel");
 
   return (
     <PagePad width="wide">
@@ -161,16 +170,16 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
         <SegmentControl value={step} onChange={(next) => { setStep(next); setError(""); }}
           options={steps.map((id) => ({
             id, label: labels[id],
-            disabled: Boolean(busy) || (id === "details" && !usablePack) || (id === "preview" && (!usablePack || !hasDetails)),
+            disabled: Boolean(busy) || (id === "details" && !sourceComplete) || (id === "preview" && (!sourceComplete || !hasDetails)),
           }))}
         />
-        <span className="text-xs text-[var(--meta)]">{saved ? t("publication.saved") : characterFamily}</span>
+        {saved && <span className="text-xs text-[var(--meta)]">{t("publication.saved")}</span>}
       </div>
       {error && <Warn className="mb-4">{error}</Warn>}
       <Panes value={step} order={steps} transition="slide" keepScroll>
         <Pane id="source">
           <div className="space-y-4 pb-4">
-            <p className="text-[13px] text-[var(--help)]">{t("publication.sourceHint", { version: characterFamily })}</p>
+            <p className="text-[13px] text-[var(--help)]">{t("publication.sourceHint")}</p>
             <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
               <TextField label={t("publication.sourceLink")} value={draft.url} limit={2048} disabled={Boolean(busy)} onChange={(url) => updateSource({ url })} />
               <TextField label={t("publication.revision")} value={draft.revision} limit={500} disabled={Boolean(busy)} onChange={(revision) => updateSource({ revision })} />
@@ -199,11 +208,20 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
               </section>
             )}
             {pack && !source && <p className="break-all text-[13px] text-[var(--ink-muted)]">{pack.path}</p>}
-            {pack && !digest && (
-              <TextField label="SHA-256" value={draft.checksum} limit={64} disabled={Boolean(busy)} onChange={(checksum) => update({ checksum })} />
-            )}
+            <div className="grid gap-4 md:grid-cols-[1fr_2fr]">
+              <Field label={baseModelLabel} control={
+                <Select full ariaLabel={baseModelLabel} value={baseVersion ?? ""} disabled={Boolean(busy)}
+                  options={[
+                    { id: "", label: t("publication.chooseBaseModel") },
+                    ...characterBaseVersions.map((version) => ({ id: version, label: version })),
+                  ]} onChange={(version) => update({ baseVersion: version || undefined })} />
+              } />
+              {pack && !digest && (
+                <TextField label="SHA-256" value={draft.checksum} limit={64} disabled={Boolean(busy)} onChange={(checksum) => update({ checksum })} />
+              )}
+            </div>
             <div className="flex justify-end">
-              <Btn primary disabled={!usablePack || Boolean(busy)} onClick={() => setStep("details")}>{t("publication.next")}</Btn>
+              <Btn primary disabled={!sourceComplete || Boolean(busy)} onClick={() => setStep("details")}>{t("publication.next")}</Btn>
             </div>
           </div>
         </Pane>
@@ -247,13 +265,14 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
               {draft.authorUrl && <p className="break-all text-[13px] text-[var(--help)]">{draft.authorUrl}</p>}
               <p className="whitespace-pre-wrap break-words text-[13px]">{draft.description}</p>
               <p className="break-all text-[13px] text-[var(--ink-muted)]">{pack?.path}</p>
+              {baseVersion && <p className="text-[13px] text-[var(--help)]">{t("s.roleBaseVersion", { v0: baseVersion })}</p>}
               {(license.id || license.url || license.text) &&
                 <p className="whitespace-pre-wrap break-words text-[13px] text-[var(--help)]">{[license.id, license.url, license.text].filter(Boolean).join("\n")}</p>}
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 pt-5 pb-4">
             <Btn disabled={Boolean(busy)} onClick={() => setStep("details")}>{t("ui.common.back")}</Btn>
-            {!signedIn ? signIn : <Btn primary busy={busy === "submit"} disabled={!usablePack || !hasDetails || Boolean(busy)} onClick={() => void submit()}>{t("publication.submit")}</Btn>}
+            {!signedIn ? signIn : <Btn primary busy={busy === "submit"} disabled={!sourceComplete || !hasDetails || Boolean(busy)} onClick={() => void submit()}>{t("publication.submit")}</Btn>}
           </div>
         </Pane>
       </Panes>

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { versions as engineVersions } from "../../src-tauri/engine-payload/configs/upstream_versions.json";
 import { t } from "../i18n/t";
 
 export type License = { id?: string; url?: string; text?: string };
@@ -23,10 +24,11 @@ export type Submission = {
     authorUrl?: string;
     publisherRole: PublisherRole;
     license: License;
-    metadata?: { series?: string; group?: string };
+    metadata?: { familyVersion?: string; series?: string; group?: string };
   };
   version: {
     label: string;
+    metadata?: { familyVersion?: string };
     files: Array<{ path: string; sha256: string; sources: Array<{ canonicalUrl: string; revision: string }> }>;
   };
   updatedAt: string;
@@ -52,6 +54,7 @@ export type Draft = {
   publisherRole: PublisherRole;
   license: License;
   licenseEdited?: boolean;
+  baseVersion?: string;
   label: string;
   series: string;
   group: string;
@@ -77,6 +80,7 @@ export function newDraft(previous?: Submission): Draft {
     publisherRole: previous?.asset.publisherRole ?? "original_author",
     license: previous?.asset.license ?? {},
     licenseEdited: Boolean(previous),
+    baseVersion: supportedBaseVersion(previous?.version.metadata?.familyVersion ?? previous?.asset.metadata?.familyVersion),
     label: previous?.version.label ?? "v1",
     series: previous?.asset.metadata?.series ?? "",
     group: previous?.asset.metadata?.group ?? "",
@@ -101,7 +105,16 @@ export function storeDrafts(drafts: Draft[]) {
   localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts));
 }
 
-export const characterFamily = "v5turbo";
+export const characterBaseVersions = Object.keys(engineVersions).sort((left, right) => left.localeCompare(right, "en", { numeric: true }));
+
+function supportedBaseVersion(value: unknown) {
+  const version = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return characterBaseVersions.find((candidate) => candidate.toLowerCase() === version);
+}
+
+export function draftBaseVersion(draft: Draft) {
+  return supportedBaseVersion(draft.baseVersion ?? draft.pending?.body.asset.metadata.familyVersion);
+}
 
 export function validUrl(value: string) {
   try {
@@ -130,7 +143,9 @@ export function publication<T>(request: PublicationRequest) {
 }
 
 export async function prepareSubmission(draft: Draft, account: string) {
-  if (draft.pending?.account === account) return draft.pending;
+  const baseVersion = draftBaseVersion(draft);
+  if (!baseVersion) throw { code: "base_version_required" };
+  if (draft.pending?.account === account && draft.pending.body.asset.metadata.familyVersion === baseVersion) return draft.pending;
   const selection = draft.selection;
   if (!selection || selection.account !== account || Date.parse(selection.expiresAt) <= Date.now()) {
     throw { code: "read_source" };
@@ -157,7 +172,7 @@ export async function prepareSubmission(draft: Draft, account: string) {
       license: draft.license,
       metadata: {
         family: "gpt-sovits",
-        familyVersion: characterFamily,
+        familyVersion: baseVersion,
         format: "character_package",
         series: draft.series.trim() || undefined,
         group: draft.group.trim() || undefined,
@@ -176,6 +191,7 @@ export function publicationError(error: unknown, action: "resolve" | "submit" | 
   const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
   if (code === "unauthorized" || (code === "auth_required" && action !== "resolve")) return t("publication.signInRequired");
   if (action === "submit" && ["read_source", "conflict", "not_found", "source_changed"].includes(String(code))) return t("publication.readAgain");
+  if (code === "base_version_required") return t("publication.chooseBaseModel");
   if (code === "hash_mismatch") return t("publication.hashMismatch");
   if (code === "rate_limited") return t("publication.rateLimited");
   if (action === "resolve" && (code === "auth_required" || code === "unsupported" || code === "not_found")) return t("publication.publicSource");
