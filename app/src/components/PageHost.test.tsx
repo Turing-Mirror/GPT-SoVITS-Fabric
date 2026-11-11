@@ -1,11 +1,22 @@
 // @vitest-environment happy-dom
 import { act, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { PageId } from "../lib/nav";
 import { PageHost } from "./PageHost";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+// 推移动画的替身：按真实时长走完，由假计时器推进。
+const realAnimate = HTMLElement.prototype.animate;
+beforeEach(() => {
+  HTMLElement.prototype.animate = function () {
+    let fail!: (reason: unknown) => void;
+    const finished = new Promise<void>((resolve, reject) => { fail = reject; window.setTimeout(resolve, 420); });
+    return { finished, cancel: () => fail(new Error("cancelled")) } as unknown as Animation;
+  } as typeof HTMLElement.prototype.animate;
+});
+afterEach(() => { HTMLElement.prototype.animate = realAnimate; });
 
 it("keeps the outgoing page inert while a first visit loads, and ignores a load that finishes after leaving", async () => {
   vi.useFakeTimers();
