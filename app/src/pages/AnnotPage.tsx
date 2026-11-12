@@ -16,7 +16,7 @@ import { useI18n } from "../i18n";
 import { ModelCard } from "../components/ModelCard";
 import { useAudioPreview } from "../hooks/useAudioPreview";
 import { registerLeaveGuard } from "../lib/navigationGuard";
-import { usePageActive } from "trm-ui";
+import { usePageActive, usePageLeave } from "trm-ui";
 import { useConfig } from "../hooks/useConfig";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
@@ -109,6 +109,7 @@ function AnnotPageImpl() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  usePageLeave(() => setMsg(""));
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState<"all" | "bad">("all");
   const config = useConfig();

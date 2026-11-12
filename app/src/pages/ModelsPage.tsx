@@ -1,4 +1,5 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
+import { usePageLeave } from "trm-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field } from "../components/controls";
@@ -62,6 +63,7 @@ export function ModelsPage({
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  usePageLeave(() => setMsg(""));
   const [loading, setLoading] = useState(() => isTauri() && peekCharacters() === null);
   const [roles, setRoles] = useState<Role[]>(() => peekCharacters() ?? []);
   const [query, setQuery] = useState("");

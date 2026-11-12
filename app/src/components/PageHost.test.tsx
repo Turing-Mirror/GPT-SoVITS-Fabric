@@ -39,7 +39,10 @@ it("keeps the outgoing page inert while a first visit loads, and ignores a load 
     render("home");
     await act(async () => { finish(); await vi.advanceTimersByTimeAsync(450); });
     expect(container.querySelector("[data-page-scroll] button")).toBe(home);
-    expect(container.textContent).toBe("Home");
+    // 模型页留在台下：搭好了但藏着，点不到。
+    const models = [...container.querySelectorAll("button")].find(b => b.textContent === "Models")!;
+    expect(models.style.display).toBe("none");
+    expect(models.closest("[inert]")).not.toBeNull();
   } finally {
     act(() => root.unmount());
     vi.useRealTimers();
