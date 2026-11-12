@@ -468,7 +468,7 @@ function AnnotPageImpl() {
                                 "shrink-0 w-[22px] h-[22px] rounded-full border-0 cursor-pointer",
                                 "inline-flex items-center justify-center",
                                 r.exists
-                                  ? "bg-transparent text-[var(--accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_42%,transparent)]"
+                                  ? "bg-transparent text-[var(--accent-text)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_42%,transparent)]"
                                   : "bg-transparent text-[var(--meta)] shadow-[inset_0_0_0_1px_var(--line)] cursor-default",
                               ].join(" ")}
                             >
@@ -501,7 +501,7 @@ function AnnotPageImpl() {
                               {r.issues.map((i) => (
                                 <span
                                   key={i}
-                                  className="text-[10.5px] px-1.5 py-px rounded-full text-[var(--danger)] bg-[var(--danger-soft)]"
+                                  className="text-[10.5px] px-1.5 py-px rounded-full text-[var(--danger-text)] bg-[var(--danger-soft)]"
                                 >
                                   {issueText(i)}
                                 </span>
@@ -538,7 +538,7 @@ function AnnotPageImpl() {
                             onClick={() => removeRow(r.line)}
                             aria-label={t("s.annot.removeRow")}
                             title={t("s.annot.removeRow")}
-                            className="w-[22px] h-[22px] rounded-[var(--rs)] border-0 bg-transparent text-[var(--meta)] cursor-pointer hover:text-[var(--danger)]"
+                            className="w-[22px] h-[22px] rounded-[var(--rs)] border-0 bg-transparent text-[var(--meta)] cursor-pointer hover:text-[var(--danger-text)]"
                           >
                             ×
                           </button>

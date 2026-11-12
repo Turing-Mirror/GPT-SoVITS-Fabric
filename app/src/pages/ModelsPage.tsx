@@ -324,7 +324,7 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
           <Field label={t("library.fieldName")} control={<input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} autoFocus />} />
           <Field label={t("library.fieldAuthor")} control={<input value={author} onChange={(e) => setAuthor(e.target.value)} className={INPUT} />} />
         </div>
-        {err ? <div className="mt-3 text-[12.5px] text-[var(--danger)]">{err}</div> : null}
+        {err ? <div className="mt-3 text-[12.5px] text-[var(--danger-text)]">{err}</div> : null}
         <div className="mt-6 flex gap-2.5 justify-end">
           <Btn onClick={onClose} disabled={busy}>{t("library.cancel")}</Btn>
           <Btn primary busy={busy} disabled={!name.trim()} onClick={() => void save()}>{t("library.save")}</Btn>

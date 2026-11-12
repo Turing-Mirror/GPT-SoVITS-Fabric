@@ -187,9 +187,9 @@ type BatchItem = { text: string; state: BatchState; err?: string };
 
 const ITEM_TONE: Record<BatchState, string> = {
   wait: "text-[var(--meta)]",
-  run: "text-[var(--accent)]",
-  done: "text-[var(--accent)]",
-  fail: "text-[var(--danger)]",
+  run: "text-[var(--accent-text)]",
+  done: "text-[var(--accent-text)]",
+  fail: "text-[var(--danger-text)]",
   stop: "text-[var(--meta)]",
 };
 
@@ -765,7 +765,7 @@ export function SynthPage() {
         actions={
           <div className="flex items-center gap-2">
             {!isTauri() ? (
-              <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent)]">
+              <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
                 {t("synth.demoBadge")}
               </span>
             ) : null}
@@ -906,7 +906,7 @@ export function SynthPage() {
                             className={[
                               "shrink-0 w-[22px] h-[22px] rounded-[6px] grid place-items-center border-0 cursor-pointer transition-opacity",
                               isAux
-                                ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                                ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
                                 : "bg-transparent text-[var(--meta)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
                             ].join(" ")}
                           >

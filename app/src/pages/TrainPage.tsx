@@ -308,7 +308,7 @@ export function TrainPage() {
       {/* 判据是「这台机器上真的有这份权重」：引擎资源加上所选版本自己的底模。 */}
       <div className="text-[12.5px]">
         {baseReady ? (
-          <span className="text-[var(--accent)]">{t("train.baseReady")}</span>
+          <span className="text-[var(--accent-text)]">{t("train.baseReady")}</span>
         ) : (
           <span className="text-[var(--notify)]">{t("train.baseMissing", { v0: String(missing.length) })}</span>
         )}
@@ -443,7 +443,7 @@ export function TrainPage() {
                 running
                   ? "bg-[var(--accent)] text-[var(--accent-ink)] font-semibold"
                   : done
-                    ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                    ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
                     : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink-muted)]",
               ].join(" ")}
             >
@@ -482,7 +482,7 @@ export function TrainPage() {
         title={t("train.title")}
         actions={
           !isTauri() ? (
-            <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent)]">
+            <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
               {t("synth.demoBadge")}
             </span>
           ) : null
@@ -490,7 +490,7 @@ export function TrainPage() {
       />
 
       {st.interrupted ? (
-        <div className="flex-none mt-[18px] rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent)] px-4 py-3 text-[12.5px]">
+        <div className="flex-none mt-[18px] rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent-text)] px-4 py-3 text-[12.5px]">
           {t("train.interrupted", {
             v0: String(st.interrupted.exp ?? ""),
             v1: String(st.interrupted.epoch ?? 0),
@@ -520,14 +520,14 @@ export function TrainPage() {
                     s.ok
                       ? "bg-[var(--accent)] text-[var(--accent-ink)]"
                       : on
-                        ? "bg-[var(--stage)] text-[var(--accent)]"
+                        ? "bg-[var(--stage)] text-[var(--accent-text)]"
                         : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
                   ].join(" ")}
                 >
                   {s.ok ? <Icon name="check" size={12} /> : i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={["block text-[13px] truncate", on ? "font-semibold text-[var(--accent)]" : ""].join(" ")}>{s.title}</span>
+                  <span className={["block text-[13px] truncate", on ? "font-semibold text-[var(--accent-text)]" : ""].join(" ")}>{s.title}</span>
                   <span className="block text-[11.5px] text-[var(--meta)] truncate mt-0.5 tabular-nums">{s.sub}</span>
                 </span>
               </button>
@@ -574,7 +574,7 @@ export function TrainPage() {
             {st.busy ? (
               <div className="pt-1">
                 <div className="flex items-center justify-between text-[12px] mb-1.5">
-                  <span className="text-[var(--accent)]">{stage ? t(STAGE_KEYS[stage]) : t("train.start")}</span>
+                  <span className="text-[var(--accent-text)]">{stage ? t(STAGE_KEYS[stage]) : t("train.start")}</span>
                   <span className="tabular-nums">{progress}%</span>
                 </div>
                 <div className="h-[5px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden">

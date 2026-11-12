@@ -62,7 +62,7 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] font-medium">{weight.kind === "gpt" ? "GPT" : "SoVITS"}{weight.kind === "sovits" ? <span className="text-[11px] text-[var(--meta)] ml-2">{details.version}</span> : null}</div>
                     <div className="text-[11.5px] text-[var(--help)] break-all selectable" title={weight.path}>{weight.path}</div>
-                    {!weight.exists ? <div className="text-[12px] text-[var(--danger)]">{t("library.missingFile")}</div> : null}
+                    {!weight.exists ? <div className="text-[12px] text-[var(--danger-text)]">{t("library.missingFile")}</div> : null}
                   </div>
                   <Btn disabled={busy} onClick={() => weight.kind === "sovits" ? setReplaceSovits(v => !v) : void update(() => replaceRoleWeight(role.id, "gpt"))}>{t("library.replaceWeight")}</Btn>
                 </div>
@@ -85,7 +85,7 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
               {details.lists.length ? details.lists.map(list => <div key={list.index} className="py-3 flex items-center gap-3 flex-wrap">
                 <div className="min-w-0 flex-1 basis-[160px]">
                   <div className="text-[13px] break-all" title={list.path}>{list.note || list.file.split(/[\\/]/).pop() || list.file}</div>
-                  <div className={`text-[11.5px] mt-1 ${list.exists && list.valid ? "text-[var(--help)]" : "text-[var(--danger)]"}`}>
+                  <div className={`text-[11.5px] mt-1 ${list.exists && list.valid ? "text-[var(--help)]" : "text-[var(--danger-text)]"}`}>
                     {!list.exists ? t("library.missingFile") : !list.valid ? t("library.invalidList") : t("library.listRows", { v0: list.rows })}
                   </div>
                 </div>
@@ -97,7 +97,7 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
             </div>
           </section>
         </> : null}
-        {error ? <p role="alert" className="text-[12.5px] text-[var(--danger)] break-words selectable">{error}</p> : null}
+        {error ? <p role="alert" className="text-[12.5px] text-[var(--danger-text)] break-words selectable">{error}</p> : null}
       </div>
       <footer className="px-6 py-4 flex justify-end gap-2 flex-none">
         <Btn disabled={busy} onClick={onClose}>{t("window.close")}</Btn>

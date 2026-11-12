@@ -153,7 +153,7 @@ function StepBody({ lead, done, children }: { lead: string; done?: string; child
   return (
     <div>
       <p className="text-[13.5px] text-[var(--ink)] m-0 mb-5 leading-relaxed">{lead}</p>
-      {done ? <div className="mb-4 text-[13px] text-[var(--accent)]">{done}</div> : null}
+      {done ? <div className="mb-4 text-[13px] text-[var(--accent-text)]">{done}</div> : null}
       {children ? <div className="flex items-center gap-2 flex-wrap">{children}</div> : null}
     </div>
   );

@@ -7,6 +7,7 @@ import { t } from "../i18n/t";
 import type { PageId } from "../lib/nav";
 import { synthWithRole } from "../lib/intent";
 import { artOf } from "../lib/art";
+import { ThumbImage } from "trm-ui";
 import { FittedItems } from "../components/FittedItems";
 import { listen } from "@tauri-apps/api/event";
 import { useConfigSnapshot } from "../hooks/useConfigSnapshot";
@@ -139,7 +140,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
             <FittedItems className="home-role-grid" items={roles.map((r) => (
               <button key={r.id} type="button" onClick={() => pickRole(r)} className="home-role" title={r.name || r.id}>
                 {r.cover_exists && r.cover && r.dir && isTauri() ? (
-                  <img src={convertFileSrc(`${r.dir}/${r.cover}`)} alt="" draggable={false} />
+                  <ThumbImage src={convertFileSrc(`${r.dir}/${r.cover}`)} alt="" draggable={false} />
                 ) : <div className="home-role-art" style={{ background: artOf(r.id) }} />}
                 <span className="block truncate text-[13px] font-medium">{r.name || r.id}</span>
                 <span className="block truncate text-[11px] text-[var(--meta)] mt-0.5">{r.version || ""}</span>
