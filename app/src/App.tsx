@@ -769,7 +769,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => void doForceKill()}
-                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent)] text-[var(--accent-ink)] border-0 cursor-pointer"
+                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent-fill)] text-[var(--accent-ink)] border-0 cursor-pointer"
               >{t("s.killStsAskGo")}</button>
             </div>
           </div>
@@ -795,7 +795,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => void answerClose(true)}
-                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent)] text-[var(--accent-ink)] border-0 cursor-pointer"
+                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent-fill)] text-[var(--accent-ink)] border-0 cursor-pointer"
               >{t("s.aea56dcdfe")}</button>
             </div>
           </div>

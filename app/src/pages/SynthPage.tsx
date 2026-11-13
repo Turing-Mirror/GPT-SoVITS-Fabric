@@ -878,7 +878,7 @@ export function SynthPage() {
                           className={[
                             "shrink-0 w-[22px] h-[22px] rounded-full grid place-items-center border-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
                             preview === row.abs || on
-                              ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                              ? "bg-[var(--accent-fill)] text-[var(--accent-ink)]"
                               : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
                           ].join(" ")}
                         >

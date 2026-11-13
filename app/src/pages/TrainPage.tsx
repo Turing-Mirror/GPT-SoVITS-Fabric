@@ -441,7 +441,7 @@ export function TrainPage() {
               className={[
                 "rounded-[var(--rs)] px-3 py-2.5 text-center text-[12.5px] transition-colors duration-200 inline-flex items-center justify-center gap-1.5",
                 running
-                  ? "bg-[var(--accent)] text-[var(--accent-ink)] font-semibold"
+                  ? "bg-[var(--accent-fill)] text-[var(--accent-ink)] font-semibold"
                   : done
                     ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
                     : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink-muted)]",
@@ -518,7 +518,7 @@ export function TrainPage() {
                   className={[
                     "shrink-0 w-[22px] h-[22px] rounded-full grid place-items-center text-[11.5px] font-semibold tabular-nums",
                     s.ok
-                      ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                      ? "bg-[var(--accent-fill)] text-[var(--accent-ink)]"
                       : on
                         ? "bg-[var(--stage)] text-[var(--accent-text)]"
                         : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",

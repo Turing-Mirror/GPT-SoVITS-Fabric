@@ -162,7 +162,7 @@ export function SynthResults({
                   className={[
                     "shrink-0 mt-px w-[22px] h-[22px] rounded-full grid place-items-center border-0 cursor-pointer",
                     playing === r.path
-                      ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                      ? "bg-[var(--accent-fill)] text-[var(--accent-ink)]"
                       : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
                   ].join(" ")}
                 >
