@@ -758,7 +758,7 @@ export default function App() {
 
       <Modal open={Boolean(killAsk)} z={60} contained>
           <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
-            <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
+            <h2 className="text-[16px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">{t("s.killStsAskBody")}</p>
             <div className="flex gap-2.5 justify-end">
               <button
@@ -777,7 +777,7 @@ export default function App() {
 
       <Modal open={Boolean(closeAsk)} z={60} contained>
           <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
-            <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
+            <h2 className="text-[16px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-4 leading-relaxed">{t("s.bc19958103")}</p>
             <label className="flex items-center gap-2.5 text-[13px] cursor-pointer mb-5 select-none">
               <input
@@ -804,6 +804,7 @@ export default function App() {
       {/* Nudge 全部收进这层浮层：absolute 叠在页面之上、不占布局，
           否则每条提示都会在底部顶出一条跟背景同色的带子，看着像伪 dock。
           pointer-events 穿透空区，卡片自己再吃事件。 */}
+      {/* design-allow: 底部通知必须低于本文件层级为六十的确认弹窗，保留原有先后关系。 */}
       <div className="absolute inset-x-0 bottom-0 z-[40] pointer-events-none">
       {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么
           用不了）。一个会话里关掉就不再出现 —— 不落配置，因为坑没填之前

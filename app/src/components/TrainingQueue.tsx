@@ -22,7 +22,7 @@ export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
   };
   return <div className="mt-4 flex flex-col min-h-0 gap-2.5">
     <div className="flex items-center justify-between gap-2">
-      <h3 className="text-[15.5px] font-semibold m-0">{t("train.queueTitle")}</h3>
+      <h3 className="text-[15px] font-semibold m-0">{t("train.queueTitle")}</h3>
       {jobs.some(terminalJob) ? <Btn disabled={pending.includes("")} onClick={() => void action("", "clear")}>{t("train.queueClear")}</Btn> : null}
     </div>
     {error ? <ErrorNote text={error} /> : null}
@@ -39,15 +39,15 @@ export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
                 <span className="font-medium break-all">{job.req.exp}</span>
                 <Tag tone={job.state === "failed" ? "warn" : running || job.state === "completed" ? "accent" : "muted"}>{t(STATE_KEYS[job.state])}</Tag>
               </div>
-              <div className="text-[12px] text-[var(--meta)]">{job.req.version}</div>
-              <div className="text-[12px] text-[var(--help)]">{t("train.hyperSummary", { v0: String(job.req.sovits_epoch), v1: String(job.req.gpt_epoch) })}</div>
+              <div className="text-[12.5px] text-[var(--meta)]">{job.req.version}</div>
+              <div className="text-[12.5px] text-[var(--help)]">{t("train.hyperSummary", { v0: String(job.req.sovits_epoch), v1: String(job.req.gpt_epoch) })}</div>
               {running ? <>
-                <div className="flex justify-between gap-2 text-[12px] text-[var(--help)]">
+                <div className="flex justify-between gap-2 text-[12.5px] text-[var(--help)]">
                   <span>{stage && stage in STAGE_KEYS ? t(STAGE_KEYS[stage]) : t("train.queueRunning")}</span>
                   <span className="tabular-nums">{job.progress?.total ? `${job.progress.done ?? 0} / ${job.progress.total}` : ""}</span>
                 </div>
                 <div className="h-[5px] rounded-full bg-[var(--line)] overflow-hidden">
-                  <div className="h-full bg-[var(--accent)] transition-[width] duration-150" style={{ width: `${trainPercent(job)}%` }} />
+                  <div className="h-full bg-[var(--accent)] transition-[width] duration-200" style={{ width: `${trainPercent(job)}%` }} />
                 </div>
               </> : null}
               {job.state === "failed" && job.error ? <ErrorNote text={job.error} code={job.progress?.message_code} /> : null}

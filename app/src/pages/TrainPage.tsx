@@ -325,8 +325,8 @@ export function TrainPage() {
     <div key="d" className="flex flex-col gap-[10px]">
       <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <div className="text-[13.5px] font-medium">{t("train.listFile")}</div>
-          <div className="text-[12px] text-[var(--help)] mt-1 break-all">{dataset || t("train.listDesc")}</div>
+          <div className="text-[13px] font-medium">{t("train.listFile")}</div>
+          <div className="text-[12.5px] text-[var(--help)] mt-1 break-all">{dataset || t("train.listDesc")}</div>
         </div>
         <Btn onClick={() => void pickDataset()}>{t("train.importList")}</Btn>
       </div>
@@ -336,8 +336,8 @@ export function TrainPage() {
           早就在仓库里，之前只是没有任何地方能打开它。 */}
       <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <div className="text-[13.5px] font-medium">{t("train.sepEntry")}</div>
-          <div className="text-[12px] text-[var(--help)] mt-1 leading-relaxed">{t("train.sepEntryDesc")}</div>
+          <div className="text-[13px] font-medium">{t("train.sepEntry")}</div>
+          <div className="text-[12.5px] text-[var(--help)] mt-1 leading-relaxed">{t("train.sepEntryDesc")}</div>
         </div>
         <Btn onClick={() => openTool("separate")}>{t("train.sepOpen")}</Btn>
       </div>
@@ -378,7 +378,7 @@ export function TrainPage() {
         ].map((s) => (
           <div key={s.label} className="flex items-center justify-between">
             <span className="text-[12.5px] text-[var(--help)]">{s.label}</span>
-            <span className="text-[13.5px] tabular-nums font-medium">{s.value}</span>
+            <span className="text-[13px] tabular-nums font-medium">{s.value}</span>
           </div>
         ))}
       </div>
@@ -455,7 +455,7 @@ export function TrainPage() {
       </div>
       <div className="h-[6px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden mt-3">
         <div
-          className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-[var(--ease)]"
+          className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200 ease-[var(--ease)]"
           style={{ width: `${Math.min(100, progress)}%` }}
         />
       </div>
@@ -463,7 +463,7 @@ export function TrainPage() {
         <Btn primary busy={starting} disabled={!!blocked} onClick={() => void start()}>
           {t("train.queueAdd")}
         </Btn>
-        <span className="text-[12px] text-[var(--meta)]">
+        <span className="text-[12.5px] text-[var(--meta)]">
           {blocked || t("train.diskFree", { v0: gb(st.disk_free_bytes) })}
         </span>
         {finished ? <Btn onClick={() => goTo("models")}>{t("train.viewRole")}</Btn> : null}
@@ -482,7 +482,7 @@ export function TrainPage() {
         title={t("train.title")}
         actions={
           !isTauri() ? (
-            <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
+            <span className="text-[12.5px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
               {t("synth.demoBadge")}
             </span>
           ) : null
@@ -510,7 +510,7 @@ export function TrainPage() {
                 type="button"
                 onClick={() => setStep(i)}
                 className={[
-                  "w-full text-left border-0 rounded-[var(--r)] px-3 py-2.5 flex items-center gap-2.5 cursor-pointer transition-colors duration-150",
+                  "w-full text-left border-0 rounded-[var(--r)] px-3 py-2.5 flex items-center gap-2.5 cursor-pointer transition-colors duration-200",
                   on ? "bg-[var(--accent-soft)]" : "bg-transparent hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
                 ].join(" ")}
               >
@@ -538,9 +538,9 @@ export function TrainPage() {
         {/* 中栏：当前步骤 */}
         <div className="min-h-0 flex flex-col min-[900px]:overflow-y-auto min-[900px]:overscroll-contain min-[900px]:pr-1">
           <div className="flex-none flex items-center gap-2 mb-2.5 min-h-[30px]">
-            <h3 className="text-[15.5px] font-semibold m-0">{steps[step].title}</h3>
-            {step === 0 ? <span className="text-[12px] text-[var(--meta)]">{t("train.modelNote")}</span> : null}
-            {step === 1 ? <span className="text-[12px] text-[var(--meta)]">{t("train.datasetNote")}</span> : null}
+            <h3 className="text-[15px] font-semibold m-0">{steps[step].title}</h3>
+            {step === 0 ? <span className="text-[12.5px] text-[var(--meta)]">{t("train.modelNote")}</span> : null}
+            {step === 1 ? <span className="text-[12.5px] text-[var(--meta)]">{t("train.datasetNote")}</span> : null}
             {step === 2 ? (
               <span className="ml-auto">
                 <Btn onClick={applyDefaults}>{t("train.resetDefaults")}</Btn>
@@ -561,7 +561,7 @@ export function TrainPage() {
         {/* 右栏：状态与训练队列 */}
         <div className="min-h-[360px] min-[900px]:min-h-0 flex flex-col">
           <div className="flex-none flex items-center gap-2 mb-2.5 min-h-[30px]">
-            <h3 className="text-[15.5px] font-semibold m-0">{t("train.statusTitle")}</h3>
+            <h3 className="text-[15px] font-semibold m-0">{t("train.statusTitle")}</h3>
           </div>
           <div className="flex-none rounded-[var(--r)] bg-[var(--group)] p-3.5 flex flex-col gap-2.5">
             {statusRows.map((r) => (
@@ -573,16 +573,16 @@ export function TrainPage() {
             ))}
             {st.busy ? (
               <div className="pt-1">
-                <div className="flex items-center justify-between text-[12px] mb-1.5">
+                <div className="flex items-center justify-between text-[12.5px] mb-1.5">
                   <span className="text-[var(--accent-text)]">{stage ? t(STAGE_KEYS[stage]) : t("train.start")}</span>
                   <span className="tabular-nums">{progress}%</span>
                 </div>
                 <div className="h-[5px] rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] overflow-hidden">
-                  <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150" style={{ width: `${Math.min(100, progress)}%` }} />
+                  <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200" style={{ width: `${Math.min(100, progress)}%` }} />
                 </div>
               </div>
             ) : statusHint ? (
-              <div className="pt-1 text-[12px] leading-relaxed text-[var(--help)]">{statusHint}</div>
+              <div className="pt-1 text-[12.5px] leading-relaxed text-[var(--help)]">{statusHint}</div>
             ) : null}
           </div>
           <TrainingQueue loaded={queue.loaded} jobs={queue.jobs} error={queue.error} onAction={queue.action} />

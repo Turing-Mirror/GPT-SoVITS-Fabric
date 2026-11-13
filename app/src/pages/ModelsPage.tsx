@@ -253,7 +253,7 @@ export function ModelsPage({
           <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.valueLoading")}</p>
         ) : (
           <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center">
-            <div className="text-[13.5px] font-medium">{t("library.emptyTitle")}</div>
+            <div className="text-[13px] font-medium">{t("library.emptyTitle")}</div>
             <div className="text-[12.5px] text-[var(--help)] mt-2 leading-relaxed max-w-[420px] mx-auto">
               {t("library.emptyDesc")}
             </div>
@@ -319,7 +319,7 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-[440px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6"
       >
-        <h2 className="text-[19px] font-semibold m-0 mb-5">{t("library.editInfo")}</h2>
+        <h2 className="text-[16px] font-semibold m-0 mb-5">{t("library.editInfo")}</h2>
         <div className="flex flex-col gap-4">
           <Field label={t("library.fieldName")} control={<input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} autoFocus />} />
           <Field label={t("library.fieldAuthor")} control={<input value={author} onChange={(e) => setAuthor(e.target.value)} className={INPUT} />} />

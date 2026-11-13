@@ -16,7 +16,7 @@ export function VulkanResourceAction({ jobs, disabled = false }: { jobs: ExtraJo
       <div className="flex flex-wrap items-center gap-2">
         {vulkanBusy ? (
           <>
-            <span role="status" className="text-[12px] text-[var(--help)] tabular-nums">
+            <span role="status" className="text-[12.5px] text-[var(--help)] tabular-nums">
               {joinClauses([
                 vulkanProgress?.message || t("s.65188d08a2"),
                 vulkanProgress?.speed_label && t("s.metaSpeed", { v0: vulkanProgress.speed_label }),

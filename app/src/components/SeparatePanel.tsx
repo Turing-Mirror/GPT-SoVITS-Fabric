@@ -165,7 +165,7 @@ export function SeparatePanel() {
   return (
     <ToolBody>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <h3 className="m-0 text-[17px] font-semibold">{t("sep.title")}</h3>
+        <h3 className="m-0 text-[16px] font-semibold">{t("sep.title")}</h3>
         <Btn onClick={() => openHelpSection("separate")}>{t("sep.help")}</Btn>
       </div>
       <p className="m-0 mb-4 text-[12.5px] text-[var(--ink-muted)]">{t("sep.desc")}</p>
@@ -262,7 +262,7 @@ export function SeparatePanel() {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <p className="m-0 mt-2 text-[12px] text-[var(--meta)]">
+          <p className="m-0 mt-2 text-[12.5px] text-[var(--meta)]">
             {prog.message} {prog.phase === "run" ? `${pct}%` : ""}
           </p>
         </div>

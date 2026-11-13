@@ -409,7 +409,7 @@ function AnnotPageImpl() {
                   ]}
                 />
                 <span className="ml-auto flex items-center gap-2 flex-wrap">
-                  <span className="text-[12px] text-[var(--meta)]">
+                  <span className="text-[12.5px] text-[var(--meta)]">
                     {t("s.annot.bulkOn", { v0: view.length })}
                   </span>
                   <Btn onClick={() => void bulkSpeaker()} disabled={!view.length}>
@@ -501,7 +501,7 @@ function AnnotPageImpl() {
                               {r.issues.map((i) => (
                                 <span
                                   key={i}
-                                  className="text-[10.5px] px-1.5 py-px rounded-full text-[var(--danger-text)] bg-[var(--danger-soft)]"
+                                  className="text-[11.5px] px-1.5 py-px rounded-full text-[var(--danger-text)] bg-[var(--danger-soft)]"
                                 >
                                   {issueText(i)}
                                 </span>

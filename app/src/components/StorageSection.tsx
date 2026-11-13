@@ -171,7 +171,7 @@ export function StorageSection() {
                 value: item.bytes, note: human(item.bytes),
                 color: `var(--storage-${index + 1}, var(--accent))`,
               })).filter((item) => item.value > 0)} />
-            <p className="m-0 mt-3 text-[12px] text-[var(--meta)]">
+            <p className="m-0 mt-3 text-[12.5px] text-[var(--meta)]">
               {t("storage.free", { size: usage.free_bytes == null ? t("s.valueUnknown") : human(usage.free_bytes) })}
             </p>
           </div>
@@ -197,7 +197,7 @@ export function StorageSection() {
                 {t("s.pageOf", { cur: pageClamped, total: totalPages })}
               </span>
             </div>
-            <p className="m-0 mb-3 text-[12px] text-[var(--meta)] leading-relaxed">
+            <p className="m-0 mb-3 text-[12.5px] text-[var(--meta)] leading-relaxed">
               {t("s.cleanupDesc")}
             </p>
             <CatalogTransition scope="storage" page={pageClamped} dir={pageDir || 1}>
@@ -236,7 +236,7 @@ export function StorageSection() {
                             className="accent-[var(--accent)]"
                           />
                           <span>{t(k.labelKey)}</span>
-                          <span className="font-mono text-[11px] text-[var(--meta)] tabular-nums">
+                          <span className="font-mono text-[11.5px] text-[var(--meta)] tabular-nums">
                             {human(info?.bytes ?? 0)}
                           </span>
                           {/* 后果写在勾选框旁边，不是只在确认框里说一次。 */}

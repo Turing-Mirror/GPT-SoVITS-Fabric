@@ -24,7 +24,7 @@ export function ModelCard({ id, name, cover, onOpen, disabled = false, children 
     >
       <div className="w-full aspect-[4/3] rounded-[calc(var(--r)-4px)] mb-2.5 bg-center bg-cover"
         style={cover ? { backgroundImage: `url("${cover}")` } : { background: artOf(id) }} />
-      <div className="text-[13.5px] font-medium leading-tight truncate" title={name}>{name}</div>
+      <div className="text-[13px] font-medium leading-tight truncate" title={name}>{name}</div>
       {children}
     </div>
   );

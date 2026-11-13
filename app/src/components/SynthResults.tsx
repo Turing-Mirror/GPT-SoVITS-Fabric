@@ -120,8 +120,8 @@ export function SynthResults({
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="flex-none flex items-center gap-2 mb-2.5">
-        <h3 className="text-[15.5px] font-semibold m-0">{t("synth.resultTitle")}</h3>
-        <span className="text-[12px] text-[var(--meta)]">{rows.length}</span>
+        <h3 className="text-[15px] font-semibold m-0">{t("synth.resultTitle")}</h3>
+        <span className="text-[12.5px] text-[var(--meta)]">{rows.length}</span>
         <div className="ml-auto flex items-center gap-1.5">
           <Select
             width={84}
@@ -148,7 +148,7 @@ export function SynthResults({
                 onDoubleClick={() => play(r.path)}
                 onKeyDown={(e) => e.key === "Enter" && setSel(r.path)}
                 className={[
-                  "flex items-start gap-2 px-2 py-2 rounded-[var(--rs)] cursor-pointer transition-colors duration-150 outline-none",
+                  "flex items-start gap-2 px-2 py-2 rounded-[var(--rs)] cursor-pointer transition-colors duration-200 outline-none",
                   on ? "bg-[var(--accent-soft)]" : "hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
                 ].join(" ")}
               >
@@ -183,7 +183,7 @@ export function SynthResults({
         )}
       </div>
       {fields.length ? (
-        <dl className="flex-none m-0 mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
+        <dl className="flex-none m-0 mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12.5px]">
           {fields.map(([k, v]) => (
             <Fragment key={k}>
               <dt className="text-[var(--meta)]">{k}</dt>

@@ -48,21 +48,21 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
       onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); if (!busy) onClose(); } }}
       className="w-full max-w-[640px] max-h-[calc(100vh-48px)] flex flex-col min-h-0 rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)]">
       <header className="px-6 pt-5 pb-4 flex-none">
-        <h2 id={titleId} className="text-[19px] font-semibold m-0">{t("library.manageAssets")}</h2>
+        <h2 id={titleId} className="text-[16px] font-semibold m-0">{t("library.manageAssets")}</h2>
         <p className="text-[13px] text-[var(--help)] mt-1 mb-0 truncate" title={role.name}>{role.name}</p>
       </header>
       <div className="px-6 min-h-0 overflow-y-auto flex-1">
         {!details && !error ? <p className="text-[13px] text-[var(--help)]">{t("s.valueLoading")}</p> : null}
         {details ? <>
           <section className="mb-5">
-            <h3 className="text-[14px] font-medium mb-2 mt-0">{t("library.modelFiles")}</h3>
+            <h3 className="text-[13px] font-medium mb-2 mt-0">{t("library.modelFiles")}</h3>
             <div className="rounded-[var(--r)] bg-[var(--group)] px-4 divide-y divide-[var(--line)]">
               {details.weights.map(weight => <div key={weight.kind} className="py-3">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium">{weight.kind === "gpt" ? "GPT" : "SoVITS"}{weight.kind === "sovits" ? <span className="text-[11px] text-[var(--meta)] ml-2">{details.version}</span> : null}</div>
+                    <div className="text-[13px] font-medium">{weight.kind === "gpt" ? "GPT" : "SoVITS"}{weight.kind === "sovits" ? <span className="text-[11.5px] text-[var(--meta)] ml-2">{details.version}</span> : null}</div>
                     <div className="text-[11.5px] text-[var(--help)] break-all selectable" title={weight.path}>{weight.path}</div>
-                    {!weight.exists ? <div className="text-[12px] text-[var(--danger-text)]">{t("library.missingFile")}</div> : null}
+                    {!weight.exists ? <div className="text-[12.5px] text-[var(--danger-text)]">{t("library.missingFile")}</div> : null}
                   </div>
                   <Btn disabled={busy} onClick={() => weight.kind === "sovits" ? setReplaceSovits(v => !v) : void update(() => replaceRoleWeight(role.id, "gpt"))}>{t("library.replaceWeight")}</Btn>
                 </div>
@@ -77,10 +77,10 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
           </section>
           <section>
             <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-[14px] font-medium m-0 flex-1">{t("library.associatedLists")}</h3>
+              <h3 className="text-[13px] font-medium m-0 flex-1">{t("library.associatedLists")}</h3>
               <Btn disabled={busy} onClick={() => void update(() => associateRoleList(role.id))}>{t("library.associateList")}</Btn>
             </div>
-            <p className="text-[12px] text-[var(--help)] mt-0 mb-3">{t("library.associateNote")}</p>
+            <p className="text-[12.5px] text-[var(--help)] mt-0 mb-3">{t("library.associateNote")}</p>
             <div className="rounded-[var(--r)] bg-[var(--group)] px-4 divide-y divide-[var(--line)]">
               {details.lists.length ? details.lists.map(list => <div key={list.index} className="py-3 flex items-center gap-3 flex-wrap">
                 <div className="min-w-0 flex-1 basis-[160px]">

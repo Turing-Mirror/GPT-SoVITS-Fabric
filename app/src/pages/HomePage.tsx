@@ -133,7 +133,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
         <section className="home-section">
           <div className="home-section-head">
             <h3>{t("home.rolesTitle")}</h3>
-            {!isTauri() ? <span className="text-[11px] text-[var(--meta)]">{t("synth.demoBadge")}</span> : null}
+            {!isTauri() ? <span className="text-[11.5px] text-[var(--meta)]">{t("synth.demoBadge")}</span> : null}
             <Btn onClick={() => onNavigate("models")}>{t("home.allRoles")}</Btn>
           </div>
           {roles === null ? null : roles.length === 0 ? <div className="home-empty">{t("home.rolesEmpty")}</div> : (
@@ -143,7 +143,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
                   <ThumbImage src={convertFileSrc(`${r.dir}/${r.cover}`)} alt="" draggable={false} />
                 ) : <div className="home-role-art" style={{ background: artOf(r.id) }} />}
                 <span className="block truncate text-[13px] font-medium">{r.name || r.id}</span>
-                <span className="block truncate text-[11px] text-[var(--meta)] mt-0.5">{r.version || ""}</span>
+                <span className="block truncate text-[11.5px] text-[var(--meta)] mt-0.5">{r.version || ""}</span>
               </button>
             ))} />
           )}
@@ -151,7 +151,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
         <section className="home-section home-recent">
           <div className="home-section-head">
             <h3>{t("home.recentTitle")}</h3>
-            <span className="text-[11px] text-[var(--meta)]">{t("home.recentNote")}</span>
+            <span className="text-[11.5px] text-[var(--meta)]">{t("home.recentNote")}</span>
           </div>
           {recent === null ? null : recent.length === 0 ? <div className="home-empty">{t("home.recentEmpty")}</div> : (
             <FittedItems className="home-recent-list" items={recent.map((r) => (
@@ -159,7 +159,7 @@ export function HomePage({ onNavigate, active = true }: Props) {
                 onClick={() => void invoke("synth_reveal_file", { path: r.path }).catch(() => {})}
                 className="home-recent-item">
                 <span className="truncate min-w-0">{r.name}</span>
-                <span className="text-[11px] text-[var(--meta)] shrink-0 tabular-nums">{fmtAgo(r.mtime)}</span>
+                <span className="text-[11.5px] text-[var(--meta)] shrink-0 tabular-nums">{fmtAgo(r.mtime)}</span>
               </button>
             ))} />
           )}

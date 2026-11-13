@@ -231,8 +231,8 @@ function randomSeed(): number {
 function ColHead({ title, note, action }: { title: string; note?: string; action?: ReactNode }) {
   return (
     <div className="flex-none flex items-center gap-2 mb-2.5 min-h-[30px]">
-      <h3 className="text-[15.5px] font-semibold m-0">{title}</h3>
-      {note ? <span className="text-[12px] text-[var(--meta)] tabular-nums">{note}</span> : null}
+      <h3 className="text-[15px] font-semibold m-0">{title}</h3>
+      {note ? <span className="text-[12.5px] text-[var(--meta)] tabular-nums">{note}</span> : null}
       {action ? <div className="ml-auto flex items-center gap-1.5">{action}</div> : null}
     </div>
   );
@@ -685,7 +685,7 @@ export function SynthPage() {
             ].join(" ")}
           />
         </div>
-        <p className="m-0 mt-2 text-[12px] text-[var(--help)] tabular-nums leading-relaxed">
+        <p className="m-0 mt-2 text-[12.5px] text-[var(--help)] tabular-nums leading-relaxed">
           {chunks === 0
             ? t("synth.progressWait", { s: secs })
             : tFirst != null
@@ -697,7 +697,7 @@ export function SynthPage() {
 
   const runBar = (count: string, start: () => void, canStart: boolean) => (<>
     <div className="mt-3 flex flex-wrap items-center gap-2">
-      <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--meta)]">
+      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--meta)]">
         {t("synth.backend")}
         <HelpMark title={t("synth.backendTip")} />
       </span>
@@ -719,12 +719,12 @@ export function SynthPage() {
     </div>
     {vulkanReason ? (
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <p role="status" className="m-0 text-[12px] leading-relaxed text-[var(--help)]">{vulkanReason}</p>
+        <p role="status" className="m-0 text-[12.5px] leading-relaxed text-[var(--help)]">{vulkanReason}</p>
         {needsVulkanDownload ? <VulkanResourceAction jobs={extraJobs} disabled={busy} /> : null}
       </div>
     ) : null}
     <div className="flex items-center gap-3 mt-3 flex-wrap">
-      <span className="text-[12px] text-[var(--meta)] tabular-nums">{count}</span>
+      <span className="text-[12.5px] text-[var(--meta)] tabular-nums">{count}</span>
       <Toggle
         checked={!runWithVulkan && streaming}
         disabled={runWithVulkan || busy}
@@ -754,7 +754,7 @@ export function SynthPage() {
       onChange={(e) => onChange(e.target.value)}
       rows={6}
       placeholder={placeholder}
-      className="w-full resize-y border-0 outline-none bg-transparent text-[14px] leading-relaxed text-[var(--ink)] placeholder:text-[var(--meta)]"
+      className="w-full resize-y border-0 outline-none bg-transparent text-[13px] leading-relaxed text-[var(--ink)] placeholder:text-[var(--meta)]"
     />
   );
 
@@ -765,7 +765,7 @@ export function SynthPage() {
         actions={
           <div className="flex items-center gap-2">
             {!isTauri() ? (
-              <span className="text-[12px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
+              <span className="text-[12.5px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
                 {t("synth.demoBadge")}
               </span>
             ) : null}
@@ -798,8 +798,8 @@ export function SynthPage() {
               }
             />
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-medium leading-tight truncate">{role.name}</div>
-              <div className="text-[12px] text-[var(--meta)] mt-1 truncate">
+              <div className="text-[13px] font-medium leading-tight truncate">{role.name}</div>
+              <div className="text-[12.5px] text-[var(--meta)] mt-1 truncate">
                 {role.author
                   ? t("synth.roleMetaAuthor", { v0: role.version, v1: role.author })
                   : t("synth.roleMetaNoAuthor", { v0: role.version })}
@@ -861,7 +861,7 @@ export function SynthPage() {
                         onClick={() => ok && setRefKey(key)}
                         onKeyDown={(e) => e.key === "Enter" && ok && setRefKey(key)}
                         className={[
-                          "group px-2.5 py-2 flex items-center gap-2 transition-colors duration-150 outline-none",
+                          "group px-2.5 py-2 flex items-center gap-2 transition-colors duration-200 outline-none",
                           ok ? "cursor-pointer" : "cursor-not-allowed",
                           i > 0 ? "border-t border-[var(--hairline)]" : "",
                           on ? "bg-[var(--accent-soft)]" : "hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
@@ -886,7 +886,7 @@ export function SynthPage() {
                         </button>
                         <span className={["min-w-0 flex-1", ok ? "" : "opacity-55"].join(" ")}>
                           <span className="block text-[12.5px] leading-snug truncate">{row.text}</span>
-                          <span className="block text-[11px] text-[var(--meta)] truncate mt-0.5 tabular-nums">
+                          <span className="block text-[11.5px] text-[var(--meta)] truncate mt-0.5 tabular-nums">
                             {!row.exists
                               ? t("synth.refMissing")
                               : sec != null && !Number.isNaN(sec)
@@ -904,7 +904,7 @@ export function SynthPage() {
                               toggleAux(row);
                             }}
                             className={[
-                              "shrink-0 w-[22px] h-[22px] rounded-[6px] grid place-items-center border-0 cursor-pointer transition-opacity",
+                              "shrink-0 w-[22px] h-[22px] rounded-[var(--rs)] grid place-items-center border-0 cursor-pointer transition-opacity",
                               isAux
                                 ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
                                 : "bg-transparent text-[var(--meta)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
@@ -927,13 +927,13 @@ export function SynthPage() {
               <span className="text-[11.5px] font-normal text-[var(--meta)]">{auxRows.length}</span>
             </div>
             {auxRows.length === 0 ? (
-              <p className="m-0 text-[12px] text-[var(--help)] leading-relaxed">{t("synth.auxEmpty")}</p>
+              <p className="m-0 text-[12.5px] text-[var(--help)] leading-relaxed">{t("synth.auxEmpty")}</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {auxRows.map((r) => (
                   <span
                     key={keyOf(r)}
-                    className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-full bg-[var(--group)] text-[12px]"
+                    className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-full bg-[var(--group)] text-[12.5px]"
                   >
                     <span className="truncate max-w-[180px]">{r.text}</span>
                     <button
@@ -980,14 +980,14 @@ export function SynthPage() {
               ? textArea(text, setText, t("synth.textPlaceholder"))
               : textArea(batchText, setBatchText, t("synth.batchPlaceholder"))}
             <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <span className="text-[12px] text-[var(--meta)]">{t("synth.textLang")}</span>
+              <span className="text-[12.5px] text-[var(--meta)]">{t("synth.textLang")}</span>
               <Select
                 width={150}
                 value={langs.includes(adv.text_lang) ? adv.text_lang : "auto"}
                 options={langs.map((l) => ({ id: l, label: t(LANG_LABEL[l]) }))}
                 onChange={(v) => setAdvKey("text_lang", v)}
               />
-              <span className="text-[12px] text-[var(--meta)] ml-2">{t("synth.split")}</span>
+              <span className="text-[12.5px] text-[var(--meta)] ml-2">{t("synth.split")}</span>
               <Select
                 width={170}
                 value={adv.text_split_method}
