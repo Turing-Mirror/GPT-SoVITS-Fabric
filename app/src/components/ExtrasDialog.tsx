@@ -6,7 +6,7 @@ import { Pager } from "./Pager";
 import { SegmentControl } from "./SegmentControl";
 import { CatalogTransition } from "./CatalogTransition";
 import { ResourceDownloadRow, Roll } from "trm-ui";
-import { askConfirm } from "../lib/webDialog";
+import { askConfirm } from "trm-ui/fabric";
 import { t } from "../i18n/t";
 import {
   localizedTextValue,

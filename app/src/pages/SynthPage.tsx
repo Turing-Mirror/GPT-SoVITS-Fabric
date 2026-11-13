@@ -14,7 +14,7 @@ import { useRoleParams } from "../hooks/useRoleParams";
 import { SYNTH_DEFAULTS } from "../lib/synthRoleParams";
 import { t } from "../i18n/t";
 import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
-import { artOf } from "../lib/art";
+import { artOf } from "trm-ui";
 import { Icon, Pager, SearchBox, SegmentControl, useDir, usePaged } from "../trm";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { HelpMark } from "../components/Tooltip";

@@ -2,7 +2,7 @@ import { Suspense, useEffect, type ReactNode } from "react";
 import { PAGE_IDS, navDirection, type PageId } from "../lib/nav";
 import { PageHost as SlideHost } from "../trm";
 import { PageLoading } from "./PageLoading";
-import { noteMount, noteUnmount } from "../lib/lifecycle";
+import { noteMount, noteUnmount } from "trm-ui/fabric";
 
 type Props = {
   page: PageId;

@@ -2,7 +2,7 @@ import { CatalogTransition } from "./CatalogTransition";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Block, Btn, Group, ListItem } from "./ui";
-import { askConfirm } from "../lib/webDialog";
+import { askConfirm } from "trm-ui/fabric";
 import { t } from "../i18n/t";
 import { Ring, Pager, useDir } from "../trm";
 import { listText } from "../lib/text";

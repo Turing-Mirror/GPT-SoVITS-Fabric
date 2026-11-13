@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const bridge = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: bridge.invoke }));
-vi.mock("../lib/webDialog", () => ({ askConfirm: bridge.confirm }));
+vi.mock("trm-ui/fabric", async (orig) => ({ ...(await orig<typeof import("trm-ui/fabric")>()), ...({ askConfirm: bridge.confirm }) }));
 vi.mock("./CatalogTransition", () => ({ CatalogTransition: ({ children }: { children: ReactNode }) => children }));
 vi.mock("../trm", async importOriginal => ({
   ...await importOriginal<typeof import("../trm")>(),

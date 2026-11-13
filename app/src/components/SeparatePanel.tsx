@@ -8,7 +8,7 @@ import { RangeBar, SliderValue } from "./controls";
 import { openDownloadModels } from "../lib/downloadModels";
 import { openHelpSection } from "../lib/helpNav";
 import { ToolActions, ToolBody } from "./ToolWindow";
-import { pickPath } from "../lib/nativeDialog";
+import { pickPath } from "trm-ui/fabric";
 import { t } from "../i18n/t";
 
 /**

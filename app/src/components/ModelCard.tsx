@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { artOf } from "../lib/art";
+import { artOf } from "trm-ui";
 
 /** Shared character presentation for models and their annotation files. */
 export function ModelCard({ id, name, cover, onOpen, disabled = false, children }: {

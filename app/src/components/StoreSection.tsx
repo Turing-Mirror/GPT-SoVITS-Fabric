@@ -45,7 +45,7 @@ import {
   voiceParentSeries,
   voiceSearchText,
 } from "../lib/voiceDisplay";
-import { askConfirm } from "../lib/webDialog";
+import { askConfirm } from "trm-ui/fabric";
 import { formatDate, openExternal } from "../lib/plaza";
 import { synthWithRole } from "../lib/intent";
 import { AuthorsDialog } from "./AuthorsDialog";
@@ -939,7 +939,8 @@ function VoiceCard({
     <div id={v.id ? `store-voice-${v.id}` : undefined}>
       <CatalogCover
         sources={sources}
-        placeholder={(title || v.id || "?").slice(0, 4)}
+        placeholder={title || v.id || ""}
+        seed={v.id || title}
         release={date}
         detail={base ? t("s.roleBaseVersion", { v0: base }) : undefined}
         progress={busy && !staged ? progress?.percent ?? 0 : undefined}

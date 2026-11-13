@@ -14,7 +14,7 @@ import type { PlazaItem } from "../lib/plaza";
 import { ModelCard } from "../components/ModelCard";
 import { RoleAssetsDialog } from "../components/RoleAssetsDialog";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
-import { askConfirm } from "../lib/webDialog";
+import { askConfirm } from "trm-ui/fabric";
 import { goTo, synthWithRole } from "../lib/intent";
 import { t } from "../i18n/t";
 import { joinClauses } from "../lib/text";

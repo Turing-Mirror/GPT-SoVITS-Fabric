@@ -6,7 +6,7 @@ import { useI18n } from "../i18n";
 import { t } from "../i18n/t";
 import type { PageId } from "../lib/nav";
 import { synthWithRole } from "../lib/intent";
-import { artOf } from "../lib/art";
+import { artOf } from "trm-ui";
 import { ThumbImage } from "trm-ui";
 import { FittedItems } from "../components/FittedItems";
 import { listen } from "@tauri-apps/api/event";

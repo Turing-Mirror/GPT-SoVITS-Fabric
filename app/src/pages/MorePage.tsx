@@ -10,7 +10,7 @@ import { tip } from "../lib/glossary";
 import type { EngineStatus, ProvisionStatus } from "../lib/engine";
 import { StorageSection } from "../components/StorageSection";
 import { t } from "../i18n/t";
-import { askConfirm } from "../lib/webDialog";
+import { askConfirm } from "trm-ui/fabric";
 import { DiagnosticsDialog, type DiagReport } from "../components/DiagnosticsDialog";
 import { FindingList, type Finding } from "../components/FindingList";
 import { scrollPaneToId } from "../lib/scrollPane";
