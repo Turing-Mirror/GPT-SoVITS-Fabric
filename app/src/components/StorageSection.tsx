@@ -234,7 +234,7 @@ export function StorageSection() {
                             disabled={empty || busy}
                             checked={picked[row.exp]?.has(k.id) ?? false}
                             onChange={() => toggle(row.exp, k.id)}
-                            className="accent-[var(--accent)]"
+                            className="trm-check"
                           />
                           <span>{t(k.labelKey)}</span>
                           <span className="font-mono text-[11.5px] text-[var(--meta)] tabular-nums">

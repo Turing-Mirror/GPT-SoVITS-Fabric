@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Field, Pane, Panes, SegmentControl, Select, TextArea, TextInput, useNotify } from "trm-ui";
+import { Field, Pane, Panes, SearchBox, SegmentControl, Select, TextArea, TextInput, useNotify } from "trm-ui";
 import { useI18n } from "../i18n";
 import {
   characterBaseVersions,
@@ -188,7 +188,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
             </div>
             {source && (
               <section className="space-y-2">
-                <TextInput aria-label={t("ui.common.search")} placeholder={t("ui.common.search")} value={query}
+                <SearchBox full ariaLabel={t("ui.common.search")} value={query}
                   onChange={(next) => { setQuery(next); setPage(1); }} />
                 <CatalogTransition scope={query} page={currentPage}>
                   <div className="grid gap-1">
