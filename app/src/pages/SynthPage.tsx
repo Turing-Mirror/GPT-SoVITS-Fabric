@@ -14,7 +14,7 @@ import { useRoleParams } from "../hooks/useRoleParams";
 import { SYNTH_DEFAULTS } from "../lib/synthRoleParams";
 import { t } from "../i18n/t";
 import { goTo, onHandoff, openInAnnot, take } from "../lib/intent";
-import { artOf } from "trm-ui";
+import { artOf, TextArea } from "trm-ui";
 import { Icon, Pager, SearchBox, SegmentControl, useDir, usePaged } from "../trm";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { HelpMark } from "../components/Tooltip";
@@ -748,14 +748,14 @@ export function SynthPage() {
   </>);
 
   const textArea = (value: string, onChange: (v: string) => void, placeholder: string) => (
-    // design-allow: 等 TextArea 补上无边框透明外观。
-    <textarea
+    <TextArea
+      look="bare"
       value={value}
       disabled={busy && mode === "batch"}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
       rows={6}
       placeholder={placeholder}
-      className="w-full resize-y border-0 outline-none bg-transparent text-[13px] leading-relaxed text-[var(--ink)] placeholder:text-[var(--meta)]"
+      className="leading-relaxed"
     />
   );
 
@@ -1100,7 +1100,7 @@ export function SynthPage() {
                   tip={t("synth.pSeedTip")}
                   control={
                     <div className="flex items-center gap-2.5">
-                      {/* design-allow: 等 TextInput 支持 30px 固定高度紧凑外观。 */}
+                      {/* design-allow: 需保留 bg-[var(--stage)]、30px 高度与 --line 描边，.trm-input 覆盖背景为透明且默认内边距会挤压文本。 */}
                       <input
                         type="number"
                         min={0}

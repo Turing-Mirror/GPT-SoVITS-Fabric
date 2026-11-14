@@ -510,7 +510,7 @@ function AnnotPageImpl() {
                           ) : null}
                         </td>
                         <td className={CELL}>
-                          {/* design-allow: 等 TextInput 补上表格紧凑外观。 */}
+                          {/* design-allow: py-1(12.5px) 与 compact(7px 9px, 13px) 高度差 6px 且描边色不同（--line 对 --hairline）。 */}
                           <input
                             value={r.speaker}
                             onChange={(e) => edit(r.line, { speaker: e.target.value })}
@@ -518,7 +518,7 @@ function AnnotPageImpl() {
                           />
                         </td>
                         <td className={CELL}>
-                          {/* design-allow: 等 TextInput 补上表格紧凑外观与 datalist 支持。 */}
+                          {/* design-allow: py-1(12.5px) 与 compact(7px 9px, 13px) 高度差 6px 且描边色不同（--line 对 --hairline）。 */}
                           <input
                             value={r.lang}
                             list="annot-langs"
@@ -527,7 +527,7 @@ function AnnotPageImpl() {
                           />
                         </td>
                         <td className={CELL}>
-                          {/* design-allow: 等 TextArea 补上表格紧凑外观与禁止拉伸。 */}
+                          {/* design-allow: py-1(12.5px)+min-h-[30px] 与 compact/field 高度差超过 5px 且 compact 描边色不同（--line 对 --hairline）。 */}
                           <textarea
                             value={r.text}
                             rows={1}
