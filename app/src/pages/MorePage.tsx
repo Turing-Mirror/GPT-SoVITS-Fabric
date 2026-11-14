@@ -445,6 +445,7 @@ export function MorePage({
             }
             right={
               <Btn
+                danger
                 onClick={async () => {
                   if (!(await askConfirm(t("s.cacheClearConfirm")))) return;
                   setBusyMsg(t("s.cacheClear") + "…");
@@ -493,6 +494,7 @@ export function MorePage({
             desc={t("s.5258b304cc")}
             right={
               <Btn
+                danger
                 onClick={() => {
                   void onForceKill?.();
                 }}

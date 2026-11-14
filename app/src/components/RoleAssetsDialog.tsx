@@ -68,7 +68,7 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
                 </div>
                 {weight.kind === "sovits" ? <Collapse open={replaceSovits}>
                   <div className="flex items-center gap-3 flex-wrap pt-3">
-                    <Btn primary busy={busy} onClick={() => void update(() => replaceRoleWeight(role.id, "sovits"))}>{t("sep.pickFile")}</Btn>
+                    <Btn busy={busy} onClick={() => void update(() => replaceRoleWeight(role.id, "sovits"))}>{t("sep.pickFile")}</Btn>
                     <Btn disabled={busy} onClick={() => setReplaceSovits(false)}>{t("dialog.cancel")}</Btn>
                   </div>
                 </Collapse> : null}

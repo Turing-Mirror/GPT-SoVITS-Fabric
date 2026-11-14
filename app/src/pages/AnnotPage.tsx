@@ -536,15 +536,15 @@ function AnnotPageImpl() {
                           />
                         </td>
                         <td className={CELL}>
-                          <button
-                            type="button"
+                          <Btn
+                            text
+                            danger
                             onClick={() => removeRow(r.line)}
-                            aria-label={t("s.annot.removeRow")}
-                            title={t("s.annot.removeRow")}
-                            className="w-[22px] h-[22px] rounded-[var(--rs)] border-0 bg-transparent text-[var(--meta)] cursor-pointer hover:text-[var(--danger-text)]"
+                            ariaLabel={t("s.annot.removeRow")}
+                            className="!px-0 !py-0 w-[22px] h-[22px] inline-flex items-center justify-center"
                           >
                             ×
-                          </button>
+                          </Btn>
                         </td>
                       </tr>
                     ))}

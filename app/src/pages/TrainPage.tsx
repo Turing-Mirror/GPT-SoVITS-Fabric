@@ -38,6 +38,10 @@ const STAGE_KEYS: Record<Stage, string> = {
   sovits: "train.stageSovits",
   gpt: "train.stageGpt",
 };
+const STATUS_ICON = {
+  ok: { icon: "check", color: "text-[var(--accent-text)]" },
+  warn: { icon: "alert", color: "text-[var(--notify)]" },
+} as const;
 
 type PartDefaults = {
   epochs: number;
@@ -276,11 +280,27 @@ export function TrainPage() {
     },
   ];
 
-  const statusRows: { label: string; value: string; ok: boolean }[] = [
-    { label: t("train.rowRuntime"), value: st.runtime_ready && st.worker_present ? t("train.ok") : t("train.notReady"), ok: !!st.runtime_ready && !!st.worker_present },
-    { label: t("train.rowBase"), value: baseReady ? t("train.ok") : t("train.missingN", { v0: String(missing.length) }), ok: baseReady },
-    { label: t("train.rowGpu"), value: st.nvidia ? "NVIDIA" : t("train.gpuNone"), ok: !!st.nvidia },
-    { label: t("train.datasetTitle"), value: scan ? t("train.itemsN", { v0: String(scan.files ?? 0) }) : t("train.unset"), ok: !!scan?.files },
+  const statusRows: { label: string; value: string; tone: keyof typeof STATUS_ICON }[] = [
+    {
+      label: t("train.rowRuntime"),
+      value: st.runtime_ready && st.worker_present ? t("train.ok") : t("train.notReady"),
+      tone: st.runtime_ready && st.worker_present ? "ok" : "warn",
+    },
+    {
+      label: t("train.rowBase"),
+      value: baseReady ? t("train.ok") : t("train.missingN", { v0: String(missing.length) }),
+      tone: baseReady ? "ok" : "warn",
+    },
+    {
+      label: t("train.rowGpu"),
+      value: st.nvidia ? "NVIDIA" : t("train.gpuNone"),
+      tone: st.nvidia ? "ok" : "warn",
+    },
+    {
+      label: t("train.datasetTitle"),
+      value: scan ? t("train.itemsN", { v0: String(scan.files ?? 0) }) : t("train.unset"),
+      tone: scan?.files ? "ok" : "warn",
+    },
   ];
 
   // 当前步骤里已经写着同一句话时，状态栏不再重复：底模缺失写在第一步，
@@ -439,6 +459,7 @@ export function TrainPage() {
           return (
             <div
               key={s}
+              aria-current={running ? "step" : undefined}
               className={[
                 "rounded-[var(--rs)] px-3 py-2.5 text-center text-[12.5px] transition-colors duration-200 inline-flex items-center justify-center gap-1.5",
                 running
@@ -448,7 +469,7 @@ export function TrainPage() {
                     : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink-muted)]",
               ].join(" ")}
             >
-              {done && !running ? <Icon name="check" size={12} /> : null}
+              {running ? <Icon name="play" size={12} /> : done ? <Icon name="check" size={12} /> : null}
               {t(STAGE_KEYS[s])}
             </div>
           );
@@ -567,7 +588,7 @@ export function TrainPage() {
           <div className="flex-none rounded-[var(--r)] bg-[var(--group)] p-3.5 flex flex-col gap-2.5">
             {statusRows.map((r) => (
               <div key={r.label} className="flex items-center gap-2 text-[12.5px]">
-                <span className={["w-[7px] h-[7px] rounded-full shrink-0", r.ok ? "bg-[var(--accent)]" : "bg-[var(--notify)]"].join(" ")} />
+                <Icon name={STATUS_ICON[r.tone].icon} size={13} className={`shrink-0 ${STATUS_ICON[r.tone].color}`} />
                 <span className="text-[var(--help)]">{r.label}</span>
                 <span className="ml-auto tabular-nums truncate">{r.value}</span>
               </div>

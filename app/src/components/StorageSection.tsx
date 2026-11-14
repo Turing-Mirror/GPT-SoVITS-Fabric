@@ -181,7 +181,7 @@ export function StorageSection() {
             title={t("storage.vulkanCache")}
             desc={t("storage.vulkanCacheNote")}
             meta={human(vulkanCacheBytes)}
-            right={<Btn disabled={busy} onClick={() => void clearVulkanCache()}>{t("s.cacheClear")}</Btn>}
+            right={<Btn danger disabled={busy} onClick={() => void clearVulkanCache()}>{t("s.cacheClear")}</Btn>}
           />
         ) : null}
         {rows && rows.length === 0 ? (
@@ -259,7 +259,7 @@ export function StorageSection() {
                 {pickedCount ? t("s.cleanPicked", { n: pickedCount, size: human(pickedBytes) }) : t("s.cleanNonePicked")}
               </span>
               <span className="ml-auto">
-                <Btn primary onClick={() => void apply()} busy={busy} disabled={busy || pickedCount === 0}>
+                <Btn danger onClick={() => void apply()} busy={busy} disabled={busy || pickedCount === 0}>
                   {t("s.cleanupApply")}
                 </Btn>
               </span>
