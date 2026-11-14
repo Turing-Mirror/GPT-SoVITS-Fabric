@@ -878,7 +878,8 @@
     "roleErrWeightInvalid": "Файл модели недействителен или не поддерживается.",
     "roleErrWeightPair": "Модели GPT и SoVITS несовместимы.",
     "roleErrWeightVersionMismatch": "Выбранная версия не соответствует модели.",
-    "roleErrWeightRuntime": "Сначала завершите установку среды выполнения."
+    "roleErrWeightRuntime": "Сначала завершите установку среды выполнения.",
+    "diagPerf": "Заодно запустить тест производительности (около минуты)"
   },
   "extras": {
     "engineTitle": "Ресурсы движка",

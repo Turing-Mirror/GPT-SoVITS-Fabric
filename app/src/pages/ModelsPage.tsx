@@ -1,5 +1,5 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
-import { usePageLeave } from "trm-ui";
+import { TextInput, usePageLeave } from "trm-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field } from "../components/controls";
@@ -297,8 +297,6 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
   const [author, setAuthor] = useState(role.author ?? "");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const INPUT =
-    "w-full px-3 py-2 rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)] selectable";
   const save = async () => {
     setBusy(true);
     setErr("");
@@ -321,8 +319,8 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
       >
         <h2 className="text-[16px] font-semibold m-0 mb-5">{t("library.editInfo")}</h2>
         <div className="flex flex-col gap-4">
-          <Field label={t("library.fieldName")} control={<input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} autoFocus />} />
-          <Field label={t("library.fieldAuthor")} control={<input value={author} onChange={(e) => setAuthor(e.target.value)} className={INPUT} />} />
+          <Field label={t("library.fieldName")} control={<TextInput value={name} onChange={setName} className="selectable" autoFocus />} />
+          <Field label={t("library.fieldAuthor")} control={<TextInput value={author} onChange={setAuthor} className="selectable" />} />
         </div>
         {err ? <div className="mt-3 text-[12.5px] text-[var(--danger-text)]">{err}</div> : null}
         <div className="mt-6 flex gap-2.5 justify-end">

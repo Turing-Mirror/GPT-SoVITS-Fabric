@@ -878,7 +878,8 @@
     "roleErrWeightInvalid": "模型文件无效或不受支持。",
     "roleErrWeightPair": "GPT 与 SoVITS 模型不兼容。",
     "roleErrWeightVersionMismatch": "所选版本与模型实际版本不一致。",
-    "roleErrWeightRuntime": "请先完成运行环境安装。"
+    "roleErrWeightRuntime": "请先完成运行环境安装。",
+    "diagPerf": "同时运行一次性能测试（约一分钟）"
   },
   "extras": {
     "engineTitle": "引擎资源",

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { TextInput } from "trm-ui";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { SegmentControl } from "../components/SegmentControl";
 import { Btn, Block, PagePad } from "../components/ui";
@@ -249,6 +250,7 @@ function SettingsPageImpl({
                 tip={TIPS.home_banner_text}
                 control={
                   <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* design-allow: 等 TextInput 补上横幅设置输入外观。 */}
                     <input
                       type="text"
                       maxLength={40}
@@ -274,6 +276,7 @@ function SettingsPageImpl({
                 tip={TIPS.home_banner_sub}
                 control={
                   <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* design-allow: 等 TextInput 补上横幅设置输入外观。 */}
                     <input
                       type="text"
                       maxLength={60}
@@ -407,21 +410,22 @@ function SettingsPageImpl({
                 tip={t("settings.hotkeyToggleWindowTip")}
                 inline
                 control={
-                  <input
-                    value={c.str("hotkey_toggle_window", "CmdOrCtrl+F11")}
-                    // 打字时走 220ms 合并写，别每敲一个字符落一次盘。
-                    onChange={(e) => void c.set("hotkey_toggle_window", e.target.value)}
-                    // 改完立刻重注册。不重注册的话设置页显示新组合、系统里
-                    // 还挂着旧的，要等下次重启才对得上。同样要等写盘先落地。
-                    onBlur={() => {
-                      if (c.cfg.hotkeys_enabled !== true) return;
-                      void c.set("hotkey_toggle_window", c.str("hotkey_toggle_window", "CmdOrCtrl+F11"), true)
-                        .then(() => applyHotkeys(true));
-                    }}
-                    spellCheck={false}
-                    aria-label={t("settings.hotkeyToggleWindow")}
-                    className="w-[190px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
-                  />
+                  <div className="w-[190px]">
+                    <TextInput
+                      value={c.str("hotkey_toggle_window", "CmdOrCtrl+F11")}
+                      // 打字时走 220ms 合并写，别每敲一个字符落一次盘。
+                      onChange={(next) => void c.set("hotkey_toggle_window", next)}
+                      // 改完立刻重注册。不重注册的话设置页显示新组合、系统里
+                      // 还挂着旧的，要等下次重启才对得上。同样要等写盘先落地。
+                      onBlur={() => {
+                        if (c.cfg.hotkeys_enabled !== true) return;
+                        void c.set("hotkey_toggle_window", c.str("hotkey_toggle_window", "CmdOrCtrl+F11"), true)
+                          .then(() => applyHotkeys(true));
+                      }}
+                      spellCheck={false}
+                      aria-label={t("settings.hotkeyToggleWindow")}
+                    />
+                  </div>
                 }
               />
               <Field

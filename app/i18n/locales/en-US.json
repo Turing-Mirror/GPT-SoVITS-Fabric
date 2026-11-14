@@ -878,7 +878,8 @@
     "roleErrWeightInvalid": "The model file is invalid or unsupported.",
     "roleErrWeightPair": "The GPT and SoVITS models are incompatible.",
     "roleErrWeightVersionMismatch": "The selected version does not match the model.",
-    "roleErrWeightRuntime": "Complete the runtime installation first."
+    "roleErrWeightRuntime": "Complete the runtime installation first.",
+    "diagPerf": "Also run a performance test (about one minute)"
   },
   "extras": {
     "engineTitle": "Engine resources",

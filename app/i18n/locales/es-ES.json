@@ -878,7 +878,8 @@
     "roleErrWeightInvalid": "El archivo del modelo no es válido o no es compatible.",
     "roleErrWeightPair": "Los modelos GPT y SoVITS no son compatibles.",
     "roleErrWeightVersionMismatch": "La versión seleccionada no coincide con el modelo.",
-    "roleErrWeightRuntime": "Complete primero la instalación del entorno de ejecución."
+    "roleErrWeightRuntime": "Complete primero la instalación del entorno de ejecución.",
+    "diagPerf": "Ejecutar también una prueba de rendimiento (un minuto aprox.)"
   },
   "extras": {
     "engineTitle": "Recursos del motor",

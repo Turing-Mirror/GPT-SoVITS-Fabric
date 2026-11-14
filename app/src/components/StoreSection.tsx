@@ -29,7 +29,7 @@ import { Select } from "./controls";
 import { SegmentControl } from "./SegmentControl";
 import { Pager } from "./Pager";
 import { CatalogTransition } from "./CatalogTransition";
-import { CatalogCover, Collapse, useDir, useMenu, type MenuItem } from "trm-ui";
+import { CatalogCover, Collapse, TextInput, useDir, useMenu, type MenuItem } from "trm-ui";
 import { resolveCover, useCoverCache } from "../lib/cover";
 import { t, getTLocale } from "../i18n/t";
 import {
@@ -502,15 +502,16 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
   return (
     <div>
       {hasVoices ? <div className="flex flex-wrap items-center gap-3 mb-[18px]">
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
-          placeholder={t("store.searchHint")}
-          className="min-w-[200px] flex-1 max-w-[320px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] bg-transparent text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
-        />
+        <div className="min-w-[200px] flex-1 max-w-[320px]">
+          <TextInput
+            value={q}
+            onChange={(next) => {
+              setQ(next);
+              setPage(1);
+            }}
+            placeholder={t("store.searchHint")}
+          />
+        </div>
         <SegmentControl<Source>
           value={source}
           onChange={(v) => {
@@ -575,6 +576,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
           />
         ) : null}
         <label className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-muted)] cursor-pointer select-none">
+          {/* design-allow: 勾选框样式与 Toggle 不同。 */}
           <input
             type="checkbox"
             checked={hideInstalled}

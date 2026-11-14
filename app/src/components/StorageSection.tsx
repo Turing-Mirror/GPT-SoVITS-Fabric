@@ -228,6 +228,7 @@ export function StorageSection() {
                             (empty ? "opacity-45" : "cursor-pointer")
                           }
                         >
+                          {/* design-allow: 勾选框样式与 Toggle 不同。 */}
                           <input
                             type="checkbox"
                             disabled={empty || busy}

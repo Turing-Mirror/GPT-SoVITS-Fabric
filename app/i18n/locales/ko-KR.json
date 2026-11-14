@@ -878,7 +878,8 @@
     "roleErrWeightInvalid": "모델 파일이 유효하지 않거나 지원되지 않습니다.",
     "roleErrWeightPair": "GPT와 SoVITS 모델이 호환되지 않습니다.",
     "roleErrWeightVersionMismatch": "선택한 버전이 모델의 실제 버전과 일치하지 않습니다.",
-    "roleErrWeightRuntime": "먼저 실행 환경 설치를 완료하세요."
+    "roleErrWeightRuntime": "먼저 실행 환경 설치를 완료하세요.",
+    "diagPerf": "성능 테스트도 함께 실행(약 1분)"
   },
   "extras": {
     "engineTitle": "엔진 리소스",

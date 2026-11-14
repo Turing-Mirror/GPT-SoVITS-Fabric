@@ -748,6 +748,7 @@ export function SynthPage() {
   </>);
 
   const textArea = (value: string, onChange: (v: string) => void, placeholder: string) => (
+    // design-allow: 等 TextArea 补上无边框透明外观。
     <textarea
       value={value}
       disabled={busy && mode === "batch"}
@@ -960,6 +961,7 @@ export function SynthPage() {
             action={
               mode === "batch" ? (
                 <>
+                  {/* design-allow: 隐藏文件选择框，由下方按钮触发。 */}
                   <input
                     ref={fileRef}
                     type="file"
@@ -1098,6 +1100,7 @@ export function SynthPage() {
                   tip={t("synth.pSeedTip")}
                   control={
                     <div className="flex items-center gap-2.5">
+                      {/* design-allow: 等 TextInput 支持 30px 固定高度紧凑外观。 */}
                       <input
                         type="number"
                         min={0}

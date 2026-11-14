@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TextInput } from "trm-ui";
 import { PagePad, PageHead, Btn } from "../components/ui";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { Icon, useDir } from "../trm";
@@ -347,11 +348,11 @@ export function TrainPage() {
           label={t("train.expName")}
           tip={t("train.expNameTip")}
           control={
-            <input
+            <TextInput
               value={exp}
-              onChange={(e) => setExp(e.target.value)}
+              onChange={setExp}
               placeholder={t("train.expNamePh")}
-              className="inline-flex w-full min-w-[230px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
+              className="min-w-[230px]"
             />
           }
         />
