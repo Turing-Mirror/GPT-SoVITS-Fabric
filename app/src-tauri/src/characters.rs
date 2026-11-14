@@ -407,7 +407,6 @@ pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
 
 /// 把角色目录打成角色包，格式与导入时一致（无包装目录）。
 pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
-    use std::io::Write;
     let dir = role_dir(root, id)?;
     let file = std::fs::File::create(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
     let mut zw = zip::ZipWriter::new(file);
@@ -418,9 +417,14 @@ pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
     let mut count = 0usize;
     while let Some(d) = stack.pop() {
         let rd = std::fs::read_dir(&d).map_err(|e| e.to_string())?;
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
+        for entry in rd {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let p = entry.path();
+            let kind = entry.file_type().map_err(|e| e.to_string())?;
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
                 stack.push(p);
                 continue;
             }
@@ -430,13 +434,100 @@ pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
                 .to_string_lossy()
                 .replace('\\', "/");
             zw.start_file(rel, opts).map_err(|e| e.to_string())?;
-            let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
-            zw.write_all(&bytes).map_err(|e| e.to_string())?;
+            let mut source = std::fs::File::open(&p).map_err(|e| e.to_string())?;
+            std::io::copy(&mut source, &mut zw).map_err(|e| e.to_string())?;
             count += 1;
         }
     }
     zw.finish().map_err(|e| e.to_string())?;
     Ok(json!({ "path": dest.to_string_lossy(), "files": count }))
+}
+
+/// Read metadata without extracting the archive or loading model weights.
+pub(crate) fn pack_metadata(root: &Path, path: &Path) -> Result<Value, String> {
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let mut names = Vec::new();
+    let mut indexed = BTreeMap::new();
+    let mut total = 0u64;
+    for index in 0..zip.len() {
+        let entry = zip.by_index_raw(index).map_err(|e| e.to_string())?;
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().replace('\\', "/");
+        check_entry_path(&name)?;
+        if entry.size() > MAX_ENTRY_BYTES {
+            return Err(format!("entry too large: {name}"));
+        }
+        total = total.saturating_add(entry.size());
+        if total > MAX_TOTAL_BYTES {
+            return Err("pack too large".into());
+        }
+        if indexed.insert(name.clone(), index).is_some() {
+            return Err("Duplicate package path.".into());
+        }
+        names.push(name);
+    }
+
+    let prefix = content_root(&names);
+    let path_index = |file: &str| {
+        let key = if prefix.is_empty() { file.to_owned() } else { format!("{prefix}/{file}") };
+        indexed.get(&key).copied()
+    };
+    let weights = ["models/sovits.pth", "models/gpt.ckpt"]
+        .map(|name| path_index(name).map(|index| (name, index))
+            .ok_or_else(|| crate::i18n::te("s.roleErrMissingWeight", &name)));
+    let [sovits, gpt] = weights;
+    let weights = [sovits?, gpt?];
+    let index = path_index("config.json").ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    let mut bytes = Vec::new();
+    zip.by_index(index)
+        .map_err(|e| e.to_string())?
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Package metadata is too large.".into());
+    }
+    let mut config: Value = serde_json::from_slice(&bytes).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))?;
+    if str_field(&config, "name").trim().is_empty() {
+        return Err(crate::i18n::t("s.roleErrNoName"));
+    }
+
+    let declared = str_field(&config, "id");
+    let fallback = path.file_stem().and_then(|name| name.to_str()).unwrap_or("").trim_end_matches("_voice");
+    let id = safe_id(if declared.trim().is_empty() { fallback } else { &declared });
+    if let Ok(dir) = role_dir(root, &id) {
+        if let Ok(local) = read_cfg(&dir) {
+            if weights.iter().all(|(name, index)| {
+                let Ok(entry) = zip.by_index(*index) else { return false; };
+                same_weight(entry, &dir.join(name))
+            }) {
+                for key in ["name", "author", "author_url", "description", "version", "series", "group", "club", "language", "lang", "license", "lists"] {
+                    if config[key].is_null() || config[key].as_str().is_some_and(|value| value.trim().is_empty()) {
+                        config[key] = local[key].clone();
+                    }
+                }
+                if local["weight_validation"] == "verified" && local["version"].is_string() {
+                    config["version"] = local["version"].clone();
+                }
+            }
+        }
+    }
+    Ok(config)
+}
+
+fn same_weight(entry: zip::read::ZipFile<'_>, installed: &Path) -> bool {
+    use sha2::{Digest, Sha256};
+    let size = entry.size();
+    if size == 0 || size > MAX_ENTRY_BYTES || !std::fs::metadata(installed).is_ok_and(|file| file.is_file() && file.len() == size) {
+        return false;
+    }
+    let Ok(local_hash) = crate::download::file_sha256(installed) else { return false; };
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut entry.take(size + 1), &mut hasher).is_ok_and(|bytes| bytes == size)
+        && hex::encode(hasher.finalize()) == local_hash
 }
 
 /// 选封面图片。
@@ -483,6 +574,33 @@ mod tests {
     }
 
     const CFG: &str = r#"{"id":"Yuzu","name":"柚子","author":"某人","version":"v2ProPlus"}"#;
+
+    #[test]
+    fn external_pack_fills_missing_local_details_only_when_both_weights_match() {
+        let root = crate::testutil::scratch("external-publication-pack");
+        std::fs::create_dir_all(&root).unwrap();
+        let archive = root.join("local_voice.zip");
+        make_pack(&archive, "wrapped/", r#"{"id":"local","name":"Package name","version":"v2"}"#);
+        install_zip(&root, &archive).unwrap();
+
+        let installed = role_dir(&root, "local").unwrap();
+        let mut cfg = read_cfg(&installed).unwrap();
+        cfg["author"] = json!("Local author");
+        cfg["weight_validation"] = json!("verified");
+        cfg["version"] = json!("v5turbo");
+        write_cfg(&installed, &cfg).unwrap();
+
+        let matching = pack_metadata(&root, &archive).unwrap();
+        assert_eq!(matching["name"], "Package name");
+        assert_eq!(matching["author"], "Local author");
+        assert_eq!(matching["version"], "v5turbo");
+
+        std::fs::write(installed.join("models/gpt.ckpt"), b"new").unwrap();
+        let other = pack_metadata(&root, &archive).unwrap();
+        assert!(other["author"].is_null());
+        assert_eq!(other["version"], "v2");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_pack_lands_where_the_synth_page_looks_for_it() {

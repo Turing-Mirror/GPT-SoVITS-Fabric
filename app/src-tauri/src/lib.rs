@@ -12,6 +12,7 @@ mod config;
 mod community_account;
 mod community_catalog;
 mod community_publish;
+mod publication_packs;
 mod crash;
 mod download;
 mod engine_assets;
@@ -1562,6 +1563,10 @@ pub fn run() {
             community_account::community_account_sign_in,
             community_account::community_account_sign_out,
             community_publish::community_publication,
+            publication_packs::publication_pick_cover_path,
+            publication_packs::publication_read_packs,
+            publication_packs::publication_read_manifest,
+            publication_packs::publication_export_packs,
             store_install,
             store_cancel,
             store_staged,

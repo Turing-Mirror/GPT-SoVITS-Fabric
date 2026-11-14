@@ -70,6 +70,7 @@ export type StoreVoice = {
   update_available?: boolean;
   community_release?: string;
   community_staging_id?: string;
+  community_author_id?: string;
   license?: { id?: string; text?: string; url?: string };
 };
 

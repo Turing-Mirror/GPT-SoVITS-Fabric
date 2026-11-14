@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use trm_app_protocol::{ApiError, ApiResult};
 
-const PRODUCT_ID: &str = "com.turingmirror.gpt-sovits-fabric";
+pub(crate) const PRODUCT_ID: &str = "com.turingmirror.gpt-sovits-fabric";
 pub(crate) const FAMILY: &str = "gpt-sovits";
 const DEFAULT_API: &str = "https://api.turingmirror.com/v1/community";
 
@@ -152,6 +152,7 @@ fn entry(asset: &Value, api: &Url) -> Option<Value> {
         "cover_url": cover,
         "description": field(asset, "description"),
         "author": field(asset, "originalAuthor"),
+        "community_author_id": field(asset, "communityAuthorId"),
         "author_url": public_url(field(asset, "authorUrl")).ok().filter(|url| url.scheme() == "https").map(|url| url.to_string()),
         "series": field(meta, "series"),
         "series_i18n": meta["seriesI18n"],

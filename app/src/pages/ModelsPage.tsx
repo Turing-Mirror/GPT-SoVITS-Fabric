@@ -1,8 +1,9 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { TextInput, usePageLeave } from "trm-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Modal as ExportModal } from "trm-ui";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
-import { Field } from "../components/controls";
+import { Field, Toggle } from "../components/controls";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { CropCoverDialog } from "../components/CropCoverDialog";
 import { AdBanner } from "../components/AdBanner";
@@ -62,6 +63,9 @@ export function ModelsPage({
   banner?: PlazaItem | null;
 }) {
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
   usePageLeave(() => setMsg(""));
   const [loading, setLoading] = useState(() => isTauri() && peekCharacters() === null);
@@ -193,6 +197,7 @@ export function ModelsPage({
           <>
             <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
             <Btn onClick={() => goTo("train")}>{t("library.goTrain")}</Btn>
+            {roles.length > 0 && <Btn onClick={() => { setExportSelection(new Set()); setExportOpen(true); }}>{t("publication.exportPacks")}</Btn>}
             <Btn primary busy={busy} onClick={() => void importPack()}>
               {t("library.import")}
             </Btn>
@@ -200,6 +205,50 @@ export function ModelsPage({
         }
       />
 
+      <ExportModal open={exportOpen} onClose={() => { if (!exporting) setExportOpen(false); }} label={t("publication.exportPacks")}>
+        <div className="max-h-[45vh] overflow-auto">
+          <Toggle
+            look="inline"
+            className="py-2"
+            checked={exportSelection.size === roles.length}
+            disabled={exporting}
+            onChange={(checked) => setExportSelection(checked ? new Set(roles.map((role) => role.id)) : new Set())}
+            label={t("publication.selectAll")}
+          />
+          {roles.map((role) => (
+            <Toggle
+              key={role.id}
+              look="inline"
+              className="py-2"
+              checked={exportSelection.has(role.id)}
+              disabled={exporting}
+              onChange={() => {
+                const next = new Set(exportSelection);
+                if (next.has(role.id)) next.delete(role.id); else next.add(role.id);
+                setExportSelection(next);
+              }}
+              label={role.name}
+            />
+          ))}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Btn disabled={exporting} onClick={() => setExportOpen(false)}>{t("ui.common.cancel")}</Btn>
+          <Btn primary busy={exporting} disabled={!exportSelection.size || exporting} onClick={async () => {
+            setExporting(true);
+            try {
+              const result = await invoke<{ folder: string; packs: Array<{ name: string; error?: string }> } | null>(
+                "publication_export_packs", { ids: [...exportSelection] },
+              );
+              if (result) {
+                const failed = result.packs.filter((pack) => pack.error).map((pack) => pack.name);
+                setMsg([result.folder, ...failed.map((name) => t("publication.packFailed", { v0: name }))].join("\n"));
+                setExportOpen(false);
+              }
+            } catch { setMsg(t("publication.packReadError")); }
+            finally { setExporting(false); }
+          }}>{t("publication.exportPacks")}</Btn>
+        </div>
+      </ExportModal>
       <AdBanner banner={banner ?? null} />
 
       <Block

@@ -40,13 +40,14 @@ function TextField({ label, value, onChange, limit, disabled, multiline = false 
   return <Field label={label} control={multiline ? <TextArea {...props} rows={4} /> : <TextInput {...props} />} />;
 }
 
-export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted, onMySubmissions }: {
+export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted, onMySubmissions, onBatch }: {
   initial: Draft;
   auth: CommunityAccount;
   onBack: (draft: Draft) => void;
   onSave: (draft: Draft) => boolean;
   onSubmitted: (draft: Draft, submission: Submission) => void;
   onMySubmissions: (draft: Draft) => void;
+  onBatch: (draft: Draft) => void;
 }) {
   const { t, locale } = useI18n();
   const { tip } = useNotify();
@@ -155,6 +156,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
       <PageHead title={t("publication.title")} actions={
         <>
           <Btn disabled={Boolean(busy)} onClick={() => onBack(draft)}>{t("ui.common.back")}</Btn>
+          {draft.assetId === undefined && !draft.previousSubmissionId && <Btn disabled={Boolean(busy)} onClick={() => onBatch(draft)}>{t("publication.batch")}</Btn>}
           <Btn disabled={Boolean(busy)} onClick={() => onMySubmissions(draft)}>{t("community.submissions")}</Btn>
           <Btn disabled={Boolean(busy)} onClick={() => {
             if (onSave(draft)) {
@@ -247,7 +249,8 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
               </div>
               <TextField label={t("publication.licenseTerms")} value={license.text ?? ""} limit={10000} multiline onChange={(text) => update({ license: { ...license, text }, licenseEdited: true })} />
             </div>
-            <CommunityCover name={draft.title} value={draft.cover} disabled={Boolean(busy)} onChange={(cover) => update({ cover })} />
+            <CommunityCover name={draft.title} value={draft.cover} original={draft.coverPath} disabled={Boolean(busy)}
+              onChange={(cover, coverPath) => update({ cover, coverPath })} />
           </div>
           <div className="flex justify-end gap-2 pb-4">
             <Btn onClick={() => setStep("source")}>{t("ui.common.back")}</Btn>

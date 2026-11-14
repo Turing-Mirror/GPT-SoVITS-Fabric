@@ -136,9 +136,11 @@ type Props = {
   reloadToken: number;
   /** 装好一个音色。模型页下次进入时会自己重新列，这里只用来提示。 */
   onInstalled?: () => void;
+  onAuthor?: (id: string) => void;
+  assetId?: string;
 };
 
-export function StoreSection({ reloadToken, onInstalled }: Props) {
+export function StoreSection({ reloadToken, onInstalled, onAuthor, assetId }: Props) {
   const { locale } = useI18n();
   const [cat, setCat] = useState<StoreCatalog | null>(null);
   const [loading, setLoading] = useState(false);
@@ -188,7 +190,10 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
     setLoading(true);
     setErr("");
     try {
-      const c = await fetchStoreCatalog(remote);
+      let c = await fetchStoreCatalog(assetId ? false : remote);
+      if (assetId && remote && !c.thirdparty_voices?.some((entry) => entry.id === assetId)) {
+        c = await fetchStoreCatalog(true);
+      }
       setCat(c);
       if (c.fetch_error) setErr(c.fetch_error);
     } catch (e) {
@@ -196,7 +201,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [assetId]);
 
   // 首次挂载和每次「刷新」都走这里。reloadToken 初值也算一次，所以不用再单独
   // 写一个只跑一次的 effect。
@@ -212,8 +217,8 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
     void loadStaged();
     void refresh(false);
     onInstalled?.();
-    if (jobs.lastCompletedThird && jobs.lastCompleted) setScrollToId(jobs.lastCompleted);
-  }, [jobs.generation, jobs.lastCompleted, jobs.lastCompletedThird, loadStaged, refresh, onInstalled]);
+    if (!assetId && jobs.lastCompletedThird && jobs.lastCompleted) setScrollToId(jobs.lastCompleted);
+  }, [jobs.generation, jobs.lastCompleted, jobs.lastCompletedThird, loadStaged, refresh, onInstalled, assetId]);
 
   useEffect(() => {
     if (!scrollToId) return;
@@ -251,6 +256,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
           ? [...third]
           : [...official, ...third];
     // 一律按收录日期倒序。分组视图也排，这样每个系列内部顺序是稳定的。
+    if (assetId) base = base.filter((voice) => voice.id === assetId);
     base.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
     if (hideInstalled) base = base.filter((v) => !v.installed);
     const qq = q.trim().toLowerCase();
@@ -260,7 +266,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
       );
     }
     return base;
-  }, [source, hideInstalled, cat, q]);
+  }, [source, hideInstalled, cat, q, assetId]);
 
   const seriesGroups = useMemo((): SeriesNode[] | null => {
     if (grouping !== "series") return null;
@@ -493,6 +499,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
     onInstallStaged: () => void installStaged(v),
     onDiscard: () => void discard(v),
     coverMap: coverCache,
+    onAuthor: onAuthor && v.community_author_id ? () => onAuthor(v.community_author_id!) : undefined,
   });
 
   const hasVoices = Boolean(cat?.voices?.length || cat?.thirdparty_voices?.length);
@@ -501,7 +508,7 @@ export function StoreSection({ reloadToken, onInstalled }: Props) {
 
   return (
     <div>
-      {hasVoices ? <div className="flex flex-wrap items-center gap-3 mb-[18px]">
+      {hasVoices && !assetId ? <div className="flex flex-wrap items-center gap-3 mb-[18px]">
         <SearchBox
           value={q}
           onChange={(next) => {
@@ -852,6 +859,7 @@ function VoiceCard({
   onInstallStaged,
   onDiscard,
   coverMap,
+  onAuthor,
 }: {
   v: StoreVoice;
   busy: boolean;
@@ -867,6 +875,7 @@ function VoiceCard({
   onDiscard: () => void;
   /** 封面本地化缓存（url → 本地路径），见 lib/cover.ts。 */
   coverMap?: Record<string, string>;
+  onAuthor?: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const lastMove = useRef({ at: 0, done: -1 });
@@ -915,9 +924,10 @@ function VoiceCard({
   const sourceUrl = (v.source_url || "").trim();
   const menu = useMenu();
   const links: MenuItem[] = [];
+  if (onAuthor) links.push({ id: "author", label: t("s.voiceLinkAuthor"), onSelect: onAuthor });
   if (authors.length) {
     links.push({
-      id: "author", label: t("s.voiceLinkAuthor"),
+      id: "external-author", label: t(onAuthor ? "publication.externalAuthor" : "s.voiceLinkAuthor"),
       onSelect: () => {
         if (authors.length === 1) void openExternal(authors[0].url || "");
         else setAuthorPick(authors);

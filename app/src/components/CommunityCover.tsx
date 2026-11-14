@@ -1,15 +1,17 @@
-import { useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useRef, useState } from "react";
 import { ImageCropDialog, Leave, usePageActive, usePaneOn } from "trm-ui";
 import { useI18n } from "../i18n";
+import { invoke } from "@tauri-apps/api/core";
 import { Btn, Warn } from "./ui";
 
-const pickImage = () => invoke<string | null>("role_cover_pick");
+const pickCoverImage = () => invoke<string | null>("publication_pick_cover_path");
+const coverDataUrl = (src: string) => invoke<string>("role_cover_data_url", { src });
 
-export function CommunityCover({ value, name, onChange, disabled }: {
+export function CommunityCover({ value, original, name, onChange, disabled }: {
   value: string;
+  original?: string;
   name: string;
-  onChange: (cover: string) => void;
+  onChange: (cover: string, original?: string) => void;
   disabled: boolean;
 }) {
   const { t } = useI18n();
@@ -18,13 +20,25 @@ export function CommunityCover({ value, name, onChange, disabled }: {
   const [source, setSource] = useState<string>();
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState(false);
+  const originalPath = useRef<string | undefined>(undefined);
   const loadImage = useCallback(async () => source ?? "", [source]);
+
+  async function pickImage() {
+    const path = await pickCoverImage();
+    if (!path) return null;
+    const image = await coverDataUrl(path);
+    originalPath.current = path;
+    return image;
+  }
 
   async function open() {
     setPicking(true);
     setError(false);
+    originalPath.current = original;
     try {
-      const image = value || await pickImage();
+      const image = value
+        ? (original ? await coverDataUrl(original).catch(() => value) : value)
+        : await pickImage();
       if (image) setSource(image);
     } catch {
       setError(true);
@@ -39,7 +53,7 @@ export function CommunityCover({ value, name, onChange, disabled }: {
       {value && <img src={value} alt={t("publication.cover")} draggable={false} className="w-full max-w-[280px] aspect-[4/3] rounded-[var(--rs)] object-cover" />}
       <div className="flex flex-wrap gap-2">
         <Btn disabled={disabled || picking} busy={picking} onClick={() => void open()}>{t(value ? "ui.crop.title" : "publication.chooseCover")}</Btn>
-        {value && <Btn disabled={disabled} onClick={() => onChange("")}>{t("ui.common.clear")}</Btn>}
+        {value && <Btn disabled={disabled || picking} onClick={() => onChange("")}>{t("ui.common.clear")}</Btn>}
       </div>
       {error && <Warn>{t("publication.coverError")}</Warn>}
       <Leave>
@@ -50,7 +64,7 @@ export function CommunityCover({ value, name, onChange, disabled }: {
             loadInitialImage={loadImage}
             onClose={() => setSource(undefined)}
             onSave={async (cover) => {
-              onChange(cover);
+              onChange(cover, originalPath.current);
               setSource(undefined);
             }}
           />
