@@ -13,6 +13,12 @@
 
 替换权重后关闭旧推理 worker，下一次合成加载新文件。合成期间不允许修改权重或标注关联。
 
+## Export a character
+
+In **Models**, open a character’s **Annotations** and link its `.list` once. **Export pack** and **Export packages** put both model weights, the linked `.list` files, and every referenced recording in one ZIP. Shared recordings are included once. The exported lists use relative paths so the recordings appear in **Synthesize** after import.
+
+If a character has no linked list or an audio file is missing, the export shows how to fix that character. A batch still exports the other characters. For older ZIPs with no list declaration, import can link complete lists it finds in the package’s `dataset` folder.
+
 ## 角色参数
 
 在合成页调整参数后，点击“保存角色参数”。保存内容只属于当前角色；切换角色或重新打开页面后恢复各自保存值。没有保存值时使用角色推荐值，未提供的项使用应用默认值。

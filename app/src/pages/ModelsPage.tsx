@@ -240,8 +240,10 @@ export function ModelsPage({
                 "publication_export_packs", { ids: [...exportSelection] },
               );
               if (result) {
-                const failed = result.packs.filter((pack) => pack.error).map((pack) => pack.name);
-                setMsg([result.folder, ...failed.map((name) => t("publication.packFailed", { v0: name }))].join("\n"));
+                const failed = result.packs.filter((pack) => pack.error);
+                const messages = failed.flatMap((pack) => [t("publication.packFailed", { v0: pack.name }), pack.error]);
+                if (failed.length < result.packs.length) messages.unshift(result.folder);
+                setMsg(messages.join("\n"));
                 setExportOpen(false);
               }
             } catch { setMsg(t("publication.packReadError")); }
@@ -268,7 +270,7 @@ export function ModelsPage({
           ) : undefined
         }
       >
-        {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 selectable">{msg}</div> : null}
+        {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 whitespace-pre-line selectable">{msg}</div> : null}
         {roles.length ? (
           <>
             <div ref={grid.ref} style={grid.style}>

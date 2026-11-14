@@ -234,11 +234,7 @@ pub fn associate(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
         let parsed = crate::annot::load(&src.to_string_lossy())?;
         let rows: Vec<crate::annot::Row> =
             serde_json::from_value(parsed["rows"].clone()).map_err(|e| e.to_string())?;
-        if rows.is_empty()
-            || rows.iter().any(|r| {
-                r.wav.is_empty() || r.speaker.is_empty() || r.lang.is_empty() || r.text.is_empty()
-            })
-        {
+        if rows.is_empty() || rows.iter().any(|row| !row.is_complete()) {
             return Err(crate::i18n::t("s.roleErrListInvalid"));
         }
         if rows.iter().any(|r| !r.exists) {

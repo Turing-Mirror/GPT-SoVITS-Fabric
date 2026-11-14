@@ -24,7 +24,7 @@
 //!   一个跑不了的角色，比导入失败难查得多：用户要点到合成才会发现。
 
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -182,6 +182,13 @@ pub(crate) fn install_zip_as(root: &Path, zip_path: &Path, role_id: Option<&str>
     for need in ["models/sovits.pth", "models/gpt.ckpt"] {
         if !z.files.contains_key(need) {
             return Err(crate::i18n::te("s.roleErrMissingWeight", &need));
+        }
+    }
+
+    if cfg["lists"].is_null() {
+        let found = bundled_references(&z.files);
+        if !found.is_empty() {
+            cfg["lists"] = json!(found);
         }
     }
 
@@ -405,42 +412,183 @@ pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
     save_cover(root, id, &data)
 }
 
-/// 把角色目录打成角色包，格式与导入时一致（无包装目录）。
+fn portable_path(path: &str) -> Option<String> {
+    let path = path.replace('\\', "/");
+    (!path.contains(':')
+        && path.split('/').all(|part| !part.is_empty() && part != "." && part != ".."))
+        .then_some(path)
+}
+
+fn is_annotation(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("list"))
+}
+
+fn bundled_references(files: &BTreeMap<String, Vec<u8>>) -> Vec<Value> {
+    files
+        .iter()
+        .filter_map(|(path, bytes)| {
+            if !path.starts_with("dataset/") || !is_annotation(path) {
+                return None;
+            }
+            let path = portable_path(path)?;
+            let (parent, _) = path.rsplit_once('/')?;
+            let rows = crate::annot::parse_rows(std::str::from_utf8(bytes).ok()?);
+            let complete = !rows.is_empty()
+                && rows.iter().all(|row| {
+                    row.is_complete()
+                        && portable_path(&row.wav).is_some_and(|audio| {
+                            files
+                                .get(&format!("{parent}/{audio}"))
+                                .is_some_and(|data| !data.is_empty())
+                        })
+                });
+            complete.then(|| json!({ "file": path }))
+        })
+        .collect()
+}
+
+fn export_lists(dir: &Path, config: &Value) -> Vec<Value> {
+    if let Some(lists) = config["lists"].as_array() {
+        return lists.clone();
+    }
+    if !config["lists"].is_null() {
+        return Vec::new();
+    }
+    // Older role directories may have their own .list but no saved association.
+    let mut paths: Vec<_> = std::fs::read_dir(dir.join("dataset"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| is_annotation(name))
+        .collect();
+    paths.sort();
+    paths.into_iter().map(|name| json!({ "file": format!("dataset/{name}") })).collect()
+}
+
+fn role_file(dir: &Path, path: &str) -> Option<PathBuf> {
+    let source = dir.join(portable_path(path)?).canonicalize().ok()?;
+    (source.starts_with(dir) && source.is_file()).then_some(source)
+}
+
+fn add_export_references(
+    dir: &Path,
+    lists: &mut [Value],
+    files: &mut BTreeMap<String, PathBuf>,
+) -> Result<BTreeMap<String, String>, String> {
+    let invalid_list = || crate::i18n::t("s.roleErrListInvalid");
+    let missing_audio = || crate::i18n::t("s.roleErrListAudio");
+    let mut annotations = BTreeMap::new();
+    let mut audio_entries = BTreeMap::<PathBuf, String>::new();
+    for (index, list) in lists.iter_mut().enumerate() {
+        let original = list["file"].as_str().filter(|path| is_annotation(path)).ok_or_else(invalid_list)?;
+        let source = role_file(dir, original).ok_or_else(invalid_list)?;
+        let rows = crate::annot::read_rows(&source)?;
+        if rows.is_empty() || rows.iter().any(|row| !row.is_complete()) {
+            return Err(invalid_list());
+        }
+        let mut body = String::new();
+        for row in rows {
+            let audio = Path::new(&row.abs).canonicalize().map_err(|_| missing_audio())?;
+            let ext = audio.extension().and_then(|ext| ext.to_str())
+                .map(str::to_ascii_lowercase)
+                .filter(|ext| crate::train::DATASET_AUDIO_EXT.contains(&ext.as_str()))
+                .ok_or_else(missing_audio)?;
+            if !audio.starts_with(dir)
+                || !std::fs::metadata(&audio).is_ok_and(|info| info.is_file() && info.len() > 0)
+            {
+                return Err(missing_audio());
+            }
+            let next = audio_entries.len() + 1;
+            let relative = audio_entries.entry(audio.clone()).or_insert_with(|| {
+                let relative = format!("audios/{next:05}.{ext}");
+                files.insert(format!("dataset/{relative}"), audio);
+                relative
+            });
+            body.push_str(&format!("{relative}|{}|{}|{}\n", row.speaker, row.lang, row.text));
+        }
+        let file = format!("dataset/references-{:02}.list", index + 1);
+        annotations.insert(file.clone(), body);
+        if list["note"].as_str().is_none_or(str::is_empty) {
+            list["note"] = json!(Path::new(original).file_name().unwrap_or_default().to_string_lossy());
+        }
+        list["file"] = json!(file);
+    }
+    Ok(annotations)
+}
+
+/// Export a self-contained character with both weights and all linked references.
 pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
-    let dir = role_dir(root, id)?;
-    let file = std::fs::File::create(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    let mut zw = zip::ZipWriter::new(file);
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .large_file(true);
-    let mut stack = vec![dir.clone()];
-    let mut count = 0usize;
-    while let Some(d) = stack.pop() {
-        let rd = std::fs::read_dir(&d).map_err(|e| e.to_string())?;
-        for entry in rd {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let p = entry.path();
-            let kind = entry.file_type().map_err(|e| e.to_string())?;
-            if kind.is_symlink() {
-                continue;
+    let dir = role_dir(root, id)?.canonicalize().map_err(|e| e.to_string())?;
+    let mut config = read_cfg(&dir)?;
+    if !config.is_object() {
+        return Err(crate::i18n::t("s.roleErrNoConfig"));
+    }
+    let mut lists = export_lists(&dir, &config);
+    if lists.is_empty() {
+        return Err(crate::i18n::t("s.roleExportNeedsList"));
+    }
+
+    let mut files = BTreeMap::new();
+    for name in ["models/sovits.pth", "models/gpt.ckpt"] {
+        let file = role_file(&dir, name)
+            .ok_or_else(|| crate::i18n::te("s.roleErrMissingWeight", &name))?;
+        files.insert(name.to_string(), file);
+    }
+    for key in ["cover", "original_cover"] {
+        if let Some(name) = config[key].as_str().and_then(portable_path) {
+            if let Some(source) = role_file(&dir, &name) {
+                files.insert(name, source);
             }
-            if kind.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            let rel = p
-                .strip_prefix(&dir)
-                .map_err(|e| e.to_string())?
-                .to_string_lossy()
-                .replace('\\', "/");
-            zw.start_file(rel, opts).map_err(|e| e.to_string())?;
-            let mut source = std::fs::File::open(&p).map_err(|e| e.to_string())?;
-            std::io::copy(&mut source, &mut zw).map_err(|e| e.to_string())?;
-            count += 1;
         }
     }
-    zw.finish().map_err(|e| e.to_string())?;
-    Ok(json!({ "path": dest.to_string_lossy(), "files": count }))
+    let mut annotations = add_export_references(&dir, &mut lists, &mut files)?;
+    config["lists"] = json!(lists);
+    let config_text = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    annotations.insert("config.json".into(), config_text);
+    let mut total = 0_u64;
+    for size in files
+        .values()
+        .map(|source| std::fs::metadata(source).map(|info| info.len()))
+        .chain(annotations.values().map(|text| Ok(text.len() as u64)))
+    {
+        let size = size.map_err(|e| e.to_string())?;
+        total = total.saturating_add(size);
+        if size > MAX_ENTRY_BYTES || total > MAX_TOTAL_BYTES {
+            return Err(crate::i18n::t("publication.packTooLarge"));
+        }
+    }
+
+    let stage = dest.with_extension(format!("{}.tmp", crate::role_assets::unique()));
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&stage)
+        .map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .large_file(true);
+        for (name, source) in &files {
+            zip.start_file(name, opts).map_err(|e| e.to_string())?;
+            let mut file = std::fs::File::open(source).map_err(|e| e.to_string())?;
+            std::io::copy(&mut file, &mut zip).map_err(|e| e.to_string())?;
+        }
+        for (name, text) in &annotations {
+            zip.start_file(name, opts).map_err(|e| e.to_string())?;
+            zip.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        }
+        drop(zip.finish().map_err(|e| e.to_string())?);
+        std::fs::rename(&stage, dest).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&stage);
+    }
+    result?;
+    Ok(json!({ "path": dest.to_string_lossy(), "files": files.len() + annotations.len() }))
 }
 
 /// Read metadata without extracting the archive or loading model weights.
@@ -570,6 +718,8 @@ mod tests {
         w.write_all(b"gpt").unwrap();
         w.start_file(p("dataset/role.list"), opts()).unwrap();
         w.write_all("audios/a.wav|角色|ZH|你好\n".as_bytes()).unwrap();
+        w.start_file(p("dataset/audios/a.wav"), opts()).unwrap();
+        w.write_all(b"reference audio").unwrap();
         w.finish().unwrap();
     }
 
@@ -710,6 +860,81 @@ mod tests {
         assert!(err.contains("too large"), "got {err}");
         let _ = std::fs::remove_dir_all(&root);
     }
+    #[test]
+    fn export_binds_all_reference_audio_and_preserves_the_original_role() {
+        let root = crate::testutil::scratch("role-reference-export");
+        std::fs::create_dir_all(&root).unwrap();
+        let original = root.join("original.zip");
+        make_pack(&original, "wrapped/", CFG);
+        install_zip(&root, &original).unwrap();
+        let dir = role_dir(&root, "yuzu").unwrap();
+        let mut config = read_cfg(&dir).unwrap();
+        assert_eq!(config["lists"][0]["file"], "dataset/role.list");
+
+        let primary = dir.join("dataset/role.list");
+        let shared_audio = dir.join("dataset/audios/a.wav");
+        let linked = dir.join("dataset/second.list");
+        let other_audio = dir.join("dataset/other/a.wav");
+        std::fs::create_dir_all(other_audio.parent().unwrap()).unwrap();
+        std::fs::write(&other_audio, b"another reference").unwrap();
+        std::fs::write(dir.join("dataset/audios/unlinked.wav"), b"other recording").unwrap();
+        let external_style = format!("\u{feff}{}|Yuzu|JA|one|two\r\n", shared_audio.display());
+        std::fs::write(&primary, &external_style).unwrap();
+        std::fs::write(&linked, "audios/a.wav|Yuzu|JA|same recording\nother/a.wav|Yuzu|EN|different recording\n").unwrap();
+        config["lists"][0]["lang"] = json!("ja");
+        config["lists"].as_array_mut().unwrap().push(json!({ "file": "dataset/second.list", "note": "More references" }));
+        write_cfg(&dir, &config).unwrap();
+
+        let output = root.join("exported.zip");
+        export_zip(&root, "yuzu", &output).unwrap();
+        assert_eq!(read_cfg(&dir).unwrap(), config);
+        assert_eq!(std::fs::read_to_string(primary).unwrap(), external_style);
+        let entries = read_zip(&output).unwrap().files;
+        assert!(!entries.contains_key("dataset/audios/unlinked.wav"));
+        assert_eq!(entries.keys().filter(|name| name.starts_with("dataset/audios/")).count(), 2);
+
+        let restored = root.join("restored");
+        install_zip(&restored, &output).unwrap();
+        let roles = crate::synth::list_characters(&restored);
+        let lists = roles["roles"][0]["lists"].as_array().unwrap();
+        assert_eq!(lists.len(), 2);
+        assert_eq!(lists[0]["lang"], "ja");
+        assert_eq!(lists[1]["note"], "More references");
+        assert_eq!(lists[0]["rows"][0]["text"], "one|two");
+        assert_eq!(lists[0]["rows"][0]["wav"], lists[1]["rows"][0]["wav"]);
+        for (row, expected) in [
+            (&lists[0]["rows"][0], b"reference audio".as_slice()),
+            (&lists[1]["rows"][1], b"another reference".as_slice()),
+        ] {
+            assert_eq!(row["exists"], true);
+            assert!(!Path::new(row["wav"].as_str().unwrap()).is_absolute());
+            assert_eq!(std::fs::read(row["abs"].as_str().unwrap()).unwrap(), expected);
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_missing_reference_does_not_overwrite_an_existing_export() {
+        let root = crate::testutil::scratch("missing-export-reference");
+        std::fs::create_dir_all(&root).unwrap();
+        let original = root.join("original.zip");
+        make_pack(&original, "", CFG);
+        install_zip(&root, &original).unwrap();
+        let output = root.join("exported.zip");
+        std::fs::write(&output, b"previous export").unwrap();
+
+        let dir = role_dir(&root, "yuzu").unwrap();
+        std::fs::remove_file(dir.join("dataset/audios/a.wav")).unwrap();
+        assert_eq!(export_zip(&root, "yuzu", &output).unwrap_err(), crate::i18n::t("s.roleErrListAudio"));
+        assert_eq!(std::fs::read(&output).unwrap(), b"previous export");
+
+        let mut config = read_cfg(&dir).unwrap();
+        config["lists"] = json!([]);
+        write_cfg(&dir, &config).unwrap();
+        assert_eq!(export_zip(&root, "yuzu", &output).unwrap_err(), crate::i18n::t("s.roleExportNeedsList"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn a_role_can_be_renamed_exported_and_deleted() {
         let root = crate::testutil::scratch("roles-manage");
