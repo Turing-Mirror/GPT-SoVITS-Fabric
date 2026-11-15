@@ -5,7 +5,7 @@ import { publication, publicationError, type CatalogModel, type Draft, type Revi
 import type { CommunityAccount } from "./CommunityActions";
 import { CatalogTransition } from "./CatalogTransition";
 import { Pager } from "./Pager";
-import { CommunityModelList } from "./CommunityModelList";
+import { CommunityModelList, useCommunityModels } from "./CommunityModelList";
 import { CommunityThumb } from "./CommunityThumb";
 import { useSubmissionCover } from "../hooks/useSubmissionCover";
 import { Btn, Group, PageHead, PagePad, Warn } from "./ui";
@@ -39,8 +39,8 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
   const [filter, setFilter] = useState<State>("draft");
   const [page, setPage] = useState(1);
   const [batch, setBatch] = useState<string>();
-  const [publishedRefresh, setPublishedRefresh] = useState(0);
   const publishedModels = filter === "published" && !batch;
+  const ownedModels = useCommunityModels({ account, active: active && publishedModels });
   const [snapshot, setSnapshot] = useState<{ account: string; state: ReviewState; page: number; totalPages: number; items: Submission[]; batch?: string }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -152,9 +152,9 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
     <PagePad width="wide">
       <PageHead title={t("community.submissions")} back={onBack} actions={
         <>
-          {account !== null && filter !== "draft" && <Btn busy={busy && !publishedModels}
+          {account !== null && filter !== "draft" && <Btn busy={publishedModels ? ownedModels.busy : busy}
             onClick={() => {
-              if (publishedModels) setPublishedRefresh((n) => n + 1);
+              if (publishedModels) ownedModels.refresh();
               else void refresh(account, filter, page, batch);
             }}>{t("s.38108eaa1d")}</Btn>}
           {filter === "draft" && <Btn onClick={onBatch}>{t("publication.batch")}</Btn>}
@@ -172,8 +172,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
             <Btn busy={auth.action === "sign_in"} disabled={auth.loading} onClick={() => void auth.run("sign_in")}>{t("community.signIn")}</Btn>
           </div>
         ) : publishedModels ? (
-          <CommunityModelList key={account} enabled={active} refreshToken={publishedRefresh}
-            onManage={onManage} onView={onOpenPublished} />
+          <CommunityModelList key={account} list={ownedModels} onManage={onManage} onView={onOpenPublished} />
         ) : items.length ? (
           <Group>
             <div className="divide-y divide-[var(--hairline)]">

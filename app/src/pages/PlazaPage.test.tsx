@@ -6,7 +6,7 @@ import { FLOW_MS, NoticeProvider } from "trm-ui";
 import { I18nProvider } from "../i18n";
 import { ensurePack } from "../trm/i18n/packs";
 import { PlazaPage } from "./PlazaPage";
-import { editListingDraft, newDraft, newVersionDraft, prepareSubmission, type CommunityAsset, type Draft, type PublishedVersion } from "../lib/communityPublication";
+import { editListingDraft, newDraft, newVersionDraft, prepareSubmission, type CatalogModel, type CommunityAsset, type Draft, type PublishedVersion } from "../lib/communityPublication";
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -112,6 +112,58 @@ it("records the chosen base version and preserves the original request on retry"
   const pending = await prepareSubmission(draft, signedIn.email);
   expect(pending.body.asset.metadata.familyVersion).toBe("v2");
   expect(await prepareSubmission({ ...draft, baseVersion: undefined, pending }, signedIn.email)).toBe(pending);
+});
+
+it("keeps one published read across status switches and preserves results during refresh", async () => {
+  function pendingRead() {
+    let resolve!: (page: { items: CatalogModel[] }) => void;
+    const promise = new Promise<{ items: CatalogModel[] }>((finish) => { resolve = finish; });
+    return { promise, resolve };
+  }
+  const first = pendingRead();
+  const refreshed = pendingRead();
+  const asset: CatalogModel = {
+    id: "published-character", title: "Published character", description: "", originalAuthor: "Test publisher",
+    publisherRole: "original_author", license: { id: "CC-BY-4.0" },
+    compatibleVersion: {
+      id: "version-one", label: "v1", createdAt: "2026-11-15T10:00:00Z",
+      package: { id: "package", path: "character.zip", sha256: "a".repeat(64), sizeBytes: 32 },
+    },
+  };
+  let ownedReads = 0;
+  invoke.mockImplementation(async (command: string, input?: { request?: { action: string } }) => {
+    if (command === "community_links") return { enabled: true, accountUrl };
+    if (command === "community_account_status") return signedIn;
+    if (input?.request?.action === "owned") return ++ownedReads === 1 ? first.promise : refreshed.promise;
+    return {};
+  });
+  const settleSlide = async () => act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, FLOW_MS + 25));
+  });
+
+  await act(async () => root.render(<I18nProvider><NoticeProvider><PlazaPage feed={feed} /></NoticeProvider></I18nProvider>));
+  await act(async () => button("Test publisher").click());
+  await act(async () => button("My submissions", document.querySelector<HTMLElement>('[role="menu"]:not([inert])')!).click());
+  await settleSlide();
+  const list = host.querySelector<HTMLElement>('[data-trm-pane="submissions"]')!;
+
+  await act(async () => button("Published", list).click());
+  expect(ownedReads).toBe(1);
+  await settleSlide();
+  await act(async () => button("Drafts", list).click());
+  await settleSlide();
+  await act(async () => first.resolve({ items: [asset] }));
+  await act(async () => button("Published", list).click());
+  expect(ownedReads).toBe(1);
+  expect(list.querySelector("article")?.textContent).toContain("Published character");
+
+  await act(async () => button("Refresh", list).click());
+  expect(ownedReads).toBe(2);
+  expect(list.querySelector("article")?.textContent).toContain("Published character");
+  expect(button("Refresh", list).disabled).toBe(true);
+  await act(async () => refreshed.resolve({ items: [{ ...asset, title: "Updated character" }] }));
+  expect(ownedReads).toBe(2);
+  expect(list.querySelector("article")?.textContent).toContain("Updated character");
 });
 
 it("manages an owned model in My submissions and requires its updated ZIP for a new version", async () => {

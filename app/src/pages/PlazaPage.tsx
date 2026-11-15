@@ -3,7 +3,7 @@ import { Block, Btn, Group, PageHead, PagePad, Warn } from "../components/ui";
 import { Pane, Panes, useNotify, usePaneOn } from "trm-ui";
 import { CommunityActions, useCommunityAccount } from "../components/CommunityActions";
 import { CommunityBatchPublisher } from "../components/CommunityBatchPublisher";
-import { CommunityModelList } from "../components/CommunityModelList";
+import { CommunityAuthorModels } from "../components/CommunityModelList";
 import { CommunityPublisher } from "../components/CommunityPublisher";
 import { CommunityModelDetail } from "../components/CommunityModelDetail";
 import { CommunitySubmissionDetail } from "../components/CommunitySubmissionDetail";
@@ -173,7 +173,7 @@ function PlazaPageImpl(props: PlazaProps) {
       </Pane>
       <Pane id="author">
         {author && <PagePad width="wide">
-          <CommunityModelList key={author} author={author} onBack={() => setPage(authorReturn)}
+          <CommunityAuthorModels key={author} author={author} onBack={() => setPage(authorReturn)}
             onView={(item) => {
               if (authorReturn === "model" && model?.id === item.id) setPage("model");
               else openModel(item.id, item.title, "author", item.compatibleVersion.id);
