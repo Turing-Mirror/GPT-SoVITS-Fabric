@@ -419,8 +419,10 @@ async fn refresh_session(issuer: String, cached: &mut Option<Session>) -> ApiRes
 // The frontend receives only presentation fields, never native credentials.
 fn public_status(current: Value) -> Value {
     let profile = &current["profile"];
+    let id = profile["id"].as_str().filter(|id| !id.is_empty());
     json!({
-        "signedIn": profile["id"].as_str().is_some_and(|id| !id.is_empty()),
+        "signedIn": id.is_some(),
+        "authorId": id,
         "displayName": profile["name"].as_str(),
         "email": profile["email"].as_str(),
         "offline": current["offline"].as_bool().unwrap_or(false)
@@ -552,7 +554,7 @@ mod status_tests {
         assert_eq!(
             public_status(json!({"profile": null})),
             json!({
-                "signedIn": false, "displayName": null, "email": null, "offline": false
+                "signedIn": false, "authorId": null, "displayName": null, "email": null, "offline": false
             })
         );
         let status = public_status(
@@ -560,7 +562,7 @@ mod status_tests {
         );
         assert_eq!(
             status,
-            json!({"signedIn": true, "displayName": "Test", "email": "test@example.invalid", "offline": true})
+            json!({"signedIn": true, "authorId": "subject", "displayName": "Test", "email": "test@example.invalid", "offline": true})
         );
     }
 }

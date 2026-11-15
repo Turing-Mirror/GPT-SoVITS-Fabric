@@ -22,6 +22,7 @@ export type Source = {
 };
 export type PublisherRole = "original_author" | "reposter" | "maintainer";
 export type ReviewState = "pending" | "published" | "rejected" | "withdrawn";
+export const PUBLICATION_PAGE_SIZE = 16;
 export type Category = { id: string; name: string; names: Record<string, string>; aliases: string[] };
 export type CategoryChoice = { id: string } | { name: string; locale: string; translations?: Record<string, string> };
 export type CategorySelection = { series: CategoryChoice; department?: CategoryChoice };
@@ -259,8 +260,8 @@ type PublicationRequest =
   | { action: "cover"; bytes: number[] }
   | { action: "submit"; key: string; body: SubmissionBody }
   | { action: "batch"; batchId: string; items: Array<{ key: string; body: SubmissionBody }> }
-  | { action: "author"; id: string; cursor?: string; query?: string; limit?: number }
-  | { action: "owned"; cursor?: string; query?: string; limit?: number }
+  | { action: "author"; id: string; page?: number; cursor?: string; query?: string; limit?: number }
+  | { action: "owned"; page?: number; cursor?: string; query?: string; limit?: number }
   | { action: "asset"; id: string }
   | { action: "version"; id: string; versionId: string }
   | { action: "cover_preview"; id: string }

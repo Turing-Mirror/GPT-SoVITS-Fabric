@@ -30,11 +30,13 @@ pub enum PublicationRequest {
     },
     Author {
         id: String,
+        page: Option<u32>,
         cursor: Option<String>,
         query: Option<String>,
         limit: Option<u32>,
     },
     Owned {
+        page: Option<u32>,
         cursor: Option<String>,
         query: Option<String>,
         limit: Option<u32>,
@@ -68,10 +70,12 @@ fn unavailable() -> ApiError {
     ApiError::new("unavailable", "Community is temporarily unavailable.")
 }
 
-fn catalog_query(url: &mut url::Url, cursor: Option<String>, query: Option<String>, limit: Option<u32>) {
+fn catalog_query(url: &mut url::Url, page: Option<u32>, cursor: Option<String>, query: Option<String>, limit: Option<u32>) {
     let mut pairs = url.query_pairs_mut();
     pairs.append_pair("productId", community_catalog::PRODUCT_ID);
-    if let Some(cursor) = cursor {
+    if let Some(page) = page {
+        pairs.append_pair("page", &page.to_string());
+    } else if let Some(cursor) = cursor {
         pairs.append_pair("cursor", &cursor);
     }
     if let Some(query) = query {
@@ -161,14 +165,14 @@ pub async fn community_publication(
             }
             json_body(client.post(endpoint(&["submissions", "batch"])), &json!({ "batchId": batch_id, "items": items }))
         }
-        PublicationRequest::Author { id, cursor, query, limit } => {
+        PublicationRequest::Author { id, page, cursor, query, limit } => {
             let mut url = endpoint(&["authors", &id]);
-            catalog_query(&mut url, cursor, query, limit);
+            catalog_query(&mut url, page, cursor, query, limit);
             client.get(url)
         }
-        PublicationRequest::Owned { cursor, query, limit } => {
+        PublicationRequest::Owned { page, cursor, query, limit } => {
             let mut url = endpoint(&["me", "assets"]);
-            catalog_query(&mut url, cursor, query, limit);
+            catalog_query(&mut url, page, cursor, query, limit);
             client.get(url)
         }
         PublicationRequest::Asset { id } => client.get(endpoint(&["assets", &id])),

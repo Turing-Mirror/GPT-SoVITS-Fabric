@@ -8,6 +8,7 @@ import { Btn } from "./ui";
 type CommunityLinks = { enabled: boolean; accountUrl: string | null };
 type AccountStatus = {
   signedIn: boolean;
+  authorId: string | null;
   displayName: string | null;
   email: string | null;
   offline: boolean;
@@ -60,10 +61,11 @@ export function useCommunityAccount() {
 
 export type CommunityAccount = ReturnType<typeof useCommunityAccount>;
 
-export function CommunityActions({ auth, onPublish, onSubmissions }: {
+export function CommunityActions({ auth, onPublish, onSubmissions, onAuthor }: {
   auth: CommunityAccount;
   onPublish: () => void;
   onSubmissions: () => void;
+  onAuthor: () => void;
 }) {
   const { t } = useI18n();
   const { tip } = useNotify();
@@ -77,6 +79,7 @@ export function CommunityActions({ auth, onPublish, onSubmissions }: {
     items.push({ id: "email", label: account.email, disabled: true });
   }
   items.push({ id: "submissions", label: t("community.submissions"), onSelect: onSubmissions });
+  if (account?.authorId) items.push({ id: "author", label: t("s.voiceLinkAuthor"), onSelect: onAuthor });
   if (links.accountUrl) {
     const url = links.accountUrl;
     items.push({

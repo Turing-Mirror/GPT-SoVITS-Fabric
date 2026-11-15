@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, SegmentControl, useMenu, useNotify, usePageActive, usePaneOn, type MenuItem } from "trm-ui";
 import { useI18n } from "../i18n";
-import { publication, publicationError, type CatalogModel, type Draft, type ReviewState, type Submission } from "../lib/communityPublication";
+import { draftBaseVersion, PUBLICATION_PAGE_SIZE, publication, publicationError, type CatalogModel, type Draft, type ReviewState, type Submission } from "../lib/communityPublication";
 import type { CommunityAccount } from "./CommunityActions";
 import { CatalogTransition } from "./CatalogTransition";
 import { Pager } from "./Pager";
 import { CommunityModelList, useCommunityModels } from "./CommunityModelList";
-import { CommunityThumb } from "./CommunityThumb";
+import { CommunityPublicationCard, CommunityPublicationCards, publicationGroups } from "./CommunityPublicationCard";
 import { useSubmissionCover } from "../hooks/useSubmissionCover";
-import { Btn, Group, PageHead, PagePad, Warn } from "./ui";
+import { Btn, PageHead, PagePad, Warn } from "./ui";
 
 const states = ["draft", "pending", "rejected", "published", "withdrawn"] as const;
 type State = "draft" | ReviewState;
-const PER_PAGE = 8;
+const PER_PAGE = PUBLICATION_PAGE_SIZE;
 
-export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBatch, onEdit, onRemove, onRevise, onView, onViewModel, onManage, onOpenPublished }: {
+export function CommunitySubmissions({ auth, drafts, recent, onAuthor, onBack, onNew, onBatch, onEdit, onRemove, onRevise, onView, onViewModel, onManage, onOpenPublished }: {
   auth: CommunityAccount;
   drafts: Draft[];
   recent?: Submission;
+  onAuthor?: () => void;
   onBack: () => void;
   onNew: () => void;
   onBatch: () => void;
@@ -116,7 +117,6 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
   const current = filter === "draft" ? Math.min(pages, page) : page;
   const items = filter === "draft" ? drafts.slice((current - 1) * PER_PAGE, current * PER_PAGE)
     : remote?.page === current ? remote.items : [];
-  const date = (value?: string) => value ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "";
   const labels: Record<State, string> = {
     draft: t("publication.drafts"),
     pending: t("publication.pending"),
@@ -152,6 +152,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
     <PagePad width="wide">
       <PageHead title={t("community.submissions")} back={onBack} actions={
         <>
+          {onAuthor && <Btn onClick={onAuthor}>{t("s.voiceLinkAuthor")}</Btn>}
           {account !== null && filter !== "draft" && <Btn busy={publishedModels ? ownedModels.busy : busy}
             onClick={() => {
               if (publishedModels) ownedModels.refresh();
@@ -174,11 +175,10 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
         ) : publishedModels ? (
           <CommunityModelList key={account} list={ownedModels} onManage={onManage} onView={onOpenPublished} />
         ) : items.length ? (
-          <Group>
-            <div className="divide-y divide-[var(--hairline)]">
+          <CommunityPublicationCards>
             {items.map((item) => {
               const isDraft = "cover" in item;
-              const title = isDraft ? item.title : item.asset.title;
+              const title = isDraft ? item.title : item.asset.metadata?.nameI18n?.[locale] || item.asset.title;
               const actions: MenuItem[] = [];
               if (isDraft) actions.push({ id: "remove", label: t("publication.removeDraft"), danger: true,
                 onSelect: () => setConfirm({ id: item.id, kind: "draft" }) });
@@ -191,29 +191,16 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
                   id: "revise", label: t("publication.edit"), onSelect: () => onRevise(item),
                 });
               }
-              const label = title || t("publication.untitled");
-              return (
-                <article key={item.id} className="flex flex-wrap items-center gap-3 py-3">
-                  {isDraft ? <CommunityThumb title={label} src={item.cover || item.currentVersion?.coverUrl} /> :
-                    <SubmissionThumb title={label} item={item} />}
-                  <div className="min-w-[128px] flex-1 space-y-1">
-                    <div className="break-words text-[13px] font-semibold">{label}</div>
-                    <div className="flex flex-wrap gap-x-2 text-[11.5px] text-[var(--help)]">
-                      <span>{isDraft ? item.label : item.version.label}</span>
-                      {item.updatedAt && <time dateTime={item.updatedAt}>{date(item.updatedAt)}</time>}
-                    </div>
-                  </div>
-                  {isDraft ? <Btn text onClick={() => onEdit(item)}>{t("publication.edit")}</Btn> :
-                    <Btn text onClick={() => item.state === "published" && item.assetId ? onViewModel(item) : onView(item)}>
-                      {t("s.f7acefd2d4")}
-                    </Btn>}
-                  {actions.length > 0 && <Btn text ariaLabel={t("ui.common.more")}
-                    onClick={(event) => menu.open(event.currentTarget, actions)}>⋯</Btn>}
-                </article>
-              );
+              return <SubmissionCard key={item.id} item={item} title={title || t("publication.untitled")} actions={<>
+                {isDraft ? <Btn text onClick={() => onEdit(item)}>{t("publication.edit")}</Btn> :
+                  <Btn text onClick={() => item.state === "published" && item.assetId ? onViewModel(item) : onView(item)}>
+                    {t("s.f7acefd2d4")}
+                  </Btn>}
+                {actions.length > 0 && <Btn text ariaLabel={t("ui.common.more")}
+                  onClick={(event) => menu.open(event.currentTarget, actions)}>⋯</Btn>}
+              </>} />;
             })}
-            </div>
-          </Group>
+          </CommunityPublicationCards>
         ) : filter !== "draft" && error ? null : (
           <p className="py-6 text-[13px] text-[var(--help)]">
             {filter === "draft" ? t("publication.noDrafts") : busy ? t("s.f950213ab7") : t("publication.noSubmissions")}
@@ -236,7 +223,19 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
   );
 }
 
-function SubmissionThumb({ title, item }: { title: string; item: Submission }) {
-  const privateCover = useSubmissionCover(item.coverUrl ? undefined : item.coverUploadId);
-  return <CommunityThumb title={title} src={item.coverUrl || privateCover} />;
+function SubmissionCard({ title, item, actions }: {
+  title: string;
+  item: Draft | Submission;
+  actions: React.ReactNode;
+}) {
+  const { locale } = useI18n();
+  const isDraft = "cover" in item;
+  const cover = isDraft ? item.cover || item.currentVersion?.coverUrl : item.coverUrl;
+  const privateCover = useSubmissionCover(cover ? undefined : item.coverUploadId);
+  return <CommunityPublicationCard id={item.id} title={title} cover={cover || privateCover}
+    description={isDraft ? item.description : item.asset.description} date={item.updatedAt}
+    groups={isDraft ? [item.series, item.group] : publicationGroups(item.asset.metadata, locale)}
+    version={isDraft ? item.label : item.version.label}
+    base={isDraft ? draftBaseVersion(item) : item.version.metadata?.familyVersion ?? item.asset.metadata?.familyVersion}
+    actions={actions} />;
 }

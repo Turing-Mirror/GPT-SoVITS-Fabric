@@ -14,8 +14,8 @@ vi.mock("../components/StoreSection", () => ({ StoreSection: () => null }));
 vi.mock("../components/ExtrasDialog", () => ({ ExtrasPanel: () => null }));
 
 const feed = { items: [], banner: null, changelog: [], errors: [], app_version: "", newest: "", unread: false };
-const guest = { signedIn: false, displayName: null, email: null, offline: false };
-const signedIn = { signedIn: true, displayName: "Test publisher", email: "publisher@example.test", offline: false };
+const guest = { signedIn: false, authorId: null, displayName: null, email: null, offline: false };
+const signedIn = { signedIn: true, authorId: "publisher", displayName: "Test publisher", email: "publisher@example.test", offline: false };
 const accountUrl = "https://account.example.test/";
 let host: HTMLDivElement;
 let root: Root;
@@ -60,6 +60,7 @@ it("keeps Publish and account before Refresh and replaces Sign in after authenti
   expect(labels()).toEqual(["Publish", "Test publisher", "Refresh"]);
   await act(async () => button("Test publisher").click());
   expect(button("My submissions", document.body)).toBeDefined();
+  expect(button("Author page", document.body)).toBeDefined();
   expect([...document.body.querySelectorAll("button")].some((item) => item.textContent?.trim() === "My models")).toBe(false);
   expect(button("Manage account", document.body)).toBeDefined();
   await act(async () => button("Sign out", document.body).click());
@@ -89,7 +90,7 @@ it("opens character publishing and My submissions in the signed-in desktop windo
   expect(list.hidden).toBe(false);
   expect(list.textContent).toContain("No drafts yet.");
   await act(async () => button("Under review", list).click());
-  expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "mine", state: "pending", page: 1, limit: 8 } });
+  expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "mine", state: "pending", page: 1, limit: 16 } });
   expect(invoke.mock.calls.some(([command]) => command === "open_external")).toBe(false);
 });
 
@@ -166,6 +167,63 @@ it("keeps one published read across status switches and preserves results during
   expect(list.querySelector("article")?.textContent).toContain("Updated character");
 });
 
+it("can jump straight to the last owned page and return from the public author page", async () => {
+  const coverUrl = "https://example.test/cover.webp";
+  const model: CatalogModel = {
+    id: "model-a", title: "First model", description: "First result", coverUrl, originalAuthor: signedIn.displayName,
+    publisherRole: "original_author", license: { id: "CC-BY-4.0" },
+    compatibleVersion: {
+      id: "version-one", label: "v1", createdAt: "2026-11-15T10:00:00Z",
+      package: { id: "package", path: "character.zip", sha256: "a".repeat(64), sizeBytes: 32 },
+    },
+  };
+  let finishPage!: (result: { items: CatalogModel[]; page: number; totalPages: number }) => void;
+  const last = new Promise<{ items: CatalogModel[]; page: number; totalPages: number }>(resolve => { finishPage = resolve; });
+  const requested: number[] = [];
+  invoke.mockImplementation(async (command: string, input?: { request?: { action: string; id?: string; page?: number } }) => {
+    if (command === "community_links") return { enabled: true, accountUrl };
+    if (command === "community_account_status") return signedIn;
+    if (input?.request?.action === "owned") {
+      const page = input.request.page!;
+      requested.push(page);
+      return page === 18 ? last : { items: [model], page, totalPages: 18 };
+    }
+    if (input?.request?.action === "author") {
+      expect(input.request.id).toBe(signedIn.authorId);
+      return { items: [model], page: 1, totalPages: 18, name: "Public name" };
+    }
+    return {};
+  });
+  const settleSlide = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, FLOW_MS + 25)); });
+  await act(async () => root.render(<I18nProvider><NoticeProvider><PlazaPage feed={feed} /></NoticeProvider></I18nProvider>));
+  await act(async () => button(signedIn.displayName).click());
+  await act(async () => button("My submissions", document.body).click());
+  await settleSlide();
+  const submissions = host.querySelector<HTMLElement>('[data-trm-pane="submissions"]')!;
+  await act(async () => button("Published", submissions).click());
+  await settleSlide();
+  expect(submissions.querySelector("article")?.textContent).toContain("First result");
+  await act(async () => button("18", submissions).click());
+  expect(requested).toEqual([1, 18]);
+  expect(submissions.querySelector("article")?.textContent).toContain("First result");
+  await act(async () => finishPage({ items: [{ ...model, id: "model-last", title: "Last model" }], page: 18, totalPages: 18 }));
+  await settleSlide();
+  expect(submissions.querySelector("article")?.textContent).toContain("Last model");
+  expect(submissions.querySelector('[aria-current="page"]')?.textContent).toBe("18");
+  await act(async () => button("Author page", submissions).click());
+  await settleSlide();
+  const author = host.querySelector<HTMLElement>('[data-trm-pane="author"]')!;
+  expect(author.hidden).toBe(false);
+  expect(author.querySelector("h2")?.textContent).toContain("Public name");
+  expect(author.querySelector("article")?.textContent).toContain("First model");
+  expect(author.querySelector('button[aria-label="More"]')).toBeNull();
+  await act(async () => author.querySelector<HTMLButtonElement>("h2 button")!.click());
+  await settleSlide();
+  expect(submissions.hidden).toBe(false);
+  expect(submissions.querySelector("article")?.textContent).toContain("Last model");
+  expect(requested).toEqual([1, 18]);
+});
+
 it("manages an owned model in My submissions and requires its updated ZIP for a new version", async () => {
   const settleSlide = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, FLOW_MS + 25)); });
   const asset: CommunityAsset = {
@@ -205,7 +263,7 @@ it("manages an owned model in My submissions and requires its updated ZIP for a 
   await settleSlide();
   const publications = host.querySelector<HTMLElement>('[data-trm-pane="submissions"]')!;
   await act(async () => button("Published", publications).click());
-  expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "owned", limit: 8 } });
+  expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "owned", page: 1, limit: 16 } });
 
   await act(async () => button("View", publications).click());
   const detail = host.querySelector<HTMLElement>('[data-trm-pane="model"]')!;

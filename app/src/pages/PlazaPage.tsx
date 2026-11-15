@@ -58,7 +58,7 @@ function PlazaPageImpl(props: PlazaProps) {
   const [page, setPage] = useState<CommunityPage>("catalog");
   const [editor, setEditor] = useState<Draft>();
   const [author, setAuthor] = useState("");
-  const [authorReturn, setAuthorReturn] = useState<"catalog" | "model">("catalog");
+  const [authorReturn, setAuthorReturn] = useState<"catalog" | "model" | "submissions">("catalog");
   const [model, setModel] = useState<OpenModel>();
   const [submission, setSubmission] = useState<Submission>();
   const [editorBack, setEditorBack] = useState<ModelOrigin | "model" | "submission">("catalog");
@@ -95,10 +95,14 @@ function PlazaPageImpl(props: PlazaProps) {
   }
 
   function openAuthor(id: string, back: typeof authorReturn = "catalog") {
+    ++revisionRequest.current;
     setAuthor(id);
     setAuthorReturn(back);
     setPage("author");
   }
+
+  const ownAuthorId = auth.account?.signedIn ? auth.account.authorId : null;
+  const ownAuthorName = ownAuthorId && ownAuthorId === author ? auth.account?.displayName : undefined;
 
   function openModel(id: string, title: string, from: ModelOrigin, versionId?: string, owner?: true | string) {
     const navigationId = ++revisionRequest.current;
@@ -135,7 +139,8 @@ function PlazaPageImpl(props: PlazaProps) {
       <Pane id="catalog">
         <Catalog
           {...props}
-          actions={<CommunityActions auth={auth} onPublish={() => openEditor()} onSubmissions={() => setPage("submissions")} />}
+          actions={<CommunityActions auth={auth} onPublish={() => openEditor()} onSubmissions={() => setPage("submissions")}
+            onAuthor={() => { if (ownAuthorId) openAuthor(ownAuthorId); }} />}
           onAuthor={openAuthor}
           onOpenModel={(id, title, versionId) => openModel(id, title, "catalog", versionId)}
           onChangelog={() => setPage("changelog")}
@@ -173,7 +178,8 @@ function PlazaPageImpl(props: PlazaProps) {
       </Pane>
       <Pane id="author">
         {author && <PagePad width="wide">
-          <CommunityAuthorModels key={author} author={author} onBack={() => setPage(authorReturn)}
+          <CommunityAuthorModels key={author} author={author} own={author === ownAuthorId} ownName={ownAuthorName}
+            onBack={() => setPage(authorReturn)}
             onView={(item) => {
               if (authorReturn === "model" && model?.id === item.id) setPage("model");
               else openModel(item.id, item.title, "author", item.compatibleVersion.id);
@@ -185,7 +191,10 @@ function PlazaPageImpl(props: PlazaProps) {
           versionId={model.versionId}
           owner={auth.account?.signedIn && model.management?.account === auth.account.email ? model.management?.owner : undefined}
           onBack={() => setPage(model.from)}
-          onAuthor={(id) => openAuthor(id, model.from === "author" ? "catalog" : "model")}
+          onAuthor={(id) => {
+            if (model.from === "author" && author === id) setPage("author");
+            else openAuthor(id, model.from === "author" ? "catalog" : "model");
+          }}
           onNewVersion={(detail, version) => editVersion(detail.asset, version, "model")}
           onEditListing={(detail, version) => editVersion(detail.asset, version, "model", true)} />}
       </Pane>
@@ -198,6 +207,7 @@ function PlazaPageImpl(props: PlazaProps) {
           auth={auth}
           drafts={drafts}
           recent={recent}
+          onAuthor={ownAuthorId ? () => openAuthor(ownAuthorId, "submissions") : undefined}
           onBack={() => { ++revisionRequest.current; setPage("catalog"); }}
           onNew={() => openEditor(newDraft(), "submissions")}
           onBatch={() => { ++revisionRequest.current; setBatchEntry({ back: "submissions" }); setPage("batch"); }}
