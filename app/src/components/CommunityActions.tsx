@@ -60,11 +60,10 @@ export function useCommunityAccount() {
 
 export type CommunityAccount = ReturnType<typeof useCommunityAccount>;
 
-export function CommunityActions({ auth, onPublish, onSubmissions, onOwned }: {
+export function CommunityActions({ auth, onPublish, onSubmissions }: {
   auth: CommunityAccount;
   onPublish: () => void;
   onSubmissions: () => void;
-  onOwned: () => void;
 }) {
   const { t } = useI18n();
   const { tip } = useNotify();
@@ -78,7 +77,6 @@ export function CommunityActions({ auth, onPublish, onSubmissions, onOwned }: {
     items.push({ id: "email", label: account.email, disabled: true });
   }
   items.push({ id: "submissions", label: t("community.submissions"), onSelect: onSubmissions });
-  items.push({ id: "owned", label: t("publication.myModels"), onSelect: onOwned });
   if (links.accountUrl) {
     const url = links.accountUrl;
     items.push({

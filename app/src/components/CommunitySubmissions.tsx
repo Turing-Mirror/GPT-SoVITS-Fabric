@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, SegmentControl, useMenu, useNotify, usePageActive, usePaneOn, type MenuItem } from "trm-ui";
 import { useI18n } from "../i18n";
-import { publication, publicationError, type Draft, type ReviewState, type Submission } from "../lib/communityPublication";
+import { publication, publicationError, type CatalogModel, type Draft, type ReviewState, type Submission } from "../lib/communityPublication";
 import type { CommunityAccount } from "./CommunityActions";
 import { CatalogTransition } from "./CatalogTransition";
 import { Pager } from "./Pager";
+import { CommunityModelList } from "./CommunityModelList";
 import { CommunityThumb } from "./CommunityThumb";
 import { useSubmissionCover } from "../hooks/useSubmissionCover";
 import { Btn, Group, PageHead, PagePad, Warn } from "./ui";
@@ -13,7 +14,7 @@ const states = ["draft", "pending", "rejected", "published", "withdrawn"] as con
 type State = "draft" | ReviewState;
 const PER_PAGE = 8;
 
-export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBatch, onEdit, onRemove, onRevise, onView, onViewModel }: {
+export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBatch, onEdit, onRemove, onRevise, onView, onViewModel, onManage, onOpenPublished }: {
   auth: CommunityAccount;
   drafts: Draft[];
   recent?: Submission;
@@ -22,9 +23,11 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
   onBatch: () => void;
   onEdit: (draft: Draft) => void;
   onRemove: (id: string) => void;
-    onRevise: (submission: Submission) => void;
+  onRevise: (submission: Submission) => void;
   onView: (submission: Submission) => void;
   onViewModel: (submission: Submission) => void;
+  onManage: (item: CatalogModel, action: "listing" | "version") => void;
+  onOpenPublished: (item: CatalogModel) => void;
 }) {
   const { t, locale } = useI18n();
   const { tip } = useNotify();
@@ -36,6 +39,8 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
   const [filter, setFilter] = useState<State>("draft");
   const [page, setPage] = useState(1);
   const [batch, setBatch] = useState<string>();
+  const [publishedRefresh, setPublishedRefresh] = useState(0);
+  const publishedModels = filter === "published" && !batch;
   const [snapshot, setSnapshot] = useState<{ account: string; state: ReviewState; page: number; totalPages: number; items: Submission[]; batch?: string }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -94,8 +99,17 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
         return;
       }
     }
-    if (filter !== "draft" && seen.current !== keyFor(account, filter, page, batch)) void refresh(account, filter, page, batch);
-  }, [account, active, filter, page, recent, refresh, batch]);
+    if (filter === "draft" || publishedModels) {
+      if (seen.current !== undefined) {
+        ++request.current;
+        seen.current = undefined;
+        setBusy(false);
+        setError("");
+      }
+      return;
+    }
+    if (seen.current !== keyFor(account, filter, page, batch)) void refresh(account, filter, page, batch);
+  }, [account, active, filter, page, recent, refresh, batch, publishedModels]);
 
   const remote = snapshot?.account === account && snapshot?.state === filter && snapshot?.batch === batch ? snapshot : undefined;
   const pages = filter === "draft" ? Math.max(1, Math.ceil(drafts.length / PER_PAGE)) : remote?.totalPages ?? 1;
@@ -138,7 +152,11 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
     <PagePad width="wide">
       <PageHead title={t("community.submissions")} back={onBack} actions={
         <>
-          {account !== null && filter !== "draft" && <Btn busy={busy} onClick={() => void refresh(account, filter, page, batch)}>{t("s.38108eaa1d")}</Btn>}
+          {account !== null && filter !== "draft" && <Btn busy={busy && !publishedModels}
+            onClick={() => {
+              if (publishedModels) setPublishedRefresh((n) => n + 1);
+              else void refresh(account, filter, page, batch);
+            }}>{t("s.38108eaa1d")}</Btn>}
           {filter === "draft" && <Btn onClick={onBatch}>{t("publication.batch")}</Btn>}
           <Btn primary onClick={onNew}>{t("community.publish")}</Btn>
         </>
@@ -146,13 +164,16 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
       <SegmentControl className="mb-4 mt-3" value={filter} options={states.map((id) => ({ id, label: labels[id] }))}
         onChange={(next) => { setFilter(next); setPage(1); }} />
       {batch && filter !== "draft" && <Btn onClick={() => { setBatch(undefined); setPage(1); }}>{t("ui.common.clear")}</Btn>}
-      {error && account !== null && filter !== "draft" && <Warn className="mb-3">{error}</Warn>}
+      {error && account !== null && filter !== "draft" && !publishedModels && <Warn className="mb-3">{error}</Warn>}
       <CatalogTransition scope={filter} order={states} page={current}>
         {filter !== "draft" && account === null ? (
           <div className="flex items-center gap-3">
             <p className="text-[13px] text-[var(--help)]">{t("publication.signInRequired")}</p>
             <Btn busy={auth.action === "sign_in"} disabled={auth.loading} onClick={() => void auth.run("sign_in")}>{t("community.signIn")}</Btn>
           </div>
+        ) : publishedModels ? (
+          <CommunityModelList key={account} enabled={active} refreshToken={publishedRefresh}
+            onManage={onManage} onView={onOpenPublished} />
         ) : items.length ? (
           <Group>
             <div className="divide-y divide-[var(--hairline)]">
@@ -200,7 +221,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
           </p>
         )}
       </CatalogTransition>
-      {pages > 1 && <Pager page={current} pages={pages} onChange={setPage} />}
+      {!publishedModels && pages > 1 && <Pager page={current} pages={pages} onChange={setPage} />}
       {menu.node}
       <Modal open={active && Boolean(confirm)} onClose={() => { if (!applying) setConfirm(undefined); }}
         label={t(confirm?.kind === "draft" ? "publication.removeDraft" : "publication.withdraw")} width={400}>

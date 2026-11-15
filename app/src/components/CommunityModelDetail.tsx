@@ -6,11 +6,11 @@ import { openExternal } from "../lib/plaza";
 import { CatalogTransition } from "./CatalogTransition";
 import { StoreSection } from "./StoreSection";
 
-export function CommunityModelDetail({ id, title, versionId, owned, onBack, onAuthor, onNewVersion, onEditListing }: {
+export function CommunityModelDetail({ id, title, versionId, owner, onBack, onAuthor, onNewVersion, onEditListing }: {
   id: string;
   title: string;
   versionId?: string;
-  owned?: boolean;
+  owner?: true | string;
   onBack: () => void;
   onAuthor: (id: string) => void;
   onNewVersion: (model: ModelDetail, version: PublishedVersion) => void;
@@ -33,12 +33,12 @@ export function CommunityModelDetail({ id, title, versionId, owned, onBack, onAu
   }, [active, detail, id, retry]);
 
   const current = detail?.versions.find((version) => version.id === versionId) ?? detail?.versions.find(firstPackage);
-  const canRevise = owned && current && firstPackage(current);
+  const canRevise = owner === true || (owner && owner === detail?.asset.ownerId);
   return <PagePad width="wide">
     <PageHead title={detail?.asset.metadata?.nameI18n?.[locale] || title} back={onBack}
-      actions={canRevise && <>
-        <Btn text onClick={() => onEditListing(detail!, current)}>{t("publication.editListing")}</Btn>
-        <Btn onClick={() => onNewVersion(detail!, current)}>{t("publication.newVersion")}</Btn>
+      actions={detail && current && firstPackage(current) && canRevise && <>
+        <Btn text onClick={() => onEditListing(detail, current)}>{t("publication.editListing")}</Btn>
+        <Btn onClick={() => onNewVersion(detail, current)}>{t("publication.newVersion")}</Btn>
       </>} />
     <div className="mt-4">
       <StoreSection reloadToken={0} assetId={id} detail onAuthor={onAuthor} />

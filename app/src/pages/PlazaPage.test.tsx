@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { NoticeProvider } from "trm-ui";
+import { FLOW_MS, NoticeProvider } from "trm-ui";
 import { I18nProvider } from "../i18n";
 import { ensurePack } from "../trm/i18n/packs";
 import { PlazaPage } from "./PlazaPage";
@@ -60,6 +60,7 @@ it("keeps Publish and account before Refresh and replaces Sign in after authenti
   expect(labels()).toEqual(["Publish", "Test publisher", "Refresh"]);
   await act(async () => button("Test publisher").click());
   expect(button("My submissions", document.body)).toBeDefined();
+  expect([...document.body.querySelectorAll("button")].some((item) => item.textContent?.trim() === "My models")).toBe(false);
   expect(button("Manage account", document.body)).toBeDefined();
   await act(async () => button("Sign out", document.body).click());
   expect(invoke).toHaveBeenCalledWith("community_account_sign_out");
@@ -113,7 +114,8 @@ it("records the chosen base version and preserves the original request on retry"
   expect(await prepareSubmission({ ...draft, baseVersion: undefined, pending }, signedIn.email)).toBe(pending);
 });
 
-it("starts a new version from the exact model and requires its updated package", async () => {
+it("manages an owned model in My submissions and requires its updated ZIP for a new version", async () => {
+  const settleSlide = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, FLOW_MS + 25)); });
   const asset: CommunityAsset = {
     id: "rin", title: "Rin (Chinese)", description: "A character package with reference clips.", originalAuthor: "Test publisher",
     publisherRole: "original_author", license: { id: "CC-BY-4.0" }, coverUrl: "https://example.test/cover.webp",
@@ -134,6 +136,7 @@ it("starts a new version from the exact model and requires its updated package",
     if (name === "community_account_status") return signedIn;
     if (input?.request?.action === "owned") return { items: [{ ...asset, compatibleVersion: { ...version, package: pack } }] };
     if (input?.request?.action === "version") return { asset, version: current };
+    if (input?.request?.action === "asset") return { asset, versions: [current] };
     if (input?.request?.action === "resolve") return {
       resolveId: "fixed", canonicalUrl: repository, revision: "new-revision", expiresAt: new Date(Date.now() + 60_000).toISOString(),
       files: [
@@ -146,10 +149,33 @@ it("starts a new version from the exact model and requires its updated package",
   });
   await act(async () => root.render(<I18nProvider><NoticeProvider><PlazaPage feed={feed} /></NoticeProvider></I18nProvider>));
   await act(async () => button("Test publisher").click());
-  await act(async () => button("My models", document.body).click());
-  const owner = host.querySelector<HTMLElement>('[data-trm-pane="owned"]')!;
-  await act(async () => owner.querySelector<HTMLButtonElement>('button[aria-label="More"]')!.click());
-  await act(async () => button("New version", document.body).click());
+  await act(async () => button("My submissions", document.body).click());
+  await settleSlide();
+  const publications = host.querySelector<HTMLElement>('[data-trm-pane="submissions"]')!;
+  await act(async () => button("Published", publications).click());
+  expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "owned", limit: 8 } });
+
+  await act(async () => button("View", publications).click());
+  const detail = host.querySelector<HTMLElement>('[data-trm-pane="model"]')!;
+  expect(button("Edit listing", detail)).toBeDefined();
+  expect(button("New version", detail)).toBeDefined();
+  await settleSlide();
+  await act(async () => button("Edit listing", detail).click());
+  const listingEditor = host.querySelector<HTMLElement>('[data-trm-pane="publish"]')!;
+  expect(listingEditor.querySelector("h2")?.textContent).toContain("Edit listing");
+  expect(listingEditor.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]')?.value).toBe(asset.description);
+  expect(listingEditor.querySelector<HTMLElement>('[data-trm-pane="details"]')?.hidden).toBe(false);
+
+  await settleSlide();
+  await act(async () => listingEditor.querySelector<HTMLButtonElement>('h2 button')!.click());
+  await settleSlide();
+  await act(async () => detail.querySelector<HTMLButtonElement>('h2 button')!.click());
+  await settleSlide();
+  expect(publications.hidden).toBe(false);
+  expect(localStorage.getItem("fabric.community.characterDrafts.v1")).toBeNull();
+  await act(async () => publications.querySelector<HTMLButtonElement>('button[aria-label="More"]')!.click());
+  const actions = document.querySelector<HTMLElement>('[role="menu"]:not([inert])')!;
+  await act(async () => button("New version", actions).click());
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 480)); });
   expect(invoke).toHaveBeenCalledWith("community_publication", { request: { action: "version", id: asset.id, versionId: current.id } });
   const editor = host.querySelector<HTMLElement>('[data-trm-pane="publish"]')!;

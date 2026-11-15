@@ -60,13 +60,13 @@
 
 ## Community publishing
 
-Open Publish from Community to choose a character ZIP from a public repository. Select the base model version used by the package, add an author page if you have one, and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions shows local drafts and paginated review history.
+Open Publish from Community to choose a character ZIP from a public repository. Select the base model version used by the package, add an author page if you have one, and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions contains drafts, review history, and published models.
 
 Community keeps the current search, filters, department page, and scroll position when you switch tabs. Departments display eight at a time. Catalog filters and pagination use the shared TRM UI slide.
 
 ## 角色发布与管理
 
-「我的投稿」按状态和页码显示封面、版本和日期。待审与退回项可打开审核记录，已发布项可进入角色详情。「我的模型」支持搜索和分页。详情保留原有的下载、安装和合成入口，并展示每个已发布版本的来源与文件。
+在「我的发布」中查看草稿、审核进度和已发布的模型。「已发布」按模型列出当前版本，支持搜索和分页。从模型的菜单或详情页可以编辑发布信息、发布新版本。查看批次时，可以按状态查阅该批次的投稿。模型详情展示历史版本及文件来源，并提供下载、安装和合成入口。
 
 「编辑发布信息」可以更换封面、修改介绍或分类，无需上传新的角色包。「新版本」显示当前角色、版本、ZIP 路径和来源版本。用户选择更新后的 ZIP 再提交。分类搜索支持已有名称、译名与别名，同名的不同部门显示原名。新系列、部门和译名随投稿一并审核。
 

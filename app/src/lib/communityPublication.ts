@@ -58,6 +58,7 @@ export type PublishedVersion = {
 };
 export type CommunityAsset = Submission["asset"] & {
   id: string;
+  ownerId?: string;
   upstreamUrl?: string;
   coverUrl?: string;
   communityAuthorId?: string;
@@ -79,6 +80,7 @@ export type VersionContext = {
 
 export type Submission = {
   id: string;
+  publisherId?: string;
   batchId?: string;
   operation?: "create" | "new_version" | "metadata";
   assetId?: string;
