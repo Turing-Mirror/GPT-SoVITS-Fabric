@@ -48,7 +48,7 @@
 
 广场在“引擎资源”下列出基础组件与各版本底模，包括 GPT-SoVITS v3 和 v4。v3 包含 SoVITS 权重和 BigVGAN 的配置及权重。v4 包含 SoVITS 权重和 v4 声码器。两组共用引擎资源中已有的 GPT s1v3。各文件沿用上游路径，v4 与 v5 的同名声码器按不同 Release 标签发布。
 
-角色卡片左上角显示发布日期，左下角用同样样式显示清单登记的底模版本。无法确认底模版本时省略左下角角标。文件体积直接显示。点击模型卡片上的作者名可打开站内作者主页。外部链接和来源仓库可在更多菜单打开。发布或编辑时可以填写外部链接的名称，留空则显示网站域名。
+角色卡片左上角显示发布日期，左下角用同样样式显示清单登记的底模版本。无法确认底模版本时省略左下角角标。文件体积直接显示。点击模型卡片上的作者名可打开站内作者主页。作者可在自己的作者主页或图灵镜账号页设置外部链接和名称，名称留空时显示域名。转载者可以在发布时注明原作者链接。
 
 对照固定上游版本表和公开附件，v2、v3、v4、v2ProPlus、v5dev 和 v5turbo 所需底模已有对应资源。v1 的 GPT 与 SoVITS 底模、v2Pro 的 SoVITS G/D，以及 v3 可选的 AP-BWE 超采样权重仍无广场下载项。现有 v1 和 v2Pro 成品角色可用各自随包权重。v2Pro 合成所需的声纹模型随基础引擎资源提供。
 
@@ -60,7 +60,7 @@
 
 ## Community publishing
 
-Open Publish from Community to choose a character ZIP from a public repository. Select the base model version used by the package, add an author page if you have one, and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions contains drafts, review history, and published models. Use Author page from the account menu or My submissions to see the models credited to you as the public sees them.
+Open Publish from Community to choose a character ZIP from a public repository. Select the base model version used by the package and crop a cover. A detected license fills the form and can be edited. Sign in with a TRM Account to submit for review. My submissions contains drafts, review history, and published models. Use Author page from the account menu or My submissions to see the models credited to you as the public sees them.
 
 Community keeps the current search, filters, department page, and scroll position when you switch tabs. Departments display eight at a time. Catalog filters and pagination use the shared TRM UI slide.
 

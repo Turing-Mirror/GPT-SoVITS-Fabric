@@ -8,7 +8,7 @@ export function publicationGroups(metadata: ModelMetadata | undefined, locale: s
 }
 
 export function CommunityPublicationCards({ children }: { children: ReactNode }) {
-  return <div className="columns-[220px] gap-4">{children}</div>;
+  return <div className="grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] items-start gap-4">{children}</div>;
 }
 
 export function CommunityPublicationCard({ id, title, description, cover, version, base, date, groups, size, actions }: {
@@ -32,7 +32,7 @@ export function CommunityPublicationCard({ id, title, description, cover, versio
   }).format(size / 1_000_000) : undefined;
   const categories = [...new Set(groups?.filter(Boolean))];
   return (
-    <article className="mb-4 inline-block w-full break-inside-avoid rounded-[var(--r)] bg-[var(--surface)] p-3 align-top">
+    <article className="min-w-0 rounded-[var(--r)] bg-[var(--surface)] p-3">
       <CatalogCover sources={cover ? [cover] : []} placeholder={title} seed={id}
         release={formattedDate && <time dateTime={date}>{formattedDate}</time>}
         detail={base && t("s.roleBaseVersion", { v0: base })} />

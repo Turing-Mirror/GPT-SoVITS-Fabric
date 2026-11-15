@@ -306,6 +306,7 @@ export async function prepareSubmission(draft: Draft, account: string, send = pu
 
   const file = selection?.file;
   const authorUrl = draft.authorUrl.trim();
+  const creditLink = draft.publisherRole !== "original_author";
   const body: SubmissionBody = {
     operation: metadataOnly ? "metadata" : draft.assetId ? "new_version" : "create",
     assetId: draft.assetId,
@@ -318,8 +319,10 @@ export async function prepareSubmission(draft: Draft, account: string, send = pu
       title: draft.title.trim(),
       description: draft.description.trim(),
       originalAuthor: draft.originalAuthor.trim(),
-      authorUrl: authorUrl || (draft.assetId ? null : undefined),
-      authorUrlLabel: authorUrl && draft.authorUrlLabel !== undefined ? draft.authorUrlLabel.trim() || null : undefined,
+      ...(creditLink ? {
+        authorUrl: authorUrl || (draft.assetId ? null : undefined),
+        authorUrlLabel: authorUrl && draft.authorUrlLabel !== undefined ? draft.authorUrlLabel.trim() || null : undefined,
+      } : {}),
       publisherRole: draft.publisherRole,
       upstreamUrl: selection?.canonicalUrl || draft.url.trim(),
       license: draft.license,

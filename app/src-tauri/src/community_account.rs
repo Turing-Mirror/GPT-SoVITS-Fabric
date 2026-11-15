@@ -429,6 +429,40 @@ fn public_status(current: Value) -> Value {
     })
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct AuthorProfileUpdate {
+    url: String,
+    label: String,
+}
+
+#[tauri::command]
+pub async fn community_account_author_profile(update: Option<AuthorProfileUpdate>) -> ApiResult {
+    let endpoint = url::Url::parse(&issuer()?)
+        .and_then(|url| url.join("/api/account/author-profile"))
+        .map_err(ApiError::invalid)?;
+    let http = http()?;
+    let token = access_token().await?;
+    let request = match update {
+        Some(link) => http
+            .put(endpoint)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_string(&link).map_err(ApiError::invalid)?),
+        None => http.get(endpoint),
+    };
+    let unavailable = || ApiError::new("unavailable", "Could not connect to TRM Account.");
+    let response = request.bearer_auth(token).send().await.map_err(|_| unavailable())?;
+    match response.status().as_u16() {
+        200 => {
+            let body = response.text().await.map_err(|_| unavailable())?;
+            serde_json::from_str(&body).map_err(|_| unavailable())
+        }
+        400 => Err(ApiError::new("invalid_author_link", "Enter a public HTTPS link.")),
+        401 => Err(ApiError::new("unauthorized", "Sign in to TRM Account.")),
+        429 => Err(ApiError::new("rate_limited", "Please try again later.")),
+        _ => Err(unavailable()),
+    }
+}
+
 #[tauri::command]
 pub async fn community_account_status() -> ApiResult {
     current().await.map(public_status)

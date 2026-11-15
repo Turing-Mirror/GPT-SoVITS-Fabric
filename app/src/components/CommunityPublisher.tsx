@@ -81,7 +81,8 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
   const license = draft.license;
   const hasDetails = Boolean(draft.title.trim() && draft.description.trim() && draft.originalAuthor.trim() &&
     draft.label.trim() && !issue && (license.id?.trim() || license.url?.trim() || license.text?.trim()) &&
-    (!license.url || validUrl(license.url)) && (!draft.authorUrl || validUrl(draft.authorUrl)));
+    (!license.url || validUrl(license.url)) &&
+    (draft.publisherRole === "original_author" || !draft.authorUrl || validUrl(draft.authorUrl)));
   const matching = source?.files.filter((file) => file.path.toLowerCase().endsWith(".zip") && file.path.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
   const total = Math.max(1, Math.ceil(matching.length / filesPerPage));
   const currentPage = Math.min(total, page);
@@ -269,9 +270,11 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
                       { id: "reposter", label: t("publication.reposter") },
                     ]} onChange={(role) => update({ publisherRole: role as PublisherRole })} />
                 } />
-                <TextField label={t("publication.authorLink")} value={draft.authorUrl} limit={2048} onChange={(authorUrl) => update({ authorUrl })} />
-                <TextField label={t("publication.authorLinkName")} value={draft.authorUrlLabel ?? ""} limit={AUTHOR_URL_LABEL_LIMIT}
-                  onChange={(authorUrlLabel) => update({ authorUrlLabel })} />
+                {draft.publisherRole !== "original_author" && <>
+                  <TextField label={t("publication.originalAuthorLink")} value={draft.authorUrl} limit={2048} onChange={(authorUrl) => update({ authorUrl })} />
+                  <TextField label={t("publication.authorLinkName")} value={draft.authorUrlLabel ?? ""} limit={AUTHOR_URL_LABEL_LIMIT}
+                    onChange={(authorUrlLabel) => update({ authorUrlLabel })} />
+                </>}
                 {!metadataOnly && <TextField label={t("publication.version")} value={draft.label} limit={100} onChange={(label) => update({ label })} />}
                 {issue === "unchanged_version" && <Warn>{t("publication.unchangedVersion")}</Warn>}
                 <TextField label={t("community.license")} value={license.id ?? ""} limit={200} onChange={(id) => update({ license: { ...license, id }, licenseEdited: true })} />
@@ -295,7 +298,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
             <div className="min-w-0 space-y-3">
               <h2 className="m-0 text-xl font-semibold">{draft.title}</h2>
               <p className="m-0 text-[13px] text-[var(--help)]">{draft.originalAuthor}　{draft.label}</p>
-              {draft.authorUrl && <p className="break-words text-[13px] text-[var(--help)]"
+              {draft.publisherRole !== "original_author" && draft.authorUrl && <p className="break-words text-[13px] text-[var(--help)]"
                 title={draft.authorUrl}>{authorLinkName(draft.authorUrl, draft.authorUrlLabel)}</p>}
               <p className="whitespace-pre-wrap break-words text-[13px]">{draft.description}</p>
               <p className="break-all text-[13px] text-[var(--ink-muted)]">{pack?.path}</p>

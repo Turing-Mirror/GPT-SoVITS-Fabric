@@ -2,15 +2,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SearchBox, useMenu, usePaneOn, type MenuItem } from "trm-ui";
 import { useI18n } from "../i18n";
 import { openExternal } from "../lib/plaza";
-import { authorLinkName, PUBLICATION_PAGE_SIZE, publication, publicationError, validUrl, type CatalogModel } from "../lib/communityPublication";
+import { PUBLICATION_PAGE_SIZE, publication, publicationError, validUrl, type CatalogModel } from "../lib/communityPublication";
 import { Btn, PageHead, Warn } from "./ui";
 import { CatalogTransition } from "./CatalogTransition";
+import { CommunityAuthorProfileActions } from "./CommunityAuthorProfileActions";
 import { CommunityPublicationCard, CommunityPublicationCards, publicationGroups } from "./CommunityPublicationCard";
 import { Pager } from "./Pager";
 
 type ModelPage = {
   name?: string;
-  authorUrl?: string;
+  authorUrl?: string | null;
   authorUrlLabel?: string;
   items: CatalogModel[];
   page?: number;
@@ -26,7 +27,7 @@ type ModelListState = {
   visiblePage: number;
   totalPages?: number;
   pages: Record<number, ModelPage>;
-  profile?: { name?: string; link?: { url: string; label: string } };
+  profile?: { name?: string; link?: { url: string; label?: string | null } };
   error: string;
   busy: boolean;
   refreshing: boolean;
@@ -80,12 +81,12 @@ export function useCommunityModels({ account, author, own, active }: {
     }).then((next) => {
       if (!current) return;
       const receivedPage = next.page ?? page;
-      const fallback = author && !next.authorUrl
+      const fallback = author && next.authorUrl === undefined
         ? next.items.find((item) => item.authorUrl && validUrl(item.authorUrl))
         : undefined;
       const url = next.authorUrl || fallback?.authorUrl;
       const link = author && url && validUrl(url)
-        ? { url, label: authorLinkName(url, next.authorUrlLabel ?? fallback?.authorUrlLabel) }
+        ? { url, label: next.authorUrlLabel ?? fallback?.authorUrlLabel }
         : undefined;
       setState((value) => isCurrentRequest(value) ? {
         ...value,
@@ -129,12 +130,14 @@ export function CommunityAuthorModels({ author, own, ownName, onBack, onView }: 
 }) {
   const active = usePaneOn();
   const list = useCommunityModels({ author, own, active });
-  return <CommunityModelList list={list} ownName={ownName} onBack={onBack} onView={onView} />;
+  return <CommunityModelList list={list} ownName={ownName} ownAuthor={own} authorActive={active} onBack={onBack} onView={onView} />;
 }
 
-export function CommunityModelList({ list, ownName, onBack, onManage, onView }: {
+export function CommunityModelList({ list, ownName, ownAuthor, authorActive, onBack, onManage, onView }: {
   list: ReturnType<typeof useCommunityModels>;
   ownName?: string | null;
+  ownAuthor?: boolean;
+  authorActive?: boolean;
   onBack?: () => void;
   onManage?: (item: CatalogModel, action: "listing" | "version") => void;
   onView: (item: CatalogModel) => void;
@@ -142,7 +145,6 @@ export function CommunityModelList({ list, ownName, onBack, onManage, onView }: 
   const { t, locale } = useI18n();
   const menu = useMenu();
   const { query, search, profile, page, visiblePage, result, error, busy, availablePages, setQuery, setPage, retry } = list;
-  const authorLink = profile?.link;
   const results = useRef<HTMLDivElement>(null);
   const oldPage = useRef(visiblePage);
   useLayoutEffect(() => {
@@ -168,9 +170,7 @@ export function CommunityModelList({ list, ownName, onBack, onManage, onView }: 
 
   return <>
     {onBack && <PageHead title={profile?.name || ownName || t("s.voiceLinkAuthor")} back={onBack}
-      actions={authorLink && <Btn text onClick={() => void openExternal(authorLink.url)}>
-        <span className="block max-w-52 truncate" title={authorLink.url}>{authorLink.label}</span>
-      </Btn>} />}
+      actions={<CommunityAuthorProfileActions fallback={profile?.link} own={ownAuthor} active={authorActive} />} />}
     <div className="mb-4 mt-3"><SearchBox value={query} ariaLabel={t("ui.common.search")} onChange={setQuery} /></div>
     {error && <Warn className="mb-4">{error} <Btn text onClick={retry}>{t("s.38108eaa1d")}</Btn></Warn>}
     <div ref={results} aria-busy={busy}>

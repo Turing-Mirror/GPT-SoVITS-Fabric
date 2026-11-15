@@ -1559,6 +1559,7 @@ pub fn run() {
             provision_cancel,
             store_catalog,
             community_links,
+            community_account::community_account_author_profile,
             community_account::community_account_status,
             community_account::community_account_sign_in,
             community_account::community_account_sign_out,

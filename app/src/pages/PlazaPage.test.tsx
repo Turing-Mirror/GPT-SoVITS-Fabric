@@ -180,7 +180,15 @@ it("can jump straight to the last owned page and return from the public author p
   let finishPage!: (result: { items: CatalogModel[]; page: number; totalPages: number }) => void;
   const last = new Promise<{ items: CatalogModel[]; page: number; totalPages: number }>(resolve => { finishPage = resolve; });
   const requested: number[] = [];
-  invoke.mockImplementation(async (command: string, input?: { request?: { action: string; id?: string; page?: number } }) => {
+  invoke.mockImplementation(async (command: string, input?: {
+    request?: { action: string; id?: string; page?: number };
+    update?: { url: string; label: string };
+  }) => {
+    if (command === "community_account_author_profile") {
+      return input?.update
+        ? { configured: true, url: "https://github.com/example", label: "GitHub" }
+        : { configured: false, url: null, label: null };
+    }
     if (command === "community_links") return { enabled: true, accountUrl };
     if (command === "community_account_status") return signedIn;
     if (input?.request?.action === "owned") {
@@ -219,6 +227,13 @@ it("can jump straight to the last owned page and return from the public author p
   expect(author.querySelector("article")?.textContent).toContain("First model");
   await act(async () => button("哔哩哔哩", author).click());
   expect(invoke).toHaveBeenCalledWith("open_external", { url: "https://space.bilibili.com/123" });
+  await act(async () => button("Edit author page", author).click());
+  const profileEditor = document.body.querySelector<HTMLElement>('[role="dialog"]:not([inert])')!;
+  const linkInput = profileEditor.querySelector<HTMLInputElement>('input[aria-label="Author page link"]')!;
+  expect(linkInput.value).toBe("https://space.bilibili.com/123");
+  await act(async () => profileEditor.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(invoke).toHaveBeenCalledWith("community_account_author_profile", { update: { url: linkInput.value, label: "哔哩哔哩" } });
+  expect(button("GitHub", author)).toBeDefined();
   expect(author.querySelector('button[aria-label="More"]')).toBeNull();
   await act(async () => author.querySelector<HTMLButtonElement>("h2 button")!.click());
   await settleSlide();
@@ -278,7 +293,7 @@ it("manages an owned model in My submissions and requires its updated ZIP for a 
   const listingEditor = host.querySelector<HTMLElement>('[data-trm-pane="publish"]')!;
   expect(listingEditor.querySelector("h2")?.textContent).toContain("Edit listing");
   expect(listingEditor.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]')?.value).toBe(asset.description);
-  expect(listingEditor.querySelector<HTMLInputElement>('input[aria-label="Link name"]')?.value).toBe("GitHub");
+  expect(listingEditor.querySelector('input[aria-label="Link name"]')).toBeNull();
   expect(listingEditor.querySelector<HTMLElement>('[data-trm-pane="details"]')?.hidden).toBe(false);
 
   await settleSlide();
@@ -324,10 +339,10 @@ it("manages an owned model in My submissions and requires its updated ZIP for a 
   expect(prepared.body.version.files[0].sha256).toBeUndefined();
 
   const listing = editListingDraft(asset, current)!;
-  const metadata = await prepareSubmission({ ...listing, description: "Updated description", authorUrlLabel: "Code" }, signedIn.email);
-  expect(metadata.body.asset).toMatchObject({ authorUrl: asset.authorUrl, authorUrlLabel: "Code" });
-  const unnamed = await prepareSubmission({ ...listing, authorUrlLabel: "" }, signedIn.email);
-  expect(unnamed.body.asset).toMatchObject({ authorUrl: asset.authorUrl, authorUrlLabel: null });
+  const metadata = await prepareSubmission({ ...listing, description: "Updated description" }, signedIn.email);
+  expect(metadata.body.asset).not.toHaveProperty("authorUrl");
+  const credit = await prepareSubmission({ ...listing, publisherRole: "reposter", authorUrlLabel: "Code" }, signedIn.email);
+  expect(credit.body.asset).toMatchObject({ authorUrl: asset.authorUrl, authorUrlLabel: "Code" });
   expect(metadata.body).toMatchObject({
     operation: "metadata", assetId: asset.id, versionId: current.id,
     asset: { description: "Updated description", upstreamUrl: repository },

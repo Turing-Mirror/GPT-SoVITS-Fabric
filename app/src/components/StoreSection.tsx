@@ -943,7 +943,7 @@ function VoiceCard({
   const links: MenuItem[] = [];
   if (onOpenModel) links.push({ id: "details", label: t("publication.viewModel"), onSelect: onOpenModel });
   if (onAuthor && !detail) links.push({ id: "author", label: t("s.voiceLinkAuthor"), onSelect: onAuthor });
-  if (authors.length) {
+  if (!v.community_author_id && authors.length) {
     const externalName = authors.length === 1 ? authorLinkName(authors[0].url!, v.author_url_label) : "";
     links.push({
       id: "external-author", label: externalName || t(onAuthor ? "publication.externalAuthor" : "s.voiceLinkAuthor"),

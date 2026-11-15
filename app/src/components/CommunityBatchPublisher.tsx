@@ -23,7 +23,8 @@ function canSubmit(draft: Draft, signedIn: boolean, account: string) {
     && !!(providerHash(draft.selection.file) || isSha256(draft.checksum))
     && !!(draft.title.trim() && draft.originalAuthor.trim() && draft.description.trim() && draft.label.trim())
     && !!(draft.license.id?.trim() || draft.license.url?.trim() || draft.license.text?.trim())
-    && (!draft.authorUrl || validUrl(draft.authorUrl)) && (!draft.license.url || validUrl(draft.license.url));
+    && (draft.publisherRole === "original_author" || !draft.authorUrl || validUrl(draft.authorUrl))
+    && (!draft.license.url || validUrl(draft.license.url));
 }
 
 export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmitted }: {
@@ -306,8 +307,6 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
           <div className="space-y-4">
             <h2 className="text-base font-semibold">{t("publication.sharedDetails")}</h2>
             {sharedField("originalAuthor", t("publication.author"))}
-            {sharedField("authorUrl", t("publication.authorLink"))}
-            {sharedField("authorUrlLabel", t("publication.authorLinkName"))}
             <Field label={t("publication.publisherRole")} control={<Select full ariaLabel={t("publication.publisherRole")}
               disabled={Boolean(busy)} value={batch.shared.publisherRole}
               options={[
@@ -315,6 +314,10 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
                 { id: "maintainer", label: t("publication.maintainer") },
                 { id: "reposter", label: t("publication.reposter") },
               ]} onChange={(publisherRole) => update({ shared: { ...batch.shared, publisherRole: publisherRole as PublisherRole } })} />} />
+            {batch.shared.publisherRole !== "original_author" && <>
+              {sharedField("authorUrl", t("publication.originalAuthorLink"))}
+              {sharedField("authorUrlLabel", t("publication.authorLinkName"))}
+            </>}
             {sharedField("description", t("publication.description"), true)}
             <CommunityCategories value={batch.shared.categorySelection} series={batch.shared.series} group={batch.shared.group} disabled={Boolean(busy)}
               onChange={(categorySelection) => update({ shared: { ...batch.shared, categorySelection, series: "", group: "" } })} />
@@ -333,9 +336,11 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
             {row && !row.submitted && !row.draft.pending && <>
               {field(t("publication.name"), row.draft.title || suggestedTitle(row.draft.selection?.file.path || ""), (title) => updateRow(active, { title }))}
               {field(t("publication.author"), row.draft.originalAuthor, (originalAuthor) => updateRow(active, { originalAuthor }))}
-              {field(t("publication.authorLink"), row.draft.authorUrl, (authorUrl) => updateRow(active, { authorUrl }))}
-              {field(t("publication.authorLinkName"), row.draft.authorUrlLabel ?? "",
-                (authorUrlLabel) => updateRow(active, { authorUrlLabel }), { limit: AUTHOR_URL_LABEL_LIMIT })}
+              {batch.shared.publisherRole !== "original_author" && <>
+                {field(t("publication.originalAuthorLink"), row.draft.authorUrl, (authorUrl) => updateRow(active, { authorUrl }))}
+                {field(t("publication.authorLinkName"), row.draft.authorUrlLabel ?? "",
+                  (authorUrlLabel) => updateRow(active, { authorUrlLabel }), { limit: AUTHOR_URL_LABEL_LIMIT })}
+              </>}
               {field(t("publication.description"), row.draft.description, (description) => updateRow(active, { description }), { multiline: true })}
               {details && <CommunityCategories key={row.draft.id} value={details.categorySelection} series={details.series} group={details.group} disabled={Boolean(busy)}
                 onChange={(categorySelection) => updateRow(active, { categorySelection, series: "", group: "" })} />}
@@ -371,7 +376,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
               <div className="min-w-0 flex-1 break-words">
                 <div>{draft.title || draft.selection?.file.path}</div>
                 <div className="text-[var(--help)]">{[draft.originalAuthor, draft.label, draftBaseVersion(draft), draft.license.id].filter(Boolean).join("  ")}</div>
-                {draft.authorUrl && <div className="break-words text-[var(--help)]"
+                {draft.publisherRole !== "original_author" && draft.authorUrl && <div className="break-words text-[var(--help)]"
                   title={draft.authorUrl}>{authorLinkName(draft.authorUrl, draft.authorUrlLabel)}</div>}
                 {item.error && <div className="text-[var(--warn)]">{item.error}</div>}
               </div>
