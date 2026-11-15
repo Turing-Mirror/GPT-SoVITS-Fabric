@@ -3,6 +3,8 @@ import { Field, Pane, Panes, SearchBox, SegmentControl, Select, TextArea, TextIn
 import { useI18n } from "../i18n";
 import { useSubmissionCover } from "../hooks/useSubmissionCover";
 import {
+  AUTHOR_URL_LABEL_LIMIT,
+  authorLinkName,
   characterBaseVersions,
   draftBaseVersion,
   isSha256,
@@ -259,7 +261,6 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
               <TextField label={t("publication.description")} value={draft.description} limit={20000} multiline onChange={(description) => update({ description })} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField label={t("publication.author")} value={draft.originalAuthor} limit={200} onChange={(originalAuthor) => update({ originalAuthor })} />
-                <TextField label={t("s.voiceLinkAuthor")} value={draft.authorUrl} limit={2048} onChange={(authorUrl) => update({ authorUrl })} />
                 <Field label={t("publication.publisherRole")} control={
                   <Select full ariaLabel={t("publication.publisherRole")} value={draft.publisherRole}
                     options={[
@@ -268,6 +269,9 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
                       { id: "reposter", label: t("publication.reposter") },
                     ]} onChange={(role) => update({ publisherRole: role as PublisherRole })} />
                 } />
+                <TextField label={t("publication.authorLink")} value={draft.authorUrl} limit={2048} onChange={(authorUrl) => update({ authorUrl })} />
+                <TextField label={t("publication.authorLinkName")} value={draft.authorUrlLabel ?? ""} limit={AUTHOR_URL_LABEL_LIMIT}
+                  onChange={(authorUrlLabel) => update({ authorUrlLabel })} />
                 {!metadataOnly && <TextField label={t("publication.version")} value={draft.label} limit={100} onChange={(label) => update({ label })} />}
                 {issue === "unchanged_version" && <Warn>{t("publication.unchangedVersion")}</Warn>}
                 <TextField label={t("community.license")} value={license.id ?? ""} limit={200} onChange={(id) => update({ license: { ...license, id }, licenseEdited: true })} />
@@ -291,7 +295,8 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
             <div className="min-w-0 space-y-3">
               <h2 className="m-0 text-xl font-semibold">{draft.title}</h2>
               <p className="m-0 text-[13px] text-[var(--help)]">{draft.originalAuthor}　{draft.label}</p>
-              {draft.authorUrl && <p className="break-all text-[13px] text-[var(--help)]">{draft.authorUrl}</p>}
+              {draft.authorUrl && <p className="break-words text-[13px] text-[var(--help)]"
+                title={draft.authorUrl}>{authorLinkName(draft.authorUrl, draft.authorUrlLabel)}</p>}
               <p className="whitespace-pre-wrap break-words text-[13px]">{draft.description}</p>
               <p className="break-all text-[13px] text-[var(--ink-muted)]">{pack?.path}</p>
               {baseVersion && <p className="text-[13px] text-[var(--help)]">{t("s.roleBaseVersion", { v0: baseVersion })}</p>}

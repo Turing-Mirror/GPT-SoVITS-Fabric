@@ -154,6 +154,7 @@ fn entry(asset: &Value, api: &Url) -> Option<Value> {
         "author": field(asset, "originalAuthor"),
         "community_author_id": field(asset, "communityAuthorId"),
         "author_url": public_url(field(asset, "authorUrl")).ok().filter(|url| url.scheme() == "https").map(|url| url.to_string()),
+        "author_url_label": field(asset, "authorUrlLabel"),
         "series": field(meta, "series"),
         "series_i18n": meta["seriesI18n"],
         "group": field(meta, "group"),

@@ -1552,6 +1552,7 @@
     "selectResults": "選擇搜尋結果",
     "batchFilter": "只顯示此批次",
     "authorLink": "作者頁面連結",
+    "authorLinkName": "連結名稱",
     "sourceChanged": "來源已變更。請重新讀取並確認選擇。",
     "signInRequired": "請登入圖靈鏡帳號後繼續。",
     "readAgain": "請重新讀取來源並確認檔案。",

@@ -35,6 +35,16 @@ describe("repository-backed batch publishing", () => {
     });
   });
 
+  it("applies a shared link name only to the shared author link", () => {
+    const batch = newBatch();
+    batch.shared.authorUrl = "https://github.com/example";
+    batch.shared.authorUrlLabel = "GitHub";
+    expect(resolveBatchDraft(batch, newDraft())).toMatchObject({ authorUrl: batch.shared.authorUrl, authorUrlLabel: "GitHub" });
+    const localLink = { ...newDraft(), authorUrl: "https://space.bilibili.com/123" };
+    expect(resolveBatchDraft(batch, localLink)).toMatchObject({ authorUrl: localLink.authorUrl, authorUrlLabel: undefined });
+    expect(resolveBatchDraft(batch, { ...localLink, authorUrlLabel: "哔哩哔哩" }).authorUrlLabel).toBe("哔哩哔哩");
+  });
+
   it("drops the old selection if the release attachment changes without a digest", () => {
     const before: SourceFile = { ...other, assetId: "release-file", updatedAt: "2026-11-11" };
     const draft = setBatchFile(newDraft(), source, before, "fixture");

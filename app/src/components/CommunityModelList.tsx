@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SearchBox, useMenu, usePaneOn, type MenuItem } from "trm-ui";
 import { useI18n } from "../i18n";
 import { openExternal } from "../lib/plaza";
-import { PUBLICATION_PAGE_SIZE, publication, publicationError, validUrl, type CatalogModel } from "../lib/communityPublication";
+import { authorLinkName, PUBLICATION_PAGE_SIZE, publication, publicationError, validUrl, type CatalogModel } from "../lib/communityPublication";
 import { Btn, PageHead, Warn } from "./ui";
 import { CatalogTransition } from "./CatalogTransition";
 import { CommunityPublicationCard, CommunityPublicationCards, publicationGroups } from "./CommunityPublicationCard";
@@ -11,6 +11,7 @@ import { Pager } from "./Pager";
 type ModelPage = {
   name?: string;
   authorUrl?: string;
+  authorUrlLabel?: string;
   items: CatalogModel[];
   page?: number;
   totalPages?: number;
@@ -25,7 +26,7 @@ type ModelListState = {
   visiblePage: number;
   totalPages?: number;
   pages: Record<number, ModelPage>;
-  profile?: { name?: string; url?: string };
+  profile?: { name?: string; link?: { url: string; label: string } };
   error: string;
   busy: boolean;
   refreshing: boolean;
@@ -79,15 +80,20 @@ export function useCommunityModels({ account, author, own, active }: {
     }).then((next) => {
       if (!current) return;
       const receivedPage = next.page ?? page;
-      const url = author && next.authorUrl && validUrl(next.authorUrl) ? next.authorUrl
-        : author ? next.items.find((item) => item.authorUrl && validUrl(item.authorUrl))?.authorUrl : undefined;
+      const fallback = author && !next.authorUrl
+        ? next.items.find((item) => item.authorUrl && validUrl(item.authorUrl))
+        : undefined;
+      const url = next.authorUrl || fallback?.authorUrl;
+      const link = author && url && validUrl(url)
+        ? { url, label: authorLinkName(url, next.authorUrlLabel ?? fallback?.authorUrlLabel) }
+        : undefined;
       setState((value) => isCurrentRequest(value) ? {
         ...value,
         page: receivedPage,
         visiblePage: receivedPage,
         totalPages: next.totalPages,
         pages: { ...(refreshing ? {} : value.pages), [receivedPage]: next },
-        profile: author ? { name: next.name ?? value.profile?.name, url: url ?? value.profile?.url } : undefined,
+        profile: author ? { name: next.name ?? value.profile?.name, link } : undefined,
         busy: false,
         refreshing: false,
       } : value);
@@ -136,6 +142,7 @@ export function CommunityModelList({ list, ownName, onBack, onManage, onView }: 
   const { t, locale } = useI18n();
   const menu = useMenu();
   const { query, search, profile, page, visiblePage, result, error, busy, availablePages, setQuery, setPage, retry } = list;
+  const authorLink = profile?.link;
   const results = useRef<HTMLDivElement>(null);
   const oldPage = useRef(visiblePage);
   useLayoutEffect(() => {
@@ -161,7 +168,9 @@ export function CommunityModelList({ list, ownName, onBack, onManage, onView }: 
 
   return <>
     {onBack && <PageHead title={profile?.name || ownName || t("s.voiceLinkAuthor")} back={onBack}
-      actions={profile?.url && <Btn text onClick={() => void openExternal(profile.url!)}>{t("publication.externalAuthor")}</Btn>} />}
+      actions={authorLink && <Btn text onClick={() => void openExternal(authorLink.url)}>
+        <span className="block max-w-52 truncate" title={authorLink.url}>{authorLink.label}</span>
+      </Btn>} />}
     <div className="mb-4 mt-3"><SearchBox value={query} ariaLabel={t("ui.common.search")} onChange={setQuery} /></div>
     {error && <Warn className="mb-4">{error} <Btn text onClick={retry}>{t("s.38108eaa1d")}</Btn></Warn>}
     <div ref={results} aria-busy={busy}>

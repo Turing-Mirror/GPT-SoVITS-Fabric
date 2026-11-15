@@ -190,7 +190,8 @@ it("can jump straight to the last owned page and return from the public author p
     }
     if (input?.request?.action === "author") {
       expect(input.request.id).toBe(signedIn.authorId);
-      return { items: [model], page: 1, totalPages: 18, name: "Public name" };
+      return { items: [model], page: 1, totalPages: 18, name: "Public name",
+        authorUrl: "https://space.bilibili.com/123", authorUrlLabel: "哔哩哔哩" };
     }
     return {};
   });
@@ -216,6 +217,8 @@ it("can jump straight to the last owned page and return from the public author p
   expect(author.hidden).toBe(false);
   expect(author.querySelector("h2")?.textContent).toContain("Public name");
   expect(author.querySelector("article")?.textContent).toContain("First model");
+  await act(async () => button("哔哩哔哩", author).click());
+  expect(invoke).toHaveBeenCalledWith("open_external", { url: "https://space.bilibili.com/123" });
   expect(author.querySelector('button[aria-label="More"]')).toBeNull();
   await act(async () => author.querySelector<HTMLButtonElement>("h2 button")!.click());
   await settleSlide();
@@ -228,6 +231,7 @@ it("manages an owned model in My submissions and requires its updated ZIP for a 
   const settleSlide = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, FLOW_MS + 25)); });
   const asset: CommunityAsset = {
     id: "rin", title: "Rin (Chinese)", description: "A character package with reference clips.", originalAuthor: "Test publisher",
+    authorUrl: "https://github.com/example", authorUrlLabel: "GitHub",
     publisherRole: "original_author", license: { id: "CC-BY-4.0" }, coverUrl: "https://example.test/cover.webp",
     metadata: { family: "gpt-sovits", familyVersion: "v5turbo", series: "Blue Archive", group: "General Affairs Department",
       groupI18n: { "zh-CN": "总务部" }, language: "zh" },
@@ -274,6 +278,7 @@ it("manages an owned model in My submissions and requires its updated ZIP for a 
   const listingEditor = host.querySelector<HTMLElement>('[data-trm-pane="publish"]')!;
   expect(listingEditor.querySelector("h2")?.textContent).toContain("Edit listing");
   expect(listingEditor.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]')?.value).toBe(asset.description);
+  expect(listingEditor.querySelector<HTMLInputElement>('input[aria-label="Link name"]')?.value).toBe("GitHub");
   expect(listingEditor.querySelector<HTMLElement>('[data-trm-pane="details"]')?.hidden).toBe(false);
 
   await settleSlide();
@@ -319,7 +324,10 @@ it("manages an owned model in My submissions and requires its updated ZIP for a 
   expect(prepared.body.version.files[0].sha256).toBeUndefined();
 
   const listing = editListingDraft(asset, current)!;
-  const metadata = await prepareSubmission({ ...listing, description: "Updated description" }, signedIn.email);
+  const metadata = await prepareSubmission({ ...listing, description: "Updated description", authorUrlLabel: "Code" }, signedIn.email);
+  expect(metadata.body.asset).toMatchObject({ authorUrl: asset.authorUrl, authorUrlLabel: "Code" });
+  const unnamed = await prepareSubmission({ ...listing, authorUrlLabel: "" }, signedIn.email);
+  expect(unnamed.body.asset).toMatchObject({ authorUrl: asset.authorUrl, authorUrlLabel: null });
   expect(metadata.body).toMatchObject({
     operation: "metadata", assetId: asset.id, versionId: current.id,
     asset: { description: "Updated description", upstreamUrl: repository },

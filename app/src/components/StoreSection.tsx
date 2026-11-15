@@ -53,6 +53,7 @@ import type { VoiceAuthor } from "../lib/voices";
 import { useI18n } from "../i18n";
 import { Leave } from "./Presence";
 import { joinClauses } from "../lib/text";
+import { authorLinkName } from "../lib/communityPublication";
 
 /** Parent + child focus key. Tab never appears in series / group labels. */
 const FOCUS_SEP = "\t";
@@ -921,6 +922,7 @@ function VoiceCard({
     }
   }, [progress?.done]);
   const author = displayVoiceAuthor(v, loc);
+  const attribution = author ? t("s.7feea73fa3", { v0: author }) : t("s.2af26573b0");
   const parentLabel = voiceParentSeries(v, loc);
   const childLabel = voiceChildGroup(v, loc);
   const base = /^v(?:[1-5]|2Pro(?:Plus)?|5dev|5turbo)$/.test(v.version ?? "") ? v.version : "";
@@ -942,8 +944,9 @@ function VoiceCard({
   if (onOpenModel) links.push({ id: "details", label: t("publication.viewModel"), onSelect: onOpenModel });
   if (onAuthor && !detail) links.push({ id: "author", label: t("s.voiceLinkAuthor"), onSelect: onAuthor });
   if (authors.length) {
+    const externalName = authors.length === 1 ? authorLinkName(authors[0].url!, v.author_url_label) : "";
     links.push({
-      id: "external-author", label: t(onAuthor ? "publication.externalAuthor" : "s.voiceLinkAuthor"),
+      id: "external-author", label: externalName || t(onAuthor ? "publication.externalAuthor" : "s.voiceLinkAuthor"),
       onSelect: () => {
         if (authors.length === 1) void openExternal(authors[0].url || "");
         else setAuthorPick(authors);
@@ -1047,11 +1050,13 @@ function VoiceCard({
       <div className="text-[15px] font-semibold mt-2.5 truncate" title={title}>
         {title}
       </div>
-      <div
-        className="text-xs text-[var(--meta)] mt-0.5 truncate"
-        title={author || undefined}
-      >
-        {author ? t("s.7feea73fa3", { v0: author }) : t("s.2af26573b0")}
+      <div className="mt-0.5 text-xs text-[var(--meta)]">
+        {onAuthor && author ? (
+          <button type="button" onClick={onAuthor} title={attribution}
+            className="block max-w-full cursor-pointer truncate rounded-[var(--rs)] border-0 bg-transparent p-0 text-start text-[var(--accent-text)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+            {attribution}
+          </button>
+        ) : <div className="truncate" title={author || undefined}>{attribution}</div>}
       </div>
       {meta ? (
         <div className="text-[11.5px] text-[var(--meta)] truncate" title={meta}>

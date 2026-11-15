@@ -48,6 +48,7 @@ export type StoreVoice = {
   author?: string;
   author_i18n?: Record<string, string>;
   author_url?: string;
+  author_url_label?: string;
   /** 多作者写法（清单的 authors 数组）。 */
   authors?: VoiceAuthor[];
   date?: string;

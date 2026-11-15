@@ -23,6 +23,7 @@ export type Source = {
 export type PublisherRole = "original_author" | "reposter" | "maintainer";
 export type ReviewState = "pending" | "published" | "rejected" | "withdrawn";
 export const PUBLICATION_PAGE_SIZE = 16;
+export const AUTHOR_URL_LABEL_LIMIT = 80;
 export type Category = { id: string; name: string; names: Record<string, string>; aliases: string[] };
 export type CategoryChoice = { id: string } | { name: string; locale: string; translations?: Record<string, string> };
 export type CategorySelection = { series: CategoryChoice; department?: CategoryChoice };
@@ -93,7 +94,8 @@ export type Submission = {
     title: string;
     description: string;
     originalAuthor: string;
-    authorUrl?: string;
+    authorUrl?: string | null;
+    authorUrlLabel?: string | null;
     publisherRole: PublisherRole;
     license: License;
     metadata?: ModelMetadata;
@@ -127,6 +129,7 @@ export type Draft = {
   description: string;
   originalAuthor: string;
   authorUrl: string;
+  authorUrlLabel?: string;
   publisherRole: PublisherRole;
   license: License;
   licenseEdited?: boolean;
@@ -161,6 +164,7 @@ export function newDraft(previous?: Submission, assetId?: string): Draft {
     description: previous?.asset.description ?? "",
     originalAuthor: previous?.asset.originalAuthor ?? "",
     authorUrl: previous?.asset.authorUrl ?? "",
+    authorUrlLabel: previous?.asset.authorUrlLabel ?? undefined,
     publisherRole: previous?.asset.publisherRole ?? "original_author",
     license: previous?.asset.license ?? {},
     licenseEdited: Boolean(previous),
@@ -249,6 +253,16 @@ export function validUrl(value: string) {
   }
 }
 
+export function authorLinkName(url: string, label?: string | null) {
+  const name = label?.trim();
+  if (name) return name;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 export const isSha256 = (value: string) => /^[a-f0-9]{64}$/i.test(value.trim());
 export const providerHash = (file: SourceFile) =>
   file.providerDigest?.algorithm.toLowerCase() === "sha256" && isSha256(file.providerDigest.value)
@@ -291,6 +305,7 @@ export async function prepareSubmission(draft: Draft, account: string, send = pu
   }
 
   const file = selection?.file;
+  const authorUrl = draft.authorUrl.trim();
   const body: SubmissionBody = {
     operation: metadataOnly ? "metadata" : draft.assetId ? "new_version" : "create",
     assetId: draft.assetId,
@@ -303,7 +318,8 @@ export async function prepareSubmission(draft: Draft, account: string, send = pu
       title: draft.title.trim(),
       description: draft.description.trim(),
       originalAuthor: draft.originalAuthor.trim(),
-      authorUrl: draft.authorUrl.trim() || undefined,
+      authorUrl: authorUrl || (draft.assetId ? null : undefined),
+      authorUrlLabel: authorUrl && draft.authorUrlLabel !== undefined ? draft.authorUrlLabel.trim() || null : undefined,
       publisherRole: draft.publisherRole,
       upstreamUrl: selection?.canonicalUrl || draft.url.trim(),
       license: draft.license,

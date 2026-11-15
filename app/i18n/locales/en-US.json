@@ -1552,6 +1552,7 @@
     "selectResults": "Select results",
     "batchFilter": "Show batch only",
     "authorLink": "Author page link",
+    "authorLinkName": "Link name",
     "sourceChanged": "The source changed. Read it again and confirm your selection.",
     "signInRequired": "Sign in to TRM Account to continue.",
     "readAgain": "Read the source again and confirm the file.",

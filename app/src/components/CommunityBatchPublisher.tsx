@@ -3,7 +3,7 @@ import { Field, Pane, Panes, SearchBox, SegmentControl, Select, TextArea, TextIn
 import { useI18n } from "../i18n";
 import { chooseManifest, choosePacks, newBatch, readBatch, resolveBatchDraft, saveBatch, setBatchFile,
   batchRequest, matchesSnapshot, uniqueMatches, suggestedTitle, fillPackDetails, type BatchDraft, type BatchRow, type Pack } from "../lib/communityBatch";
-import { characterBaseVersions, draftBaseVersion, isSha256, newDraft, prepareSubmission, providerHash, publication,
+import { AUTHOR_URL_LABEL_LIMIT, authorLinkName, characterBaseVersions, draftBaseVersion, isSha256, newDraft, prepareSubmission, providerHash, publication,
   publicationError, validUrl, type Draft, type Source, type SourceFile, type Submission, type PublisherRole } from "../lib/communityPublication";
 import { Btn, PageHead, PagePad, Warn } from "./ui";
 import { CatalogTransition } from "./CatalogTransition";
@@ -247,12 +247,14 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
 
   const labels = { source: t("publication.source"), details: t("publication.details"), preview: t("publication.preview") };
   const details = row && resolveBatchDraft(batch, row.draft);
-  const field = (label: string, value: string, change: (value: string) => void, multiline = false, locked = false) =>
+  const field = (label: string, value: string, change: (value: string) => void,
+    { multiline, locked, limit }: { multiline?: boolean; locked?: boolean; limit?: number } = {}) =>
     <Field label={label} control={multiline
       ? <TextArea aria-label={label} value={value} onChange={change} disabled={locked || Boolean(busy)} rows={3} />
-      : <TextInput aria-label={label} value={value} onChange={change} disabled={locked || Boolean(busy)} />} />;
-  const sharedField = (key: "originalAuthor" | "authorUrl" | "description", label: string, multiline = false) =>
-    field(label, batch.shared[key], (value) => update({ shared: { ...batch.shared, [key]: value } }), multiline);
+      : <TextInput aria-label={label} value={value} onChange={change} maxLength={limit} disabled={locked || Boolean(busy)} />} />;
+  const sharedField = (key: "originalAuthor" | "authorUrl" | "authorUrlLabel" | "description", label: string, multiline = false) =>
+    field(label, batch.shared[key] ?? "", (value) => update({ shared: { ...batch.shared, [key]: value } }),
+      { multiline, limit: key === "authorUrlLabel" ? AUTHOR_URL_LABEL_LIMIT : undefined });
 
   return <PagePad width="wide">
     <PageHead title={t("publication.batch")} actions={<>
@@ -265,8 +267,8 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
     <Panes value={step} order={steps} transition="slide" className="mt-4" keepScroll>
       <Pane id="source">
         <div className="space-y-4 py-3">
-          {field(t("publication.sourceLink"), batch.url, (url) => changeSource({ url }), false, hasSubmission)}
-          {field(t("publication.revision"), batch.revision, (revision) => changeSource({ revision }), false, hasSubmission)}
+          {field(t("publication.sourceLink"), batch.url, (url) => changeSource({ url }), { locked: hasSubmission })}
+          {field(t("publication.revision"), batch.revision, (revision) => changeSource({ revision }), { locked: hasSubmission })}
           <div className="flex flex-wrap gap-2">
             {signedIn
               ? <Btn disabled={!ready || !validUrl(batch.url) || Boolean(busy)} busy={busy === "resolve"} onClick={() => void readSource()}>{t("publication.readSource")}</Btn>
@@ -305,6 +307,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
             <h2 className="text-base font-semibold">{t("publication.sharedDetails")}</h2>
             {sharedField("originalAuthor", t("publication.author"))}
             {sharedField("authorUrl", t("publication.authorLink"))}
+            {sharedField("authorUrlLabel", t("publication.authorLinkName"))}
             <Field label={t("publication.publisherRole")} control={<Select full ariaLabel={t("publication.publisherRole")}
               disabled={Boolean(busy)} value={batch.shared.publisherRole}
               options={[
@@ -320,7 +323,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
               onChange={(baseVersion) => update({ shared: { ...batch.shared, baseVersion } })} />} />
             {field(t("community.license"), batch.shared.license.id || "", (id) => update({ shared: { ...batch.shared, license: { ...batch.shared.license, id }, licenseEdited: true } }))}
             {field(t("publication.licenseLink"), batch.shared.license.url || "", (url) => update({ shared: { ...batch.shared, license: { ...batch.shared.license, url }, licenseEdited: true } }))}
-            {field(t("publication.licenseTerms"), batch.shared.license.text || "", (text) => update({ shared: { ...batch.shared, license: { ...batch.shared.license, text }, licenseEdited: true } }), true)}
+            {field(t("publication.licenseTerms"), batch.shared.license.text || "", (text) => update({ shared: { ...batch.shared, license: { ...batch.shared.license, text }, licenseEdited: true } }), { multiline: true })}
           </div>
           <div className="space-y-4 min-w-0">
             <Field label={t("publication.package")} control={<Select full ariaLabel={t("publication.package")} value={active}
@@ -331,14 +334,16 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
               {field(t("publication.name"), row.draft.title || suggestedTitle(row.draft.selection?.file.path || ""), (title) => updateRow(active, { title }))}
               {field(t("publication.author"), row.draft.originalAuthor, (originalAuthor) => updateRow(active, { originalAuthor }))}
               {field(t("publication.authorLink"), row.draft.authorUrl, (authorUrl) => updateRow(active, { authorUrl }))}
-              {field(t("publication.description"), row.draft.description, (description) => updateRow(active, { description }), true)}
+              {field(t("publication.authorLinkName"), row.draft.authorUrlLabel ?? "",
+                (authorUrlLabel) => updateRow(active, { authorUrlLabel }), { limit: AUTHOR_URL_LABEL_LIMIT })}
+              {field(t("publication.description"), row.draft.description, (description) => updateRow(active, { description }), { multiline: true })}
               {details && <CommunityCategories key={row.draft.id} value={details.categorySelection} series={details.series} group={details.group} disabled={Boolean(busy)}
                 onChange={(categorySelection) => updateRow(active, { categorySelection, series: "", group: "" })} />}
               {field(t("publication.language"), row.draft.language || "", (language) => updateRow(active, { language }))}
               {field(t("publication.version"), row.draft.label, (label) => updateRow(active, { label }))}
               {field(t("community.license"), row.draft.license.id || "", (id) => updateRow(active, { license: { ...row.draft.license, id }, licenseEdited: true }))}
               {field(t("publication.licenseLink"), row.draft.license.url || "", (url) => updateRow(active, { license: { ...row.draft.license, url }, licenseEdited: true }))}
-              {field(t("publication.licenseTerms"), row.draft.license.text || "", (text) => updateRow(active, { license: { ...row.draft.license, text }, licenseEdited: true }), true)}
+              {field(t("publication.licenseTerms"), row.draft.license.text || "", (text) => updateRow(active, { license: { ...row.draft.license, text }, licenseEdited: true }), { multiline: true })}
               <Field label={t("publication.baseModel")} control={<Select full ariaLabel={t("publication.baseModel")} value={draftBaseVersion(row.draft) || batch.shared.baseVersion || ""}
                 options={[{ id: "", label: t("publication.chooseBaseModel") }, ...characterBaseVersions.map((id) => ({ id, label: id }))]}
                 onChange={(baseVersion) => updateRow(active, { baseVersion })} />} />
@@ -366,6 +371,8 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
               <div className="min-w-0 flex-1 break-words">
                 <div>{draft.title || draft.selection?.file.path}</div>
                 <div className="text-[var(--help)]">{[draft.originalAuthor, draft.label, draftBaseVersion(draft), draft.license.id].filter(Boolean).join("  ")}</div>
+                {draft.authorUrl && <div className="break-words text-[var(--help)]"
+                  title={draft.authorUrl}>{authorLinkName(draft.authorUrl, draft.authorUrlLabel)}</div>}
                 {item.error && <div className="text-[var(--warn)]">{item.error}</div>}
               </div>
               {item.submitted ? <span className="text-[var(--help)]">{t("publication.pending")}</span> :

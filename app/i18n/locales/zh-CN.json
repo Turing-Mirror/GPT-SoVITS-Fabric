@@ -1552,6 +1552,7 @@
     "selectResults": "选择搜索结果",
     "batchFilter": "仅显示此批次",
     "authorLink": "作者主页链接",
+    "authorLinkName": "链接名称",
     "sourceChanged": "来源已变更。请重新读取并确认选择。",
     "signInRequired": "请登录图灵镜账号后继续。",
     "readAgain": "请重新读取来源并确认文件。",

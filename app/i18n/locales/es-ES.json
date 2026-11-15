@@ -1552,6 +1552,7 @@
     "selectResults": "Seleccionar resultados",
     "batchFilter": "Mostrar solo este lote",
     "authorLink": "Enlace a la página del autor",
+    "authorLinkName": "Nombre del enlace",
     "sourceChanged": "El origen cambió. Vuelve a leerlo y confirma la selección.",
     "signInRequired": "Inicia sesión con tu cuenta de TRM para continuar.",
     "readAgain": "Vuelve a consultar la fuente y confirma el archivo.",

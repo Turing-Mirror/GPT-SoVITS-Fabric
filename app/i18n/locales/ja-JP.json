@@ -1552,6 +1552,7 @@
     "selectResults": "検索結果を選択",
     "batchFilter": "このバッチのみ表示",
     "authorLink": "作者ページのリンク",
+    "authorLinkName": "リンク名",
     "sourceChanged": "ソースが変更されました。再読み込みして選択を確認してください。",
     "signInRequired": "続行するにはTRMアカウントでログインしてください。",
     "readAgain": "配布元を読み直し、ファイルを確認してください。",
