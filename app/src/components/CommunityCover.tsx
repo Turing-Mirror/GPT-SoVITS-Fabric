@@ -7,9 +7,10 @@ import { Btn, Warn } from "./ui";
 const pickCoverImage = () => invoke<string | null>("publication_pick_cover_path");
 const coverDataUrl = (src: string) => invoke<string>("role_cover_data_url", { src });
 
-export function CommunityCover({ value, original, name, onChange, disabled }: {
+export function CommunityCover({ value, original, name, onChange, disabled, fallback }: {
   value: string;
   original?: string;
+  fallback?: string;
   name: string;
   onChange: (cover: string, original?: string) => void;
   disabled: boolean;
@@ -50,7 +51,7 @@ export function CommunityCover({ value, original, name, onChange, disabled }: {
   return (
     <section className="space-y-3">
       <div className="text-[13px] font-semibold">{t("publication.cover")}</div>
-      {value && <img src={value} alt={t("publication.cover")} draggable={false} className="w-full max-w-[280px] aspect-[4/3] rounded-[var(--rs)] object-cover" />}
+      {(value || fallback) && <img src={value || fallback} alt={t("publication.cover")} draggable={false} className="w-full max-w-[280px] aspect-[4/3] rounded-[var(--rs)] object-cover" />}
       <div className="flex flex-wrap gap-2">
         <Btn disabled={disabled || picking} busy={picking} onClick={() => void open()}>{t(value ? "ui.crop.title" : "publication.chooseCover")}</Btn>
         {value && <Btn disabled={disabled || picking} onClick={() => onChange("")}>{t("ui.common.clear")}</Btn>}

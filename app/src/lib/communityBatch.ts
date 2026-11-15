@@ -106,8 +106,9 @@ export function resolveBatchDraft(batch: BatchDraft, row: Draft): Draft {
     originalAuthor: row.originalAuthor || shared.originalAuthor,
     publisherRole: shared.publisherRole,
     authorUrl: row.authorUrl || shared.authorUrl,
-    series: row.series || shared.series,
-    group: row.group || shared.group,
+    series: row.categorySelection !== undefined ? row.series : row.series || shared.series,
+    group: row.categorySelection !== undefined ? row.group : row.group || shared.group,
+    categorySelection: row.categorySelection !== undefined ? row.categorySelection : shared.categorySelection,
     license: row.license.id || row.license.url || row.license.text ? row.license : shared.license,
   };
 }

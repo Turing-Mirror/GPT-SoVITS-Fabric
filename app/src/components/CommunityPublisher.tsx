@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Field, Pane, Panes, SearchBox, SegmentControl, Select, TextArea, TextInput, useNotify } from "trm-ui";
 import { useI18n } from "../i18n";
+import { useSubmissionCover } from "../hooks/useSubmissionCover";
 import {
   characterBaseVersions,
   draftBaseVersion,
@@ -10,6 +11,7 @@ import {
   publication,
   publicationError,
   validUrl,
+  versionIssue,
   type Draft,
   type PublisherRole,
   type Source,
@@ -17,8 +19,10 @@ import {
   type Submission,
 } from "../lib/communityPublication";
 import { CatalogTransition } from "./CatalogTransition";
+import { CommunityCategories } from "./CommunityCategories";
 import { CommunityCover } from "./CommunityCover";
 import { Pager } from "./Pager";
+import { CommunityThumb } from "./CommunityThumb";
 import { Btn, PageHead, PagePad, Warn } from "./ui";
 import type { CommunityAccount } from "./CommunityActions";
 
@@ -51,7 +55,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
 }) {
   const { t, locale } = useI18n();
   const { tip } = useNotify();
-  const [step, setStep] = useState<Step>("source");
+  const [step, setStep] = useState<Step>(initial.metadataVersionId ? "details" : "source");
   const [draft, setDraft] = useState(initial);
   const [source, setSource] = useState<Source>();
   const [query, setQuery] = useState("");
@@ -64,10 +68,17 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
   const pack = draft.selection?.file;
   const digest = pack ? providerHash(pack) : undefined;
   const baseVersion = draftBaseVersion(draft);
-  const sourceComplete = Boolean(pack && baseVersion && (digest || isSha256(draft.checksum)));
+  const metadataOnly = Boolean(draft.metadataVersionId);
+  const previous = draft.currentVersion;
+  const previousCover = useSubmissionCover(draft.coverUploadId);
+  const savedCover = previous?.coverUrl || previousCover;
+  const currentSource = previous?.file.sources.find((item) => item.state === "available") ?? previous?.file.sources[0];
+  const previousPath = currentSource?.upstreamPath || previous?.file.path || "";
+  const issue = versionIssue(draft);
+  const sourceComplete = metadataOnly || Boolean(pack && baseVersion && (digest || isSha256(draft.checksum)) && issue !== "unchanged_package");
   const license = draft.license;
   const hasDetails = Boolean(draft.title.trim() && draft.description.trim() && draft.originalAuthor.trim() &&
-    draft.label.trim() && (license.id?.trim() || license.url?.trim() || license.text?.trim()) &&
+    draft.label.trim() && !issue && (license.id?.trim() || license.url?.trim() || license.text?.trim()) &&
     (!license.url || validUrl(license.url)) && (!draft.authorUrl || validUrl(draft.authorUrl)));
   const matching = source?.files.filter((file) => file.path.toLowerCase().endsWith(".zip") && file.path.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
   const total = Math.max(1, Math.ceil(matching.length / filesPerPage));
@@ -83,18 +94,19 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
     setSource(undefined);
     setPage(1);
     setQuery("");
-    update({ selection: undefined, checksum: "", baseVersion: pack || draft.previousSubmissionId ? undefined : baseVersion, ...changes });
+    update({ selection: undefined, checksum: "", baseVersion: previous ? baseVersion : pack ? undefined : baseVersion, ...changes });
   }
 
   function select(source: Source, file: SourceFile) {
     const { canonicalUrl, resolveId, revision, expiresAt } = source;
-    const checksum = draft.selection?.file.path === file.path || draft.previousSubmissionId ? draft.checksum : "";
-    const previous = draft.selection;
-    const sameFile = previous?.canonicalUrl === canonicalUrl && previous.revision === revision && previous.file.path === file.path;
+    const selection = draft.selection;
+    const sameFile = selection?.canonicalUrl === canonicalUrl && selection.revision === revision &&
+      selection.file.path === file.path && selection.file.sizeBytes === file.sizeBytes &&
+      selection.file.blobId === file.blobId && providerHash(selection.file) === providerHash(file);
     update({
       selection: { canonicalUrl, resolveId, revision, expiresAt, file, account },
-      checksum,
-      baseVersion: !previous || sameFile ? baseVersion : undefined,
+      checksum: sameFile ? draft.checksum : "",
+      baseVersion: previous || !selection || sameFile ? baseVersion : undefined,
     });
   }
 
@@ -105,11 +117,14 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
       const next = await publication<Source>({ action: "resolve", url: draft.url.trim(), revision: draft.revision.trim() || undefined });
       setSource(next);
       setPage(1);
-      setQuery("");
       const files = next.files.filter((file) => file.path.toLowerCase().endsWith(".zip"));
-      const matchingFile = files.find((file) => file.path === draft.selection?.file.path) ?? (files.length === 1 ? files[0] : undefined);
+      const samePath = files.find((file) => file.path === draft.selection?.file.path);
+      const singleFile = !previous && files.length === 1 ? files[0] : undefined;
+      const priorPathExists = previous && files.some((file) => file.path === previousPath);
+      setQuery(priorPathExists ? previousPath : "");
+      const matchingFile = samePath ?? singleFile;
       if (matchingFile) select(next, matchingFile);
-      else if (draft.selection) update({ selection: undefined, baseVersion: undefined });
+      else if (draft.selection) update({ selection: undefined, checksum: "" });
       if (!draft.licenseEdited) update({ license: next.detectedLicense?.license ?? {} });
     } catch (error) {
       setError(publicationError(error, "resolve"));
@@ -153,9 +168,9 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
 
   return (
     <PagePad width="wide">
-      <PageHead title={t("publication.title")} actions={
+      <PageHead title={t(metadataOnly ? "publication.editListing" : draft.assetId ? "publication.newVersion" : "publication.title")}
+        back={busy ? undefined : () => onBack(draft)} actions={
         <>
-          <Btn disabled={Boolean(busy)} onClick={() => onBack(draft)}>{t("ui.common.back")}</Btn>
           {draft.assetId === undefined && !draft.previousSubmissionId && <Btn disabled={Boolean(busy)} onClick={() => onBatch(draft)}>{t("publication.batch")}</Btn>}
           <Btn disabled={Boolean(busy)} onClick={() => onMySubmissions(draft)}>{t("community.submissions")}</Btn>
           <Btn disabled={Boolean(busy)} onClick={() => {
@@ -166,9 +181,20 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
           }}>{t("publication.save")}</Btn>
         </>
       } />
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      {previous && <div className="mb-4 mt-3 flex items-start gap-4 rounded-[var(--r)] bg-[var(--group)] p-4">
+        <CommunityThumb title={previous.modelTitle} src={previous.coverUrl} />
+        <div className="min-w-0 flex-1 space-y-1">
+          <h3 className="m-0 break-words text-[16px] font-semibold">{previous.modelTitle}</h3>
+          <p className="m-0 text-[13px]">{t("publication.currentVersion", { v0: previous.label })}</p>
+          <p className="m-0 break-all text-[12.5px] text-[var(--help)]">{previousPath}</p>
+          {currentSource?.revision && <p className="m-0 break-all text-[11.5px] text-[var(--help)]">
+            {t("publication.fixedRevision", { v0: currentSource.revision })}
+          </p>}
+        </div>
+      </div>}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <SegmentControl value={step} onChange={(next) => { setStep(next); setError(""); }}
-          options={steps.map((id) => ({
+          options={steps.filter((id) => !metadataOnly || id !== "source").map((id) => ({
             id, label: labels[id],
             disabled: Boolean(busy) || (id === "details" && !sourceComplete) || (id === "preview" && (!sourceComplete || !hasDetails)),
           }))}
@@ -179,7 +205,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
       <Panes value={step} order={steps} transition="slide" keepScroll>
         <Pane id="source">
           <div className="space-y-4 pb-4">
-            <p className="text-[13px] text-[var(--help)]">{t("publication.sourceHint")}</p>
+            <p className="text-[13px] text-[var(--help)]">{t(previous ? "publication.newSourceHint" : "publication.sourceHint")}</p>
             <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
               <TextField label={t("publication.sourceLink")} value={draft.url} limit={2048} disabled={Boolean(busy)} onChange={(url) => updateSource({ url })} />
               <TextField label={t("publication.revision")} value={draft.revision} limit={500} disabled={Boolean(busy)} onChange={(revision) => updateSource({ revision })} />
@@ -220,6 +246,7 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
                 <TextField label="SHA-256" value={draft.checksum} limit={64} disabled={Boolean(busy)} onChange={(checksum) => update({ checksum })} />
               )}
             </div>
+            {issue === "unchanged_package" && <Warn>{t("publication.unchangedPackage")}</Warn>}
             <div className="flex justify-end">
               <Btn primary disabled={!sourceComplete || Boolean(busy)} onClick={() => setStep("details")}>{t("publication.next")}</Btn>
             </div>
@@ -241,25 +268,26 @@ export function CommunityPublisher({ initial, auth, onBack, onSave, onSubmitted,
                       { id: "reposter", label: t("publication.reposter") },
                     ]} onChange={(role) => update({ publisherRole: role as PublisherRole })} />
                 } />
-                <TextField label={t("publication.version")} value={draft.label} limit={100} onChange={(label) => update({ label })} />
-                <TextField label={t("publication.series")} value={draft.series} limit={100} onChange={(series) => update({ series })} />
-                <TextField label={t("publication.department")} value={draft.group} limit={100} onChange={(group) => update({ group })} />
+                {!metadataOnly && <TextField label={t("publication.version")} value={draft.label} limit={100} onChange={(label) => update({ label })} />}
+                {issue === "unchanged_version" && <Warn>{t("publication.unchangedVersion")}</Warn>}
                 <TextField label={t("community.license")} value={license.id ?? ""} limit={200} onChange={(id) => update({ license: { ...license, id }, licenseEdited: true })} />
                 <TextField label={t("publication.licenseLink")} value={license.url ?? ""} limit={2048} onChange={(url) => update({ license: { ...license, url }, licenseEdited: true })} />
               </div>
+              <CommunityCategories value={draft.categorySelection} series={draft.series} group={draft.group} disabled={Boolean(busy)}
+                onChange={(categorySelection) => update({ categorySelection, series: "", group: "" })} />
               <TextField label={t("publication.licenseTerms")} value={license.text ?? ""} limit={10000} multiline onChange={(text) => update({ license: { ...license, text }, licenseEdited: true })} />
             </div>
-            <CommunityCover name={draft.title} value={draft.cover} original={draft.coverPath} disabled={Boolean(busy)}
-              onChange={(cover, coverPath) => update({ cover, coverPath })} />
+            <CommunityCover name={draft.title} value={draft.cover} original={draft.coverPath} fallback={savedCover} disabled={Boolean(busy)}
+              onChange={(cover, coverPath) => update({ cover, coverPath, coverUploadId: undefined })} />
           </div>
           <div className="flex justify-end gap-2 pb-4">
-            <Btn onClick={() => setStep("source")}>{t("ui.common.back")}</Btn>
+            {!metadataOnly && <Btn onClick={() => setStep("source")}>{t("ui.common.back")}</Btn>}
             <Btn primary disabled={!hasDetails} onClick={() => setStep("preview")}>{t("publication.next")}</Btn>
           </div>
         </Pane>
         <Pane id="preview">
           <div className="grid gap-6 md:grid-cols-[1fr_2fr]">
-            {draft.cover && <img src={draft.cover} draggable={false} alt={t("publication.cover")} className="w-full max-w-[320px] rounded-[var(--rs)]" />}
+            {(draft.cover || savedCover) && <img src={draft.cover || savedCover} draggable={false} alt={t("publication.cover")} className="w-full max-w-[320px] rounded-[var(--rs)]" />}
             <div className="min-w-0 space-y-3">
               <h2 className="m-0 text-xl font-semibold">{draft.title}</h2>
               <p className="m-0 text-[13px] text-[var(--help)]">{draft.originalAuthor}　{draft.label}</p>

@@ -7,6 +7,7 @@ import { characterBaseVersions, draftBaseVersion, isSha256, newDraft, prepareSub
   publicationError, validUrl, type Draft, type Source, type SourceFile, type Submission, type PublisherRole } from "../lib/communityPublication";
 import { Btn, PageHead, PagePad, Warn } from "./ui";
 import { CatalogTransition } from "./CatalogTransition";
+import { CommunityCategories } from "./CommunityCategories";
 import { CommunityCover } from "./CommunityCover";
 import { Pager } from "./Pager";
 import type { CommunityAccount } from "./CommunityActions";
@@ -250,7 +251,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
     <Field label={label} control={multiline
       ? <TextArea aria-label={label} value={value} onChange={change} disabled={locked || Boolean(busy)} rows={3} />
       : <TextInput aria-label={label} value={value} onChange={change} disabled={locked || Boolean(busy)} />} />;
-  const sharedField = (key: "originalAuthor" | "authorUrl" | "description" | "series" | "group", label: string, multiline = false) =>
+  const sharedField = (key: "originalAuthor" | "authorUrl" | "description", label: string, multiline = false) =>
     field(label, batch.shared[key], (value) => update({ shared: { ...batch.shared, [key]: value } }), multiline);
 
   return <PagePad width="wide">
@@ -312,8 +313,8 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
                 { id: "reposter", label: t("publication.reposter") },
               ]} onChange={(publisherRole) => update({ shared: { ...batch.shared, publisherRole: publisherRole as PublisherRole } })} />} />
             {sharedField("description", t("publication.description"), true)}
-            {sharedField("series", t("publication.series"))}
-            {sharedField("group", t("publication.department"))}
+            <CommunityCategories value={batch.shared.categorySelection} series={batch.shared.series} group={batch.shared.group} disabled={Boolean(busy)}
+              onChange={(categorySelection) => update({ shared: { ...batch.shared, categorySelection, series: "", group: "" } })} />
             <Field label={t("publication.baseModel")} control={<Select full ariaLabel={t("publication.baseModel")} value={batch.shared.baseVersion || ""}
               options={[{ id: "", label: t("publication.chooseBaseModel") }, ...characterBaseVersions.map((id) => ({ id, label: id }))]}
               onChange={(baseVersion) => update({ shared: { ...batch.shared, baseVersion } })} />} />
@@ -331,8 +332,8 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
               {field(t("publication.author"), row.draft.originalAuthor, (originalAuthor) => updateRow(active, { originalAuthor }))}
               {field(t("publication.authorLink"), row.draft.authorUrl, (authorUrl) => updateRow(active, { authorUrl }))}
               {field(t("publication.description"), row.draft.description, (description) => updateRow(active, { description }), true)}
-              {field(t("publication.series"), row.draft.series, (series) => updateRow(active, { series }))}
-              {field(t("publication.department"), row.draft.group, (group) => updateRow(active, { group }))}
+              {details && <CommunityCategories key={row.draft.id} value={details.categorySelection} series={details.series} group={details.group} disabled={Boolean(busy)}
+                onChange={(categorySelection) => updateRow(active, { categorySelection, series: "", group: "" })} />}
               {field(t("publication.language"), row.draft.language || "", (language) => updateRow(active, { language }))}
               {field(t("publication.version"), row.draft.label, (label) => updateRow(active, { label }))}
               {field(t("community.license"), row.draft.license.id || "", (id) => updateRow(active, { license: { ...row.draft.license, id }, licenseEdited: true }))}

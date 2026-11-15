@@ -137,10 +137,12 @@ type Props = {
   /** 装好一个音色。模型页下次进入时会自己重新列，这里只用来提示。 */
   onInstalled?: () => void;
   onAuthor?: (id: string) => void;
+  onOpenModel?: (id: string, title: string, versionId?: string) => void;
   assetId?: string;
+  detail?: boolean;
 };
 
-export function StoreSection({ reloadToken, onInstalled, onAuthor, assetId }: Props) {
+export function StoreSection({ reloadToken, onInstalled, onAuthor, onOpenModel, assetId, detail }: Props) {
   const { locale } = useI18n();
   const [cat, setCat] = useState<StoreCatalog | null>(null);
   const [loading, setLoading] = useState(false);
@@ -500,11 +502,20 @@ export function StoreSection({ reloadToken, onInstalled, onAuthor, assetId }: Pr
     onDiscard: () => void discard(v),
     coverMap: coverCache,
     onAuthor: onAuthor && v.community_author_id ? () => onAuthor(v.community_author_id!) : undefined,
+    onOpenModel: onOpenModel && v.community_version_id ? () => onOpenModel(v.id, displayVoiceName(v, locale), v.community_version_id) : undefined,
   });
 
   const hasVoices = Boolean(cat?.voices?.length || cat?.thirdparty_voices?.length);
   const hasUnreviewedVoices = cat?.thirdparty_voices?.some(voice => !voice.community_staging_id);
   const gridStyle = { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` };
+
+  if (detail) {
+    const model = list[0];
+    return <>
+      {(err || jobs.error) && <Warn className="mb-4">{err || jobs.error}</Warn>}
+      {model ? <VoiceCard {...cardProps(model)} detail /> : <Empty loading={loading || !cat} unpublished={false} />}
+    </>;
+  }
 
   return (
     <div>
@@ -860,6 +871,8 @@ function VoiceCard({
   onDiscard,
   coverMap,
   onAuthor,
+  onOpenModel,
+  detail,
 }: {
   v: StoreVoice;
   busy: boolean;
@@ -876,6 +889,8 @@ function VoiceCard({
   /** 封面本地化缓存（url → 本地路径），见 lib/cover.ts。 */
   coverMap?: Record<string, string>;
   onAuthor?: () => void;
+  onOpenModel?: () => void;
+  detail?: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const lastMove = useRef({ at: 0, done: -1 });
@@ -924,7 +939,8 @@ function VoiceCard({
   const sourceUrl = (v.source_url || "").trim();
   const menu = useMenu();
   const links: MenuItem[] = [];
-  if (onAuthor) links.push({ id: "author", label: t("s.voiceLinkAuthor"), onSelect: onAuthor });
+  if (onOpenModel) links.push({ id: "details", label: t("publication.viewModel"), onSelect: onOpenModel });
+  if (onAuthor && !detail) links.push({ id: "author", label: t("s.voiceLinkAuthor"), onSelect: onAuthor });
   if (authors.length) {
     links.push({
       id: "external-author", label: t(onAuthor ? "publication.externalAuthor" : "s.voiceLinkAuthor"),
@@ -944,9 +960,8 @@ function VoiceCard({
     links.push({ id: "download", label: t("community.downloadAgain"), onSelect: onInstall });
   }
 
-  return (
-    <div id={v.id ? `store-voice-${v.id}` : undefined}>
-      <CatalogCover
+  const cover = (
+    <CatalogCover
         sources={sources}
         placeholder={title || v.id || ""}
         seed={v.id || title}
@@ -955,21 +970,8 @@ function VoiceCard({
         progress={busy && !staged ? progress?.percent ?? 0 : undefined}
         connecting={busy && !staged && (progress?.done ?? 0) <= 0}
       />
-      <div className="text-[15px] font-semibold mt-2.5 truncate" title={title}>
-        {title}
-      </div>
-      <div
-        className="text-xs text-[var(--meta)] mt-0.5 truncate"
-        title={author || undefined}
-      >
-        {author ? t("s.7feea73fa3", { v0: author }) : t("s.2af26573b0")}
-      </div>
-      {meta ? (
-        <div className="text-[11.5px] text-[var(--meta)] truncate" title={meta}>
-          {meta}
-        </div>
-      ) : null}
-      {license ? <div className="text-[11.5px] text-[var(--meta)] truncate" title={license}>{license}</div> : null}
+  );
+  const actions = <>
       <Leave>{authorPick ? (
         <AuthorsDialog authors={authorPick} onClose={() => setAuthorPick(null)} />
       ) : null}</Leave>
@@ -1020,7 +1022,44 @@ function VoiceCard({
           </Btn>
         ) : null}
       </div>
-      {menu.node}
+    {menu.node}
+  </>;
+  if (detail) {
+    return (
+      <div className="grid items-start gap-6 sm:grid-cols-[minmax(220px,320px)_minmax(0,1fr)]">
+        <div>{cover}</div>
+        <div className="min-w-0 space-y-3 pt-1">
+          {author && (onAuthor
+            ? <Btn text onClick={onAuthor}>{author}</Btn>
+            : <p className="m-0 text-[15px] font-semibold">{author}</p>)}
+          {meta && <p className="m-0 break-words text-[13px] text-[var(--help)]">{meta}</p>}
+          {v.description && <p className="m-0 whitespace-pre-wrap break-words text-[15px]">{v.description}</p>}
+          {license && <p className="m-0 whitespace-pre-wrap break-words text-[12.5px] text-[var(--help)]">{license}</p>}
+          {actions}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div id={v.id ? `store-voice-${v.id}` : undefined}>
+      {cover}
+      <div className="text-[15px] font-semibold mt-2.5 truncate" title={title}>
+        {title}
+      </div>
+      <div
+        className="text-xs text-[var(--meta)] mt-0.5 truncate"
+        title={author || undefined}
+      >
+        {author ? t("s.7feea73fa3", { v0: author }) : t("s.2af26573b0")}
+      </div>
+      {meta ? (
+        <div className="text-[11.5px] text-[var(--meta)] truncate" title={meta}>
+          {meta}
+        </div>
+      ) : null}
+      {license ? <div className="text-[11.5px] text-[var(--meta)] truncate" title={license}>{license}</div> : null}
+      {actions}
     </div>
   );
 }

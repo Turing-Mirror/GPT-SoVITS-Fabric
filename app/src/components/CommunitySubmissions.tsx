@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, SegmentControl, useNotify, usePageActive, usePaneOn } from "trm-ui";
+import { Modal, SegmentControl, useMenu, useNotify, usePageActive, usePaneOn, type MenuItem } from "trm-ui";
 import { useI18n } from "../i18n";
 import { publication, publicationError, type Draft, type ReviewState, type Submission } from "../lib/communityPublication";
 import type { CommunityAccount } from "./CommunityActions";
 import { CatalogTransition } from "./CatalogTransition";
 import { Pager } from "./Pager";
+import { CommunityThumb } from "./CommunityThumb";
+import { useSubmissionCover } from "../hooks/useSubmissionCover";
 import { Btn, Group, PageHead, PagePad, Warn } from "./ui";
 
 const states = ["draft", "pending", "rejected", "published", "withdrawn"] as const;
 type State = "draft" | ReviewState;
 const PER_PAGE = 8;
 
-export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBatch, onEdit, onRemove, onRevise }: {
+export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBatch, onEdit, onRemove, onRevise, onView, onViewModel }: {
   auth: CommunityAccount;
   drafts: Draft[];
   recent?: Submission;
@@ -20,10 +22,13 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
   onBatch: () => void;
   onEdit: (draft: Draft) => void;
   onRemove: (id: string) => void;
-  onRevise: (submission: Submission) => void;
+    onRevise: (submission: Submission) => void;
+  onView: (submission: Submission) => void;
+  onViewModel: (submission: Submission) => void;
 }) {
   const { t, locale } = useI18n();
   const { tip } = useNotify();
+  const menu = useMenu();
   const paneActive = usePaneOn();
   const pageActive = usePageActive();
   const active = paneActive && pageActive;
@@ -131,15 +136,14 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
 
   return (
     <PagePad width="wide">
-      <PageHead title={t("community.submissions")} actions={
+      <PageHead title={t("community.submissions")} back={onBack} actions={
         <>
-          <Btn onClick={onBack}>{t("ui.common.back")}</Btn>
           {account !== null && filter !== "draft" && <Btn busy={busy} onClick={() => void refresh(account, filter, page, batch)}>{t("s.38108eaa1d")}</Btn>}
           {filter === "draft" && <Btn onClick={onBatch}>{t("publication.batch")}</Btn>}
           <Btn primary onClick={onNew}>{t("community.publish")}</Btn>
         </>
       } />
-      <SegmentControl className="mb-5" value={filter} options={states.map((id) => ({ id, label: labels[id] }))}
+      <SegmentControl className="mb-4 mt-3" value={filter} options={states.map((id) => ({ id, label: labels[id] }))}
         onChange={(next) => { setFilter(next); setPage(1); }} />
       {batch && filter !== "draft" && <Btn onClick={() => { setBatch(undefined); setPage(1); }}>{t("ui.common.clear")}</Btn>}
       {error && account !== null && filter !== "draft" && <Warn className="mb-3">{error}</Warn>}
@@ -151,35 +155,44 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
           </div>
         ) : items.length ? (
           <Group>
+            <div className="divide-y divide-[var(--hairline)]">
             {items.map((item) => {
               const isDraft = "cover" in item;
               const title = isDraft ? item.title : item.asset.title;
-              const description = isDraft ? item.description : item.asset.description;
-              const note = isDraft ? undefined : item.reviews[item.reviews.length - 1]?.reason;
+              const actions: MenuItem[] = [];
+              if (isDraft) actions.push({ id: "remove", label: t("publication.removeDraft"), danger: true,
+                onSelect: () => setConfirm({ id: item.id, kind: "draft" }) });
+              else {
+                if (item.batchId && item.batchId !== batch) actions.push({ id: "batch", label: t("publication.batchFilter"),
+                  onSelect: () => { setBatch(item.batchId); setPage(1); } });
+                if (item.state === "pending") actions.push({ id: "withdraw", label: t("publication.withdraw"),
+                  onSelect: () => setConfirm({ id: item.id, kind: "withdraw" }) });
+                if (item.state === "rejected" || item.state === "withdrawn") actions.push({
+                  id: "revise", label: t("publication.edit"), onSelect: () => onRevise(item),
+                });
+              }
+              const label = title || t("publication.untitled");
               return (
                 <article key={item.id} className="flex flex-wrap items-center gap-3 py-3">
-                  {isDraft && item.cover && <img src={item.cover} alt="" draggable={false} className="h-12 w-16 shrink-0 rounded-[var(--rs)] object-cover" />}
-                  <div className="min-w-[170px] flex-1">
-                    <div className="break-words text-[13px] font-semibold">{title || t("publication.untitled")}</div>
-                    {description && <p className="m-0 mt-1 break-words text-[13px] text-[var(--ink-muted)]">{description}</p>}
-                    <p className="m-0 mt-1 text-xs text-[var(--meta)]">{date(item.updatedAt)}</p>
-                    {note && <p className="m-0 mt-2 whitespace-pre-wrap break-words text-[13px] text-[var(--ink-muted)]">{note}</p>}
+                  {isDraft ? <CommunityThumb title={label} src={item.cover || item.currentVersion?.coverUrl} /> :
+                    <SubmissionThumb title={label} item={item} />}
+                  <div className="min-w-[128px] flex-1 space-y-1">
+                    <div className="break-words text-[13px] font-semibold">{label}</div>
+                    <div className="flex flex-wrap gap-x-2 text-[11.5px] text-[var(--help)]">
+                      <span>{isDraft ? item.label : item.version.label}</span>
+                      {item.updatedAt && <time dateTime={item.updatedAt}>{date(item.updatedAt)}</time>}
+                    </div>
                   </div>
-                  {isDraft ? (
-                    <div className="flex gap-2">
-                      <Btn onClick={() => setConfirm({ id: item.id, kind: "draft" })}>{t("publication.removeDraft")}</Btn>
-                      <Btn onClick={() => onEdit(item)}>{t("publication.edit")}</Btn>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {item.batchId && item.batchId !== batch && <Btn onClick={() => { setBatch(item.batchId); setPage(1); }}>{t("publication.batchFilter")}</Btn>}
-                      {item.state === "pending" && <Btn onClick={() => setConfirm({ id: item.id, kind: "withdraw" })}>{t("publication.withdraw")}</Btn>}
-                      {(item.state === "rejected" || item.state === "withdrawn") && <Btn onClick={() => onRevise(item)}>{t("publication.edit")}</Btn>}
-                    </div>
-                  )}
+                  {isDraft ? <Btn text onClick={() => onEdit(item)}>{t("publication.edit")}</Btn> :
+                    <Btn text onClick={() => item.state === "published" && item.assetId ? onViewModel(item) : onView(item)}>
+                      {t("s.f7acefd2d4")}
+                    </Btn>}
+                  {actions.length > 0 && <Btn text ariaLabel={t("ui.common.more")}
+                    onClick={(event) => menu.open(event.currentTarget, actions)}>⋯</Btn>}
                 </article>
               );
             })}
+            </div>
           </Group>
         ) : filter !== "draft" && error ? null : (
           <p className="py-6 text-[13px] text-[var(--help)]">
@@ -188,14 +201,22 @@ export function CommunitySubmissions({ auth, drafts, recent, onBack, onNew, onBa
         )}
       </CatalogTransition>
       {pages > 1 && <Pager page={current} pages={pages} onChange={setPage} />}
+      {menu.node}
       <Modal open={active && Boolean(confirm)} onClose={() => { if (!applying) setConfirm(undefined); }}
         label={t(confirm?.kind === "draft" ? "publication.removeDraft" : "publication.withdraw")} width={400}>
+        <div className="space-y-4 p-6">
         <p className="mt-0 text-[13px]">{t(confirm?.kind === "draft" ? "publication.removeDraftConfirm" : "publication.withdrawConfirm")}</p>
         <div className="flex justify-end gap-2">
           <Btn disabled={applying} onClick={() => setConfirm(undefined)}>{t("ui.common.cancel")}</Btn>
           <Btn primary busy={applying} onClick={() => void apply()}>{t("ui.common.confirm")}</Btn>
         </div>
+        </div>
       </Modal>
     </PagePad>
   );
+}
+
+function SubmissionThumb({ title, item }: { title: string; item: Submission }) {
+  const privateCover = useSubmissionCover(item.coverUrl ? undefined : item.coverUploadId);
+  return <CommunityThumb title={title} src={item.coverUrl || privateCover} />;
 }
