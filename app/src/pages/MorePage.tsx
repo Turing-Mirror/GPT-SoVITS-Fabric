@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePageLeave } from "trm-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { Block, Btn, Group, ListItem, PageHead, PagePad } from "../components/ui";
 import { QrDialog } from "../components/QrDialog";
@@ -9,7 +10,7 @@ import { tip } from "../lib/glossary";
 import type { EngineStatus, ProvisionStatus } from "../lib/engine";
 import { StorageSection } from "../components/StorageSection";
 import { t } from "../i18n/t";
-import { askConfirm } from "../lib/webDialog";
+import { askConfirm } from "trm-ui/fabric";
 import { DiagnosticsDialog, type DiagReport } from "../components/DiagnosticsDialog";
 import { FindingList, type Finding } from "../components/FindingList";
 import { scrollPaneToId } from "../lib/scrollPane";
@@ -24,8 +25,6 @@ type Props = {
   provision?: ProvisionStatus;
   onForceKill?: () => void | Promise<void>;
   onOpenProvision?: () => void;
-  /** 「下载模型」住在广场，这里只有一个跳过去的入口。 */
-  onOpenDownloadModels?: (reason?: string) => void;
   /**
    * 别处点「用不了？联系社区」跳过来时滚到「仓库与社媒」。
    *
@@ -40,7 +39,6 @@ export function MorePage({
   provision,
   onForceKill,
   onOpenProvision,
-  onOpenDownloadModels,
   focusCommunityNonce = 0,
 }: Props = {}) {
   // Where the UI itself is served from. Surfaced so a UI patch that did not
@@ -76,6 +74,7 @@ export function MorePage({
   const backendLabel = backend
     ? ({
         cuda: "CUDA",
+        vulkan: "Vulkan",
         mps: "Metal",
         xpu: "XPU",
         cpu: "CPU",
@@ -91,6 +90,7 @@ export function MorePage({
   const backendMismatch =
     backend !== "" &&
     backend !== "cuda" &&
+    backend !== "vulkan" &&
     String(provision?.installed_variant || "").startsWith("nvidia");
 
   const pickMainGpu = (v: number) => {
@@ -201,15 +201,24 @@ export function MorePage({
       setBusyMsg(t("s.7fae0289b6", { v0: String(e) }));
     }
   };
+  // 页面常驻，每次回来副作用都会重新执行：已处理过的请求不再重复滚动。
+  const communityDone = useRef(0);
+  usePageLeave(() => {
+    setBusyMsg("");
+    setSumMsg("");
+    setGpuMsg("");
+    setLegacyMsg({});
+  });
   useEffect(() => {
-    if (!focusCommunityNonce) return;
+    if (!focusCommunityNonce || communityDone.current === focusCommunityNonce) return;
     // 不用 scrollIntoView：换页时 PageHost 给整个面板挂了个 translate 动画，
     // 而 scrollIntoView 是按元素**变换后**的屏幕位置算的 —— 动画跑到哪就滚到
     // 哪，落点每次都不一样。offsetTop 不受 transform 影响，直接算给滚动容器。
     //
-    // 还得等一拍：PageHost 换页时有个 useLayoutEffect 把 scrollTop 归零，
+    // 还得等一拍：PageHost 换页时有个 useLayoutEffect 恢复这一页上次的滚动位置，
     // 同一帧里滚过去会被它抹掉。
     const id = window.setTimeout(() => {
+      communityDone.current = focusCommunityNonce;
       const el = document.getElementById("more-community");
       const pane = el?.closest(".overflow-y-auto");
       if (el && pane instanceof HTMLElement) {
@@ -267,21 +276,21 @@ export function MorePage({
     : t("s.5abed96e7d");
 
   return (
-    <PagePad>
+    <PagePad width="read">
       <PageHead title={t("s.1a26edf94a")} sub={t("s.d0b65d2fd2")} />
       <Block title={t("s.2a4080ad9f")}>
         <Group>
           <ListItem
             title={t("s.a8f48b775b")}
             right={
-              <span className="text-[13.5px] text-[var(--ink-muted)]">{shownValue(version)}</span>
+              <span className="text-[13px] text-[var(--ink-muted)]">{shownValue(version)}</span>
             }
           />
           <ListItem
             title={t("s.2a4b19a6b1")}
             right={
               <span
-                className="text-[13.5px] text-[var(--ink-muted)] max-w-[300px] text-right truncate"
+                className="text-[13px] text-[var(--ink-muted)] max-w-[300px] text-right truncate"
                 title={root || undefined}
               >
                 {shownValue(root)}
@@ -296,13 +305,13 @@ export function MorePage({
               (status?.product_root ? String(status.product_root) : t("s.002dcbcd28"))
             }
             right={
-              <span className="text-[13.5px] text-[var(--ink-muted)]">{runtimeLine}</span>
+              <span className="text-[13px] text-[var(--ink-muted)]">{runtimeLine}</span>
             }
           />
           <ListItem
             title={t("s.f41830a38d")}
             right={
-              <span className="text-[13.5px] text-[var(--ink-muted)] max-w-[220px] text-right truncate" title={gpus}>
+              <span className="text-[13px] text-[var(--ink-muted)] max-w-[220px] text-right truncate" title={gpus}>
                 {gpus}
               </span>
             }
@@ -331,7 +340,7 @@ export function MorePage({
             desc={backendMismatch ? t("s.computeBackendWarn") : undefined}
             right={
               <span
-                className="text-[13.5px] text-[var(--ink-muted)] max-w-[220px] text-right truncate"
+                className="text-[13px] text-[var(--ink-muted)] max-w-[220px] text-right truncate"
                 title={backendLine}
               >
                 {backendLine}
@@ -349,8 +358,8 @@ export function MorePage({
             }
             right={
               <span className="flex items-center gap-2">
-                <span className="text-[13.5px] text-[var(--ink-muted)]">
-                  {provision?.recommended_variant || t("s.notDetected")}
+                <span className="text-[13px] text-[var(--ink-muted)]">
+                  {provision?.installed_variant || provision?.recommended_variant || t("s.notDetected")}
                 </span>
                 {onOpenProvision ? (
                   <Btn onClick={onOpenProvision}>
@@ -362,16 +371,7 @@ export function MorePage({
           />
           <ListItem
             title={t("s.fbb8ddd570")}
-            right={<span className="text-[13.5px] text-[var(--ink-muted)]">{runState}</span>}
-          />
-        </Group>
-      </Block>
-      <Block title={t("more.resTitle")} note={t("more.resNote")}>
-        <Group>
-          <ListItem
-            title={t("s.1252c81119")}
-            desc={t("more.resDesc")}
-            right={<Btn onClick={() => onOpenDownloadModels?.()}>{t("s.65fc81e161")}</Btn>}
+            right={<span className="text-[13px] text-[var(--ink-muted)]">{runState}</span>}
           />
         </Group>
       </Block>
@@ -445,6 +445,7 @@ export function MorePage({
             }
             right={
               <Btn
+                danger
                 onClick={async () => {
                   if (!(await askConfirm(t("s.cacheClearConfirm")))) return;
                   setBusyMsg(t("s.cacheClear") + "…");
@@ -467,14 +468,14 @@ export function MorePage({
           />
           <ListItem
             title={t("s.91e6c9b862")}
-            desc={legacyMsg.panel || t("s.bc94a9c280")}
+            desc={legacyMsg.panel}
             right={
               <Btn onClick={() => void openLegacy("panel")}>{t("s.65fc81e161")}</Btn>
             }
           />
           <ListItem
             title={t("s.a636b86646")}
-            desc={legacyMsg.webui || t("s.bc94a9c280")}
+            desc={legacyMsg.webui}
             right={<Btn onClick={() => void openLegacy("webui")}>{t("s.65fc81e161")}</Btn>}
           />
           {/* 「申请专业优化」暂时隐藏（服务还没开）。后端 consult_build 保留，
@@ -493,6 +494,7 @@ export function MorePage({
             desc={t("s.5258b304cc")}
             right={
               <Btn
+                danger
                 onClick={() => {
                   void onForceKill?.();
                 }}

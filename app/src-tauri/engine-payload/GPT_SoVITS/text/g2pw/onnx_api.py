@@ -5,6 +5,7 @@ import json
 import os
 import warnings
 import zipfile
+from threading import Lock
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -18,11 +19,6 @@ from ..zh_normalization.char_convert import tranditional_to_simplified
 from .dataset import get_char_phoneme_labels, get_phoneme_labels, prepare_onnx_input
 from .utils import load_config
 
-onnxruntime.set_default_logger_severity(3)
-try:
-    onnxruntime.preload_dlls()
-except Exception:
-    pass
 warnings.filterwarnings("ignore")
 
 model_version = "1.1"
@@ -329,29 +325,36 @@ class G2PWOnnxConverter(_G2PWBaseOnnxConverter):
             model_source=model_source,
             enable_non_tradional_chinese=enable_non_tradional_chinese,
         )
+        self._session_g2pw = None
+        self._session_lock = Lock()
 
+    @property
+    def session_g2pw(self):
+        with self._session_lock:
+            if self._session_g2pw is None:
+                self._session_g2pw = self._load_session()
+            return self._session_g2pw
+
+    def _load_session(self):
+        # Load on the first polyphonic query and keep CUDA available for synthesis.
         sess_options = onnxruntime.SessionOptions()
-        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
         sess_options.intra_op_num_threads = 2
+        sess_options.log_severity_level = 3
+        sess_options.enable_cpu_mem_arena = False
+        sess_options.add_session_config_entry("session.disable_prepacking", "1")
 
         onnx_path = _find_first_existing_file(
             os.path.join(self.model_dir, "g2pW.onnx"),
             os.path.join(self.model_dir, "g2pw.onnx"),
         )
 
-        if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
-            self.session_g2pw = onnxruntime.InferenceSession(
-                onnx_path,
-                sess_options=sess_options,
-                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-            )
-        else:
-            self.session_g2pw = onnxruntime.InferenceSession(
-                onnx_path,
-                sess_options=sess_options,
-                providers=["CPUExecutionProvider"],
-            )
+        return onnxruntime.InferenceSession(
+            onnx_path,
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
 
     def _predict(self, model_input: Dict[str, Any]) -> Tuple[List[str], List[float]]:
         return predict(session=self.session_g2pw, onnx_input=model_input, labels=self.labels)

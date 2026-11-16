@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import urllib.parse
 import urllib.request
@@ -62,7 +63,9 @@ def cnb(*args: str) -> str:
             "缺 CNB_TOKEN。cnb login 那套 OAuth 拿不到 repo-release:rw，\n"
             "要用个人访问令牌：export CNB_TOKEN=<PAT> 或 . ~/.cnb/agent-token"
         )
-    cnb_bin = "cnb.cmd" if os.name == "nt" else "cnb"
+    cnb_bin = shutil.which("cnb") or shutil.which("cnb.cmd")
+    if not cnb_bin:
+        raise RuntimeError("CNB CLI is not installed or is not on PATH")
     p = subprocess.run(
         [cnb_bin, *args], capture_output=True, text=True, encoding="utf-8", timeout=300
     )

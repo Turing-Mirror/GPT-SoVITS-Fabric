@@ -182,6 +182,7 @@ const DYNAMIC_PREFIXES = [
   "msg.",
   "glossary.",
   "extras.items.",
+  "extras.baseModels.", // ExtrasPanel resolves labels from base-package names.
   "settings.tabs.",
   "s.annot.issue.",
   // TRM UI 组件库的文案（随 app/src/trm 整段同步），本产品没用到的组件也保留原样。

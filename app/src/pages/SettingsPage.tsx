@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { TextInput } from "trm-ui";
+import { CatalogTransition } from "../components/CatalogTransition";
 import { SegmentControl } from "../components/SegmentControl";
 import { Btn, Block, PagePad } from "../components/ui";
 import { Field, Select, Slider, Toggle } from "../components/controls";
@@ -111,10 +113,10 @@ function SettingsPageImpl({
 
   return (
     <div>
-      {/* 「联系社区」跟标签栏同一行，八个子设置都在 —— 卡住的人不会先想到
+      {/* 「联系社区」跟标签栏同一行，卡住的人不会先想到
           去翻「其他」页，得让求助的路在他正卡着的那一页上就看得见。 */}
       <div className="px-[30px] pt-4 max-[1020px]:px-[22px] max-[720px]:px-4 flex items-center gap-3 flex-wrap">
-        <div className="min-w-0 overflow-x-auto">
+        <div className="min-w-0">
           <SegmentControl
             options={TAB_KEYS.map((k) => ({ id: k, label: tabLabels[k] }))}
             value={tab}
@@ -131,7 +133,7 @@ function SettingsPageImpl({
 
       <PagePad>
         {c.error ? (
-          <p className="text-[12.5px] text-[var(--danger)] mt-4 mb-0">{c.error}</p>
+          <p className="text-[12.5px] text-[var(--danger-text)] mt-4 mb-0">{c.error}</p>
         ) : null}
 
         {c.restartKeys.length ? (
@@ -145,6 +147,7 @@ function SettingsPageImpl({
           <p className="text-[12.5px] text-[var(--meta)] mt-6">{t("s.49fd445d8b")}</p>
         ) : null}
 
+        <CatalogTransition scope={tab} order={TAB_KEYS}>
         {c.loaded && tab === "appearance" ? (
           <Block title={tabLabels.appearance} className="!mt-6">
             <div className={CARD}>
@@ -247,17 +250,14 @@ function SettingsPageImpl({
                 tip={TIPS.home_banner_text}
                 control={
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <input
+                    <TextInput
+                      fit
                       type="text"
                       maxLength={40}
-                      className={[
-                        "w-[260px] rounded-[var(--rs)] border px-3 py-2 text-[13px]",
-                        "bg-transparent text-[var(--ink)] border-[var(--hairline)]",
-                        "focus:outline-none focus:border-[var(--accent)]",
-                      ].join(" ")}
+                      className="w-[260px]"
                       placeholder={t("settings.bannerTextPlaceholder")}
                       value={c.str("home_banner_text")}
-                      onChange={(e) => c.set("home_banner_text", e.target.value)}
+                      onChange={(v) => c.set("home_banner_text", v)}
                     />
                     {c.str("home_banner_text") ? (
                       <Btn onClick={() => c.set("home_banner_text", "", true)}>
@@ -272,17 +272,14 @@ function SettingsPageImpl({
                 tip={TIPS.home_banner_sub}
                 control={
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <input
+                    <TextInput
+                      fit
                       type="text"
                       maxLength={60}
-                      className={[
-                        "w-[260px] rounded-[var(--rs)] border px-3 py-2 text-[13px]",
-                        "bg-transparent text-[var(--ink)] border-[var(--hairline)]",
-                        "focus:outline-none focus:border-[var(--accent)]",
-                      ].join(" ")}
+                      className="w-[260px]"
                       placeholder={t("settings.bannerSubPlaceholder")}
                       value={c.str("home_banner_sub")}
-                      onChange={(e) => c.set("home_banner_sub", e.target.value)}
+                      onChange={(v) => c.set("home_banner_sub", v)}
                     />
                     {c.str("home_banner_sub") ? (
                       <Btn onClick={() => c.set("home_banner_sub", "", true)}>
@@ -405,21 +402,22 @@ function SettingsPageImpl({
                 tip={t("settings.hotkeyToggleWindowTip")}
                 inline
                 control={
-                  <input
-                    value={c.str("hotkey_toggle_window", "CmdOrCtrl+F11")}
-                    // 打字时走 220ms 合并写，别每敲一个字符落一次盘。
-                    onChange={(e) => void c.set("hotkey_toggle_window", e.target.value)}
-                    // 改完立刻重注册。不重注册的话设置页显示新组合、系统里
-                    // 还挂着旧的，要等下次重启才对得上。同样要等写盘先落地。
-                    onBlur={() => {
-                      if (c.cfg.hotkeys_enabled !== true) return;
-                      void c.set("hotkey_toggle_window", c.str("hotkey_toggle_window", "CmdOrCtrl+F11"), true)
-                        .then(() => applyHotkeys(true));
-                    }}
-                    spellCheck={false}
-                    aria-label={t("settings.hotkeyToggleWindow")}
-                    className="w-[190px] px-[13px] py-[7px] rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]"
-                  />
+                  <div className="w-[190px]">
+                    <TextInput
+                      value={c.str("hotkey_toggle_window", "CmdOrCtrl+F11")}
+                      // 打字时走 220ms 合并写，别每敲一个字符落一次盘。
+                      onChange={(next) => void c.set("hotkey_toggle_window", next)}
+                      // 改完立刻重注册。不重注册的话设置页显示新组合、系统里
+                      // 还挂着旧的，要等下次重启才对得上。同样要等写盘先落地。
+                      onBlur={() => {
+                        if (c.cfg.hotkeys_enabled !== true) return;
+                        void c.set("hotkey_toggle_window", c.str("hotkey_toggle_window", "CmdOrCtrl+F11"), true)
+                          .then(() => applyHotkeys(true));
+                      }}
+                      spellCheck={false}
+                      aria-label={t("settings.hotkeyToggleWindow")}
+                    />
+                  </div>
                 }
               />
               <Field
@@ -508,6 +506,7 @@ function SettingsPageImpl({
             </div>
           </Block>
         ) : null}
+        </CatalogTransition>
       </PagePad>
     </div>
   );

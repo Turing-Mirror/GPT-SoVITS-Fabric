@@ -12,7 +12,9 @@ from threading import RLock
 from types import ModuleType
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_DIR = PROJECT_ROOT / "runtime"
+RUNTIME_DIR = Path(sys.executable).parent
+if not (RUNTIME_DIR / "Lib" / "site-packages" / "torch").is_dir():
+    RUNTIME_DIR = PROJECT_ROOT / "runtime"
 SITE_PACKAGES = RUNTIME_DIR / "Lib" / "site-packages"
 FFMPEG_EXE = RUNTIME_DIR / "ffmpeg.exe"
 FFPROBE_EXE = RUNTIME_DIR / "ffprobe.exe"

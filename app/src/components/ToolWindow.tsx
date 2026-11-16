@@ -1,16 +1,19 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { Suspense, createContext, lazy, useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { AnnotPage } from "../pages/AnnotPage";
-import { SeparatePanel } from "./SeparatePanel";
+import { PageLoading } from "./PageLoading";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
 import { WebDialogHost } from "./WebDialog";
+import { protectToolClose } from "../lib/windowLeave";
 import { NativeDialogHint } from "./NativeDialogHint";
 
 /** 地址里带的 `#/tool/<kind>` —— 主窗口和工具窗口用的是同一份前端。 */
 export type ToolKind = "annot" | "separate";
+
+const SeparatePanel = lazy(() => import("./SeparatePanel").then(module => ({ default: module.SeparatePanel })));
 
 function toolTitle(kind: ToolKind): string {
   return kind === "separate" ? t("sep.title") : t("s.annot.title");
@@ -54,6 +57,9 @@ export function ToolWindow({ kind }: { kind: ToolKind }) {
   // state，于是永远停在 DEFAULT_LOCALE。面板里的文字因为自己有 state 会跟着刷新，
   // 结果同一扇窗上半截中文、下半截日文。
   useI18n();
+  useEffect(() => {
+    if (kind === "annot" && "__TAURI_INTERNALS__" in window) return protectToolClose();
+  }, [kind]);
   // 常驻操作栏挂载的那个格子。用 state 而不是 ref：ref 变了不会触发重渲染，
   // 面板第一次渲染时拿到的会永远是 null，按钮就再也进不了这条栏。
   const [footer, setFooter] = useState<HTMLElement | null>(null);
@@ -65,8 +71,9 @@ export function ToolWindow({ kind }: { kind: ToolKind }) {
       <ToolTitleBar title={toolTitle(kind)} />
       <ToolFooterSlot.Provider value={footer}>
         <div className="flex-1 overflow-y-auto">
-          {kind === "annot" ? <AnnotPage /> : null}
-          {kind === "separate" ? <SeparatePanel /> : null}
+          <Suspense fallback={<PageLoading />}>
+            {kind === "annot" ? <AnnotPage /> : <SeparatePanel />}
+          </Suspense>
         </div>
       </ToolFooterSlot.Provider>
       <div ref={setFooter} className="flex-none" />
@@ -125,7 +132,7 @@ function ToolTitleBar({ title }: { title: string }) {
         {title}
       </span>
       <div
-        className="ml-auto flex text-[var(--meta)]"
+        className="native-window-controls ml-auto flex text-[var(--meta)]"
         onPointerDown={(e) => e.stopPropagation()}
       >
         <ToolWinBtn label={t("s.ca8223c5fc")} onClick={() => void win()?.minimize()}>
@@ -160,7 +167,7 @@ function ToolWinBtn({
       onClick={onClick}
       className={[
         "w-9 h-[30px] grid place-items-center text-xs rounded-md border-0 bg-transparent cursor-pointer",
-        "text-[var(--meta)] transition-[background,color] duration-150 ease-[var(--ease)]",
+        "text-[var(--meta)] transition-[background,color] duration-200 ease-[var(--ease)]",
         danger
           ? "hover:bg-[#e81123] hover:text-white"
           : "hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] hover:text-[var(--ink)]",

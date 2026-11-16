@@ -68,17 +68,299 @@
       ]
     }
   },
-  "voices": [],
+  "voices": [
+    {
+      "id": "hayase_yuuka-ja",
+      "name": "早濑优香（日配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "https://modelscope.cn/models/Kara251/kara-gsv-model",
+      "released": "2026-11-10",
+      "version": "v5turbo",
+      "package_type": "role_pack",
+      "pack_url": "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/71a0acd8101272ee27d3e1148089f575095f8fa8/models/hayase-yuuka-ja-v5turbo-v1/hayase_yuuka-ja_voice.zip",
+      "sha256": "4e409dbf866f9df69d18c8c36fb4d98a6ff93d9e2c6507c0f6bf48c251e27514",
+      "size_bytes": 248479260,
+      "dest": "characters",
+      "name_en": "Hayase Yuuka (JP)",
+      "name_ja": "早瀬ユウカ（日本語）",
+      "series": "蔚蓝档案",
+      "group": "研讨会",
+      "cover": "ch-banner/tp-yuuka.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-yuuka.jpg"
+    },
+    {
+      "id": "hayase_yuuka_zh",
+      "name": "早濑优香（中配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/hayase_yuuka_zh_voice-v2.zip",
+      "sha256": "e9d8a45859e00e29d3faa5ffd4d13807c8e301dc6808db039f91163d9d8c67d9",
+      "size_bytes": 222206465,
+      "dest": "characters",
+      "name_en": "Hayase Yuuka (ZH)",
+      "name_ja": "早瀬ユウカ（中国語）",
+      "series": "蔚蓝档案",
+      "group": "研讨会",
+      "cover": "ch-banner/tp-yuuka.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-yuuka.jpg"
+    },
+    {
+      "id": "sunaookami_shiroko_jp",
+      "name": "砂狼白子（日配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/sunaookami_shiroko_jp_voice-v2.zip",
+      "sha256": "20357988db89a952a4b0c41c585f8155e03f52a4873f107c95ac5f349edf6aec",
+      "size_bytes": 222209072,
+      "dest": "characters",
+      "name_en": "Sunaookami Shiroko (JP)",
+      "name_ja": "砂狼シロコ（日本語）",
+      "series": "蔚蓝档案",
+      "group": "对策委员会",
+      "cover": "ch-banner/tp-shiroko.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-shiroko.jpg"
+    },
+    {
+      "id": "sunaookami_shiroko_zh",
+      "name": "砂狼白子（中配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/sunaookami_shiroko_zh_voice-v2.zip",
+      "sha256": "cc21dbd4799f1e6a844bd8895a4941139546ffce1d8b85779d86f3ccb6378c18",
+      "size_bytes": 222237551,
+      "dest": "characters",
+      "name_en": "Sunaookami Shiroko (ZH)",
+      "name_ja": "砂狼シロコ（中国語）",
+      "series": "蔚蓝档案",
+      "group": "对策委员会",
+      "cover": "ch-banner/tp-shiroko.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-shiroko.jpg"
+    },
+    {
+      "id": "tendou_alice_jp",
+      "name": "天童爱丽丝（日配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/tendou_alice_jp_voice-v2.zip",
+      "sha256": "7a9618144dfb582192a8818a67e83162c675831224917cc0c3f34901991922ad",
+      "size_bytes": 222093834,
+      "dest": "characters",
+      "name_en": "Tendou Alice (JP)",
+      "name_ja": "天童アリス（日本語）",
+      "series": "蔚蓝档案",
+      "group": "游戏开发部",
+      "cover": "ch-banner/Alice-JP.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/Alice-JP.jpg"
+    },
+    {
+      "id": "tendou_alice_zh",
+      "name": "天童爱丽丝（中配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/tendou_alice_zh_voice-v2.zip",
+      "sha256": "ce44fa902d03ab7d2711363a3ee0d92142a41a3a28441bc765b194f53ec04bcc",
+      "size_bytes": 222104773,
+      "dest": "characters",
+      "name_en": "Tendou Alice (ZH)",
+      "name_ja": "天童アリス（中国語）",
+      "series": "蔚蓝档案",
+      "group": "游戏开发部",
+      "cover": "ch-banner/Alice-ZH.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/Alice-ZH.jpg"
+    },
+    {
+      "id": "tendou_kei",
+      "name": "凯伊",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/tendou_kei_voice-v2.zip",
+      "sha256": "9fd9aeb0c720b3aeb3c6b6fa37a888aabea2e5e3f2710f195a753cc3deab6e3c",
+      "size_bytes": 222032528,
+      "dest": "characters",
+      "name_en": "Kei",
+      "name_ja": "ケイ",
+      "series": "蔚蓝档案",
+      "group": "游戏开发部",
+      "cover": "ch-banner/Kei.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/Kei.jpg"
+    }
+  ],
   "thirdparty_voices": [],
   "format": "gsv_fabric_index",
-  "roles": [],
+  "roles": [
+    {
+      "id": "hayase_yuuka-ja",
+      "name": "早濑优香（日配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "https://modelscope.cn/models/Kara251/kara-gsv-model",
+      "released": "2026-11-10",
+      "version": "v5turbo",
+      "package_type": "role_pack",
+      "pack_url": "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/71a0acd8101272ee27d3e1148089f575095f8fa8/models/hayase-yuuka-ja-v5turbo-v1/hayase_yuuka-ja_voice.zip",
+      "sha256": "4e409dbf866f9df69d18c8c36fb4d98a6ff93d9e2c6507c0f6bf48c251e27514",
+      "size_bytes": 248479260,
+      "dest": "characters",
+      "name_en": "Hayase Yuuka (JP)",
+      "name_ja": "早瀬ユウカ（日本語）",
+      "series": "蔚蓝档案",
+      "group": "研讨会",
+      "cover": "ch-banner/tp-yuuka.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-yuuka.jpg"
+    },
+    {
+      "id": "hayase_yuuka_zh",
+      "name": "早濑优香（中配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/hayase_yuuka_zh_voice-v2.zip",
+      "sha256": "e9d8a45859e00e29d3faa5ffd4d13807c8e301dc6808db039f91163d9d8c67d9",
+      "size_bytes": 222206465,
+      "dest": "characters",
+      "name_en": "Hayase Yuuka (ZH)",
+      "name_ja": "早瀬ユウカ（中国語）",
+      "series": "蔚蓝档案",
+      "group": "研讨会",
+      "cover": "ch-banner/tp-yuuka.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-yuuka.jpg"
+    },
+    {
+      "id": "sunaookami_shiroko_jp",
+      "name": "砂狼白子（日配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/sunaookami_shiroko_jp_voice-v2.zip",
+      "sha256": "20357988db89a952a4b0c41c585f8155e03f52a4873f107c95ac5f349edf6aec",
+      "size_bytes": 222209072,
+      "dest": "characters",
+      "name_en": "Sunaookami Shiroko (JP)",
+      "name_ja": "砂狼シロコ（日本語）",
+      "series": "蔚蓝档案",
+      "group": "对策委员会",
+      "cover": "ch-banner/tp-shiroko.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-shiroko.jpg"
+    },
+    {
+      "id": "sunaookami_shiroko_zh",
+      "name": "砂狼白子（中配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/sunaookami_shiroko_zh_voice-v2.zip",
+      "sha256": "cc21dbd4799f1e6a844bd8895a4941139546ffce1d8b85779d86f3ccb6378c18",
+      "size_bytes": 222237551,
+      "dest": "characters",
+      "name_en": "Sunaookami Shiroko (ZH)",
+      "name_ja": "砂狼シロコ（中国語）",
+      "series": "蔚蓝档案",
+      "group": "对策委员会",
+      "cover": "ch-banner/tp-shiroko.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/tp-shiroko.jpg"
+    },
+    {
+      "id": "tendou_alice_jp",
+      "name": "天童爱丽丝（日配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/tendou_alice_jp_voice-v2.zip",
+      "sha256": "7a9618144dfb582192a8818a67e83162c675831224917cc0c3f34901991922ad",
+      "size_bytes": 222093834,
+      "dest": "characters",
+      "name_en": "Tendou Alice (JP)",
+      "name_ja": "天童アリス（日本語）",
+      "series": "蔚蓝档案",
+      "group": "游戏开发部",
+      "cover": "ch-banner/Alice-JP.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/Alice-JP.jpg"
+    },
+    {
+      "id": "tendou_alice_zh",
+      "name": "天童爱丽丝（中配）",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/tendou_alice_zh_voice-v2.zip",
+      "sha256": "ce44fa902d03ab7d2711363a3ee0d92142a41a3a28441bc765b194f53ec04bcc",
+      "size_bytes": 222104773,
+      "dest": "characters",
+      "name_en": "Tendou Alice (ZH)",
+      "name_ja": "天童アリス（中国語）",
+      "series": "蔚蓝档案",
+      "group": "游戏开发部",
+      "cover": "ch-banner/Alice-ZH.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/Alice-ZH.jpg"
+    },
+    {
+      "id": "tendou_kei",
+      "name": "凯伊",
+      "author": "Kara251",
+      "author_url": "https://space.bilibili.com/6652330",
+      "source_url": "",
+      "released": "2026-11-08",
+      "version": "v2",
+      "package_type": "role_pack",
+      "pack_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/tendou_kei_voice-v2.zip",
+      "sha256": "9fd9aeb0c720b3aeb3c6b6fa37a888aabea2e5e3f2710f195a753cc3deab6e3c",
+      "size_bytes": 222032528,
+      "dest": "characters",
+      "name_en": "Kei",
+      "name_ja": "ケイ",
+      "series": "蔚蓝档案",
+      "group": "游戏开发部",
+      "cover": "ch-banner/Kei.jpg",
+      "cover_url": "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-covers/Kei.jpg"
+    }
+  ],
   "extras": {
     "gsv-v5": {
       "key": "gsv-v5",
       "label": "V5 底模",
       "dest": "GPT_SoVITS/pretrained_models/gsv-v5-pretrained",
       "notes": "V5 角色与零样本合成需要。",
-      "group": "other",
+      "group": "synth",
       "recommended": false,
       "order": 50,
       "release_tag": "GSV-engine-core",
@@ -529,6 +811,117 @@
           ]
         }
       ]
+    },
+    "gsv-v2": {
+      "key": "gsv-v2",
+      "label": "GPT-SoVITS v2",
+      "dest": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained",
+      "notes": "",
+      "group": "train",
+      "recommended": false,
+      "order": 20,
+      "release_tag": "GSV-engine-core",
+      "size_bytes": 354884573,
+      "files": [
+        {
+          "name": "s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
+          "sha256": "732f94e63b148066e24c7f9d2637f3374083e637635f07fbdb695dee20ddbe1f",
+          "size_bytes": 155315150,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt"
+          ]
+        },
+        {
+          "name": "s2D2333k.pth",
+          "sha256": "8ae7fe8dd8c8f2e718de359e00edac88b0c71ab2fd10b07ad4cc45070eb8a836",
+          "size_bytes": 93534164,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/s2D2333k.pth"
+          ]
+        },
+        {
+          "name": "s2G2333k.pth",
+          "sha256": "924fdccaa3c574bf139c25c9759aa1ed3b3f99e19a7c529ee996c2bc17663695",
+          "size_bytes": 106035259,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/s2G2333k.pth"
+          ]
+        }
+      ]
+    },
+    "gsv-v3": {
+      "key": "gsv-v3",
+      "label": "GPT-SoVITS v3",
+      "dest": "GPT_SoVITS/pretrained_models",
+      "notes": "",
+      "group": "synth",
+      "recommended": false,
+      "order": 30,
+      "release_tag": "GSV-v3-base",
+      "size_bytes": 994216232,
+      "files": [
+        {
+          "name": "s2Gv3.pth",
+          "sha256": "f33abb1920076d988e1711d5f41b5c9c6d7f92575b4acf0ad4fae6a4ebf0cf19",
+          "size_bytes": 769035145,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v3-base/s2Gv3.pth"
+          ]
+        },
+        {
+          "name": "models--nvidia--bigvgan_v2_24khz_100band_256x/config.json",
+          "sha256": "d77e2c96583ca2296ac112a56ec7cc6bd5da4bf7681ceff18448bedc4fcf6512",
+          "size_bytes": 1402,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v3-base/config.json"
+          ]
+        },
+        {
+          "name": "models--nvidia--bigvgan_v2_24khz_100band_256x/bigvgan_generator.pt",
+          "sha256": "ee5e2f9cd60b51db75e1806f4fe7621733757586c541c78cb3dd369d5ba24476",
+          "size_bytes": 225179685,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v3-base/bigvgan_generator.pt"
+          ]
+        }
+      ]
+    },
+    "gsv-v4": {
+      "key": "gsv-v4",
+      "label": "GPT-SoVITS v4",
+      "dest": "GPT_SoVITS/pretrained_models/gsv-v4-pretrained",
+      "notes": "",
+      "group": "synth",
+      "recommended": false,
+      "order": 40,
+      "release_tag": "GSV-v4-base",
+      "size_bytes": 826806654,
+      "files": [
+        {
+          "name": "s2Gv4.pth",
+          "sha256": "906fe22f48c3e037a389df291d4d32a9414e15dbb8f9628643e83aaced109ea4",
+          "size_bytes": 769025545,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v4-base/s2Gv4.pth"
+          ]
+        },
+        {
+          "name": "vocoder.pth",
+          "sha256": "4d611913df7b12d49e8976c944558d2d096816365edfc6c35a9e85b67dd14ed9",
+          "size_bytes": 57781109,
+          "channel": "release",
+          "urls": [
+            "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-v4-base/vocoder.pth"
+          ]
+        }
+      ]
     }
   },
   "engine_core": {
@@ -580,6 +973,26 @@
       "sha256": "a0fe2fbfb0decf18bd03b599e6ed3fb59060a2eca9fe2225d482cf768f164543",
       "urls": [
         "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-engine-core/base-langdetect.zip"
+      ]
+    }
+  },
+  "gsv-cpp": {
+    "engine": {
+      "name": "gsv-cpp-engine-v2.zip",
+      "size_bytes": 43623665,
+      "sha256": "265b64a65a9a4bb778978f9702c639fdfae80c79a5f370f290a50dc8442e3837",
+      "release_tag": "GSV-cpp",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-cpp/gsv-cpp-engine-v2.zip"
+      ]
+    },
+    "shared": {
+      "name": "gsv-cpp-shared-v1.zip",
+      "size_bytes": 852580206,
+      "sha256": "e369c8d5ed4162c6c08a82a4092678fc476f20416f023c64e294b4619919fd76",
+      "release_tag": "GSV-cpp",
+      "urls": [
+        "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-cpp/gsv-cpp-shared-v1.zip"
       ]
     }
   }

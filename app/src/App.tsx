@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePill, SetupGuide, type GuideStep } from "./components/SetupGuide";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
 import { Nudge } from "./components/Nudge";
 import { Leave } from "./components/Presence";
 import { Modal } from "./components/Modal";
 import { Btn } from "./components/ui";
+import { Toggle } from "./components/controls";
 import { followLinks } from "./lib/links";
 import { QrDialog } from "./components/QrDialog";
 import { WebDialogHost } from "./components/WebDialog";
@@ -17,21 +18,22 @@ import { TitleBar } from "./components/TitleBar";
 import { useEngine } from "./hooks/useEngine";
 import { usePlaza } from "./hooks/usePlaza";
 import { forceKillEngine } from "./lib/engine";
-import type { PageId } from "./lib/nav";
 import { invoke } from "@tauri-apps/api/core";
 import { applyAppearance } from "./lib/appearance";
 import { listen } from "@tauri-apps/api/event";
+import { HomePage } from "./pages/HomePage";
 import { HelpPage } from "./pages/HelpPage";
 import { AnnotPage } from "./pages/AnnotPage";
-import { HomePage } from "./pages/HomePage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { MorePage } from "./pages/MorePage";
 import { PlazaPage } from "./pages/PlazaPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SynthPage } from "./pages/SynthPage";
 import { TrainPage } from "./pages/TrainPage";
-import { registerDownloadModelsOpener } from "./lib/downloadModels";
+import { getAssetsStatus, registerDownloadModelsOpener } from "./lib/downloadModels";
 import { registerHelpOpener } from "./lib/helpNav";
+import { usePageNavigation } from "./hooks/usePageNavigation";
+import { mayCloseApp } from "./lib/windowLeave";
 import { registerNavigator } from "./lib/intent";
 import { useI18n } from "./i18n";
 import { t } from "./i18n/t";
@@ -83,7 +85,7 @@ export default function App() {
   const { locale } = useI18n();
   void locale;
 
-  const [page, setPage] = useState<PageId>("home");
+  const [page, setPage] = usePageNavigation("home");
   const [compactNav, setCompactNav] = useState(false);
   // 「下载模型」：用户主动打开，或音频工具缺引擎资源时跳转。
   const [extrasReason, setExtrasReason] = useState("");
@@ -240,6 +242,7 @@ export default function App() {
    */
   /** id → 显示名。底栏要写「收音机」，不是写 radio。 */
 
+  const [coreOnly, setCoreOnly] = useState(false);
   const [showProvision, setShowProvision] = useState(false);
   const [provisionDismissed, setProvisionDismissed] = useState(false);
   /** 补全弹窗关掉之后，底部 Nudge 再问一次 —— 那次也关了，这个会话就不再提。 */
@@ -247,6 +250,7 @@ export default function App() {
   // 新装 ui_locale_picked===false 时先选语言，再走 Runtime 补全。
   const [showLangGate, setShowLangGate] = useState(false);
   const [langGateChecked, setLangGateChecked] = useState(false);
+  const [guidePending, setGuidePending] = useState(false);
 
   const engine = useEngine();
 
@@ -398,17 +402,68 @@ export default function App() {
   const [guide, setGuide] = useState<{ open: boolean; step: GuideStep; pill: boolean }>({ open: false, step: "runtime", pill: false });
   const openGuide = useCallback((step?: GuideStep) => setGuide((g) => ({ open: true, pill: false, step: step ?? g.step })), []);
   const finishGuide = useCallback(() => {
+    setGuidePending(false);
     setGuide((g) => ({ ...g, open: false, pill: false }));
     void invoke("config_set", { patch: { setup_guide_done: true, onboard_dismiss: true } }).catch(() => {});
   }, []);
+
+  const guideRequested = useRef(false);
+  const { need_provision: needRuntime, runtime_ready: runtimeReady } = engine.provision;
+
   useEffect(() => {
-    void invoke<Record<string, unknown>>("config_get")
-      .then((cfg) => {
-        const fresh = cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true;
-        if (fresh) setGuide((g) => ({ ...g, pill: true }));
-      })
-      .catch(() => {});
-  }, []);
+    if (!langGateChecked || showLangGate || showProvision || provisionDismissed) return;
+    if (needRuntime) {
+      setShowProvision(true);
+      return;
+    }
+    if (!runtimeReady || !guidePending) return;
+    let alive = true;
+    void getAssetsStatus().then(assets => {
+      if (!alive) return;
+      if (assets.engine_core_ready === false) {
+        setCoreOnly(true);
+        setShowProvision(true);
+      } else {
+        setGuide(g => g.open || g.pill ? g : { ...g, pill: true });
+      }
+    });
+    return () => { alive = false; };
+  }, [langGateChecked, showLangGate, showProvision, provisionDismissed, needRuntime, runtimeReady, guidePending]);
+
+  async function startGuide() {
+    if (!runtimeReady) {
+      guideRequested.current = true;
+      setCoreOnly(false);
+      setShowProvision(true);
+      return;
+    }
+    const assets = await getAssetsStatus();
+    if (assets.engine_core_ready === false) {
+      guideRequested.current = true;
+      setCoreOnly(true);
+      setShowProvision(true);
+    } else {
+      openGuide("role");
+    }
+  }
+
+  function closeProvision() {
+    setShowProvision(false);
+    setCoreOnly(false);
+    setProvisionDismissed(true);
+  }
+
+  async function finishProvision() {
+    closeProvision();
+    const provision = await refreshProvision().catch(() => undefined);
+    await engine.refresh();
+    const requested = guideRequested.current;
+    guideRequested.current = false;
+    if (!(provision?.runtime_ready ?? runtimeReady) || (!requested && !guidePending)) return;
+    const assets = await getAssetsStatus();
+    if (assets.engine_core_ready !== false) openGuide("role");
+  }
+
 
   // 不管点的是哪个社媒还是「以后再说」，都不再问第二次。反复问一件用户
   // 已经表过态的事，比不问更让人反感。
@@ -425,6 +480,7 @@ export default function App() {
   const [closeRemember, setCloseRemember] = useState(false);
   const answerClose = async (toTray: boolean) => {
     setCloseAsk(false);
+    if (!toTray && !(await mayCloseApp())) return;
     if (closeRemember) {
       await invoke("config_set", {
         patch: { close_action: toTray ? "tray" : "exit" },
@@ -464,9 +520,9 @@ export default function App() {
     void (async () => {
       try {
         const cfg = await invoke<Record<string, unknown>>("config_get");
-        // 仅新装默认 false 弹引导；老配置没有该键 → 不弹。
-        if (alive && cfg.ui_locale_picked === false) {
-          setShowLangGate(true);
+        if (alive) {
+          setShowLangGate(cfg.ui_locale_picked === false);
+          setGuidePending(cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true);
         }
       } catch {
         /* 预览 */
@@ -478,19 +534,6 @@ export default function App() {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    // 语言引导优先于 Runtime 补全，避免补全窗还是默认中文。
-    if (!langGateChecked || showLangGate) return;
-    if (engine.provision.need_provision && !provisionDismissed) {
-      setShowProvision(true);
-    }
-  }, [
-    engine.provision.need_provision,
-    provisionDismissed,
-    langGateChecked,
-    showLangGate,
-  ]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 520px)");
@@ -512,14 +555,14 @@ export default function App() {
   const openCommunity = useCallback(() => {
     setCommunityNonce((n) => n + 1);
     setPage("more");
-  }, []);
+  }, [setPage]);
   const [helpFocus, setHelpFocus] = useState("");
   const [helpFocusNonce, setHelpFocusNonce] = useState(0);
   const openHelp = useCallback((section?: string) => {
     setHelpFocus(section || "");
     setHelpFocusNonce((n) => n + 1);
     setPage("help");
-  }, []);
+  }, [setPage]);
   // 「下载模型」现在住在广场，「其他」页和工具入口都是跳过来。
   //
   // 以前它是「其他」页上弹的一个框。同一件事在两个地方各有一份实现，改一个
@@ -536,7 +579,7 @@ export default function App() {
       // 加一 = 「再滚一次」。广场很长，不滚过去用户看不见自己被带到哪了。
       setScrollToDownloads((n) => n + 1);
     },
-    [plaza],
+    [plaza, setPage],
   );
 
   useEffect(() => {
@@ -544,7 +587,7 @@ export default function App() {
       const f = opts?.filter;
       openDownloadModels(
         opts?.reason,
-        f === "train" || f === "separate" ? f : "all",
+        f === "train" || f === "separate" || f === "synth" || f === "other" ? f : "all",
       );
     });
     return () => registerDownloadModelsOpener(null);
@@ -560,7 +603,7 @@ export default function App() {
         const f = e.payload?.filter;
         openDownloadModels(
           e.payload?.reason || "",
-          f === "train" || f === "separate" ? f : "all",
+          f === "train" || f === "separate" || f === "synth" || f === "other" ? f : "all",
         );
       },
     ).then((f) => {
@@ -577,7 +620,7 @@ export default function App() {
   useEffect(() => {
     registerNavigator(setPage);
     return () => registerNavigator(null);
-  }, []);
+  }, [setPage]);
 
   useEffect(() => {
     let un: (() => void) | undefined;
@@ -593,7 +636,7 @@ export default function App() {
   const openPlaza = useCallback(() => {
     plaza.markSeen();
     setPage("plaza");
-  }, [plaza]);
+  }, [plaza, setPage]);
   const { reload: plazaReload } = plaza;
   const reloadPlaza = useCallback(() => void plazaReload(), [plazaReload]);
 
@@ -609,6 +652,9 @@ export default function App() {
     // hotkey://toggle-window 没有前端处理：窗口藏起来时 webview 可能被系统
     // 挂起，事件根本到不了这里。那个动作在 Rust 里就地做完了。
     void add("app://close-requested", () => setCloseAsk(true));
+    void add("app://exit-requested", () => {
+      void mayCloseApp().then(ok => { if (ok) void invoke("close_finish", { toTray: false }); });
+    });
     return () => {
       disposed = true;
       offs.forEach((f) => f());
@@ -639,27 +685,11 @@ export default function App() {
       <ProvisionGate
         open={showProvision && !showLangGate}
         initial={engine.provision}
-        onDone={async () => {
-          setShowProvision(false);
-          setProvisionDismissed(false);
-          void invoke<Record<string, unknown>>("config_get")
-            .then((cfg) => { if (cfg.setup_guide_done !== true) openGuide("role"); })
-            .catch(() => {});
-          // 这里以前调的是 getProvisionStatus()，**结果直接扔掉** —— 问了等于
-          // 没问，engine.provision 还是补全之前那份 runtime_ready: false。
-          // 于是运行时装好了，「开启变声」照样被 toggleRun 开头那道闸拦下来
-          // 说「运行时未就绪」，只能重启软件。refreshProvision 会把结果写回
-          // 状态，并且在 false → true 的那一下顺手把引擎拉起来。
-          try {
-            await refreshProvision();
-          } catch {
-            /* 轮询兜底 */
-          }
-          await engine.refresh();
-        }}
+        coreOnly={coreOnly}
+        onDone={() => void finishProvision()}
         onDismiss={() => {
-          setShowProvision(false);
-          setProvisionDismissed(true);
+          guideRequested.current = false;
+          closeProvision();
         }}
       />
 
@@ -668,7 +698,7 @@ export default function App() {
           switch (id) {
             case "home":
               return (
-                <HomePage onNavigate={setPage} />
+                <HomePage onNavigate={setPage} active={page === "home"} />
               );
             case "plaza":
               return (
@@ -683,7 +713,7 @@ export default function App() {
               );
             case "models":
               return (
-                <ModelsPage onOpenPlaza={openPlaza} banner={plaza.feed.banner} />
+                <ModelsPage onOpenPlaza={openPlaza} banner={plaza.feed.banner} active={page === "models"} />
               );
             case "synth":
               return <SynthPage />;
@@ -707,7 +737,7 @@ export default function App() {
                   focus={helpFocus}
                   focusNonce={helpFocusNonce}
                   onOpenCommunity={openCommunity}
-                  onStartGuide={() => openGuide("runtime")}
+                  onStartGuide={() => void startGuide()}
                 />
               );
             case "more":
@@ -720,7 +750,6 @@ export default function App() {
                     setProvisionDismissed(false);
                     setShowProvision(true);
                   }}
-                  onOpenDownloadModels={openDownloadModels}
                   focusCommunityNonce={communityNonce}
                 />
               );
@@ -730,34 +759,26 @@ export default function App() {
 
       <Modal open={Boolean(killAsk)} z={60} contained>
           <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
-            <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
+            <h2 className="text-[16px] font-semibold m-0 mb-2">{t("s.killStsAskTitle")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-5 leading-relaxed">{t("s.killStsAskBody")}</p>
             <div className="flex gap-2.5 justify-end">
-              <button
-                type="button"
-                onClick={() => setKillAsk(false)}
-                className="text-[13px] px-3.5 py-2 rounded-[var(--rs)] bg-transparent text-[var(--ink-muted)] border-0 cursor-pointer shadow-[inset_0_0_0_1px_var(--line)]"
-              >{t("s.killStsAskKeep")}</button>
-              <button
-                type="button"
-                onClick={() => void doForceKill()}
-                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent)] text-[var(--accent-ink)] border-0 cursor-pointer"
-              >{t("s.killStsAskGo")}</button>
+              <Btn onClick={() => setKillAsk(false)}>{t("s.killStsAskKeep")}</Btn>
+              <Btn primary danger onClick={() => void doForceKill()}>{t("s.killStsAskGo")}</Btn>
             </div>
           </div>
       </Modal>
 
       <Modal open={Boolean(closeAsk)} z={60} contained>
           <div className="w-full max-w-[420px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6">
-            <h2 className="text-[19px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
+            <h2 className="text-[16px] font-semibold m-0 mb-2">{t("s.43b19c9a61")}</h2>
             <p className="text-[13px] text-[var(--help)] m-0 mb-4 leading-relaxed">{t("s.bc19958103")}</p>
-            <label className="flex items-center gap-2.5 text-[13px] cursor-pointer mb-5 select-none">
-              <input
-                type="checkbox"
-                checked={closeRemember}
-                onChange={(e) => setCloseRemember(e.target.checked)}
-                className="accent-[var(--accent)]"
-              />{t("s.f75c86ad46")}</label>
+            <Toggle
+              look="inline"
+              className="mb-5"
+              checked={closeRemember}
+              onChange={setCloseRemember}
+              label={t("s.f75c86ad46")}
+            />
             <div className="flex gap-2.5 justify-end">
               <button
                 type="button"
@@ -767,7 +788,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => void answerClose(true)}
-                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent)] text-[var(--accent-ink)] border-0 cursor-pointer"
+                className="text-[13px] font-semibold px-3.5 py-2 rounded-[var(--rs)] bg-[var(--accent-fill)] text-[var(--accent-ink)] border-0 cursor-pointer"
               >{t("s.aea56dcdfe")}</button>
             </div>
           </div>
@@ -776,6 +797,7 @@ export default function App() {
       {/* Nudge 全部收进这层浮层：absolute 叠在页面之上、不占布局，
           否则每条提示都会在底部顶出一条跟背景同色的带子，看着像伪 dock。
           pointer-events 穿透空区，卡片自己再吃事件。 */}
+      {/* design-allow: 底部通知必须低于本文件层级为六十的确认弹窗，保留原有先后关系。 */}
       <div className="absolute inset-x-0 bottom-0 z-[40] pointer-events-none">
       {/* 已知问题排在这里：比「要不要更新」重要（它解释的是用户此刻为什么
           用不了）。一个会话里关掉就不再出现 —— 不落配置，因为坑没填之前
@@ -914,7 +936,7 @@ export default function App() {
       <NativeDialogHint />
 
       <SetupGuide
-        open={guide.open}
+        open={guide.open && !showLangGate && !showProvision}
         step={guide.step}
         onStep={(step) => setGuide((g) => ({ ...g, step }))}
         onMinimize={() => setGuide((g) => ({ ...g, open: false, pill: true }))}
@@ -925,7 +947,7 @@ export default function App() {
           setShowProvision(true);
         }}
       />
-      <Leave>{guide.pill && !guide.open ? <GuidePill step={guide.step} onOpen={() => openGuide()} onClose={finishGuide} /> : null}</Leave>
+      <Leave>{guide.pill && !guide.open && !showLangGate && !showProvision ? <GuidePill step={guide.step} onOpen={() => openGuide()} onClose={finishGuide} /> : null}</Leave>
     </div>
   );
 }

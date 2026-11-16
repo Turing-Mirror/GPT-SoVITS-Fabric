@@ -1,3 +1,4 @@
+import { configSnapshot } from "./configSnapshot";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n/t";
 
@@ -10,12 +11,26 @@ export type ConfigWrite = {
   needs_restart: string[];
 };
 
+let writes: Promise<unknown> = Promise.resolve();
+
 export async function getConfig(): Promise<Config> {
-  return await invoke<Config>("config_get");
+  await writes;
+  const revision = configSnapshot.revision;
+  const config = await invoke<Config>("config_get");
+  return configSnapshot.receive(config, revision);
 }
 
-export async function setConfig(patch: Config): Promise<ConfigWrite> {
-  return await invoke<ConfigWrite>("config_set", { patch });
+export function setConfig(patch: Config): Promise<ConfigWrite> {
+  const snapshot = { ...patch };
+  const write = writes.then(async () => {
+    const revision = configSnapshot.revision;
+    const out = await invoke<ConfigWrite>("config_set", { patch: snapshot });
+    configSnapshot.receive(out.config, revision, snapshot);
+    return out;
+  });
+  // All mounted pages share the order; a rejected write must not block later changes.
+  writes = write.catch(() => {});
+  return write;
 }
 
 /** 设置页乐观写入时立刻通知底栏等订阅方，不等 220ms 落盘。 */
@@ -30,6 +45,7 @@ export function onConfigPatch(fn: (patch: Config) => void): () => void {
 
 export function notifyConfigPatch(patch: Config): void {
   if (!Object.keys(patch).length) return;
+  configSnapshot.patch(patch);
   patchListeners.forEach((fn) => fn(patch));
 }
 

@@ -1,10 +1,7 @@
 # GPT-SoVITS Fabric desktop shell (`app/`)
 
 Tauri 2 + React + TypeScript + Tailwind UI host for GPT-SoVITS Fabric.
-Speech synthesis runs in the embedded Runtime (`pythonw` + `tools/synth_worker.py`).
-
-This host **is** the product shell (Tk / `launcher/` UI removed). Only the speech synthesis
-worker stays on Python under `Runtime\pythonw.exe`.
+The synthesis page defaults to CUDA through the embedded Runtime. It also offers Vulkan through gsv.cpp for supported v5turbo voices.
 
 ## Requirements
 
@@ -13,29 +10,18 @@ worker stays on Python under `Runtime\pythonw.exe`.
 - Visual Studio Build Tools with “Desktop development with C++” (`link.exe`)
 - Windows WebView2
 
-## Dev
+## Dev and build
 
-```bat
-cd app
-npm install
-npm run tauri:dev
-```
+See [Windows development v1](../docs/development-v1.md) for the native build,
+product-root setup, restart procedure, and dependency build troubleshooting.
+Run commands from a Visual Studio developer shell with the C++ tools available.
 
-UI-only (browser, no native window chrome):
+For a browser-only preview, run `npm run dev` from `app/`.
+The desktop window loads the built `frontend/` directory next to its executable,
+including in debug builds; a running Vite server does not replace that directory.
 
-```bat
-npm run dev
-```
-
-## Build
-
-```bat
-cd app
-npm run tauri:build
-```
-
-Vite writes static assets to `app/frontend/`.  
-`tauri.conf.json` sets `frontendDist` to that folder so the UI pack can be shipped and updated separately from the Rust binary.
+For an installer, run `npm run tauri:build` from `app/`.
+Vite writes assets to `app/frontend/`, which Tauri copies as a bundled resource.
 
 ## Layout
 
@@ -49,17 +35,7 @@ Product behaviour and decisions: see internal `docs/项目白皮书.md` (gitigno
 
 ## Worker bridge
 
-The shell spawns `Runtime\\pythonw.exe tools\\synth_worker.py --resident` and talks
-JSON lines over stdin/stdout; training and separation are one-shot child workers.
-On Windows use the F: MSVC
-env when building the native host:
-
-```bat
-call F:\VS2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat
-set CARGO_TARGET_DIR=F:\VS2022\cargo-target
-cd /d path\to\repo\app
-npm run tauri:dev
-```
+The CUDA engine runs `Runtime\\pythonw.exe tools\\synth_worker.py --resident` over JSON lines on stdin/stdout. The Vulkan engine runs the downloaded gsv.cpp server and text process on the loopback interface. Both use the same task and output flow. Training and separation use one-shot child workers.
 
 ## Voice catalog & community store
 

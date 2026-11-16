@@ -23,10 +23,41 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
-use crate::paths;
+use crate::{gsv_cpp, paths};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Backend {
+    Cuda,
+    Vulkan,
+}
+
+impl Backend {
+    fn from_options(opts: &Value) -> Result<Self, String> {
+        match opts.get("backend").map(Value::as_str) {
+            None | Some(Some("cuda")) => Ok(Self::Cuda),
+            Some(Some("vulkan")) => Ok(Self::Vulkan),
+            _ => Err(gsv_cpp::message("backend_invalid", "无效的推理引擎。")),
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Cuda => "cuda",
+            Self::Vulkan => "vulkan",
+        }
+    }
+
+    fn script(self) -> &'static str {
+        match self {
+            Self::Cuda => "synth_worker.py",
+            Self::Vulkan => "gsv_cpp_worker.py",
+        }
+    }
+}
 
 /// 常驻 worker 句柄。stdout 在 spawn 时被接管，之后所有读取都走它。
 struct Resident {
+    backend: Backend,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<std::process::ChildStdout>,
@@ -34,6 +65,7 @@ struct Resident {
 
 static RESIDENT: Mutex<Option<Resident>> = Mutex::new(None);
 static BUSY: Mutex<bool> = Mutex::new(false);
+static OWNER: Mutex<Option<String>> = Mutex::new(None);
 static CANCEL: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 /// worker 最近一次 ready 时报的设备（"cuda:0" / "mps" / "cpu"）。
 /// 「其他」页的计算后端行读这个 —— 合成没跑过就没有后端可言，空着。
@@ -43,10 +75,6 @@ fn cancel_flag() -> Arc<AtomicBool> {
     CANCEL
         .get_or_init(|| Arc::new(AtomicBool::new(false)))
         .clone()
-}
-
-fn script(root: &Path) -> PathBuf {
-    root.join("tools").join("synth_worker.py")
 }
 
 /// 角色包根：`User_Data/characters/<id>/`（docs/DECISIONS.md D4）。
@@ -119,9 +147,9 @@ pub fn rename_output(root: &Path, path: &str, name: &str) -> Result<String, Stri
     let name = name.trim();
     let bad = name.is_empty()
         || name.len() > 120
-        || name
-            .chars()
-            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control());
+        || name.chars().any(|c| {
+            matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control()
+        });
     if bad {
         return Err(crate::i18n::t("s.synthErrBadName"));
     }
@@ -162,7 +190,12 @@ pub fn recent_outputs(root: &Path, limit: usize) -> Value {
             let is_audio = p
                 .extension()
                 .and_then(|x| x.to_str())
-                .map(|x| matches!(x.to_ascii_lowercase().as_str(), "wav" | "flac" | "mp3" | "ogg"))
+                .map(|x| {
+                    matches!(
+                        x.to_ascii_lowercase().as_str(),
+                        "wav" | "flac" | "mp3" | "ogg"
+                    )
+                })
                 .unwrap_or(false);
             if !p.is_file() || !is_audio {
                 continue;
@@ -173,7 +206,10 @@ pub fn recent_outputs(root: &Path, limit: usize) -> Value {
                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
             rows.push((
                 mtime,
-                p.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+                p.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
                 p.to_string_lossy().into_owned(),
             ));
         }
@@ -214,14 +250,16 @@ fn worker_alive_mut(g: &mut Option<Resident>) -> bool {
 
 /// 起常驻 worker（已活着就是 no-op）。ready 行当场读掉 —— GPT_SoVITS 懒加载，
 /// 这一行来得很快；它同时也是「python 能跑、脚本能跑」的第一次体检。
-fn ensure_worker(root: &Path) -> Result<(), String> {
+fn ensure_worker(root: &Path, backend: Backend) -> Result<(), String> {
     let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
-    if worker_alive_mut(&mut g) {
+    if worker_alive_mut(&mut g) && g.as_ref().is_some_and(|r| r.backend == backend) {
         return Ok(());
     }
-    *g = None;
+    if let Some(r) = g.take() {
+        stop_resident(r);
+    }
 
-    let script = script(root);
+    let script = root.join("tools").join(backend.script());
     if !script.is_file() {
         return Err(crate::i18n::t("s.synthErrNoWorker"));
     }
@@ -255,11 +293,18 @@ fn ensure_worker(root: &Path) -> Result<(), String> {
         .spawn()
         .map_err(|e| crate::i18n::te("s.4f592d4fc2", &e))?;
     let pid = child.id();
-    let stdin = child.stdin.take().ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
-    let stdout = child.stdout.take().ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| crate::i18n::t("s.68759edc4b"))?;
     let _guard = crate::worker::ToolPidGuard::new(pid);
 
     let mut resident = Resident {
+        backend,
         child,
         stdin,
         stdout: BufReader::new(stdout),
@@ -359,14 +404,42 @@ fn send(g: &mut Resident, req: &Value) -> Result<(), String> {
 
 /// 杀掉常驻 worker（引擎强杀、设置变更时调用方决定要不要重建）。
 pub fn shutdown() {
-    let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(mut r) = g.take() {
+    shutdown_matching(None);
+}
+
+pub(crate) fn shutdown_vulkan() {
+    shutdown_matching(Some(Backend::Vulkan));
+}
+
+fn shutdown_matching(backend: Option<Backend>) {
+    let mut resident = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
+    if resident.as_ref().is_some_and(|r| backend.is_none_or(|b| r.backend == b)) {
+        stop_resident(resident.take().unwrap());
+    }
+}
+
+fn stop_resident(mut r: Resident) {
+    if matches!(r.child.try_wait(), Ok(None)) {
         let _ = writeln!(r.stdin, r#"{{"cmd":"quit"}}"#);
         let _ = r.stdin.flush();
         std::thread::sleep(Duration::from_millis(300));
+        if matches!(r.child.try_wait(), Ok(None)) && r.backend == Backend::Vulkan {
+            kill_pid(r.child.id());
+        }
         let _ = r.child.kill();
-        let _ = r.child.wait();
     }
+    let _ = r.child.wait();
+}
+
+/// Hold the synthesis admission lock while changing role files.
+pub(crate) fn while_idle<T>(edit: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    edit_when_idle(&BUSY, edit)
+}
+
+fn edit_when_idle<T>(admission: &Mutex<bool>, edit: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let busy = admission.lock().unwrap_or_else(|e| e.into_inner());
+    if *busy { return Err(crate::i18n::t("s.synthErrBusy")); }
+    edit()
 }
 
 pub fn is_busy() -> bool {
@@ -374,82 +447,111 @@ pub fn is_busy() -> bool {
 }
 
 pub fn cancel() {
-    cancel_flag().store(true, Ordering::SeqCst);
+    cancel_for(None);
+}
+pub fn cancel_for(owner: Option<&str>) {
+    let busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+    if *busy && OWNER.lock().unwrap_or_else(|e| e.into_inner()).as_deref() == owner {
+        cancel_flag().store(true, Ordering::SeqCst);
+    }
+}
+fn emit_progress(app: &AppHandle, event: &str, mut value: Value) {
+    value["owner"] = json!(OWNER.lock().unwrap_or_else(|e| e.into_inner()).clone());
+    let _ = app.emit(event, value);
+}
+
+fn character_dirs(base: &Path) -> impl Iterator<Item = std::fs::DirEntry> {
+    std::fs::read_dir(base).into_iter().flatten().flatten()
+}
+
+fn read_character_config(dir: &Path) -> Option<Value> {
+    let cfg_path = dir.join("config.json");
+    if !cfg_path.is_file() {
+        return None;
+    }
+    let raw = std::fs::read_to_string(cfg_path).ok()?;
+    match serde_json::from_str(&raw) {
+        Ok(cfg) => Some(cfg),
+        Err(_) => {
+            crate::logging::shell_log!(
+                "character pack skipped (bad config.json): {}",
+                dir.display()
+            );
+            None
+        }
+    }
+}
+
+pub(crate) fn has_characters(root: &Path) -> bool {
+    character_dirs(&characters_dir(root)).any(|entry| read_character_config(&entry.path()).is_some())
+}
+
+/// 由目录枚举中的原始名称匹配已安装角色，保留目录大小写与旧角色 ID。
+pub(crate) fn find_character_config(root: &Path, id: &str) -> Option<(PathBuf, Value)> {
+    let entry = character_dirs(&characters_dir(root))
+        .find(|entry| entry.file_name().to_string_lossy() == id)?;
+    let dir = entry.path();
+    let cfg = read_character_config(&dir)?;
+    Some((dir, cfg))
 }
 
 /// 本地角色包清单：扫 `User_Data/characters/*/config.json`。
 ///
 /// 包格式见 docs/DECISIONS.md D4：config.json 声明 name/author/version/cover/
 /// lists/params；models/ 放权重；dataset/*.list 是参考音频候选。.list 的解析
-/// 直接复用 annot::load —— 那份实现带着绝对路径拼装与存在性检查，合成台的
+/// 复用 annot::read_rows，包含绝对路径拼装与存在性检查，合成台的
 /// 参考挑选器要的正是这两样。
 pub fn list_characters(root: &Path) -> Value {
     let base = characters_dir(root);
     let mut roles: Vec<Value> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&base) {
-        for e in rd.flatten() {
-            let dir = e.path();
-            let cfg_path = dir.join("config.json");
-            if !cfg_path.is_file() {
-                continue;
-            }
-            let Ok(raw) = std::fs::read_to_string(&cfg_path) else {
-                continue;
-            };
-            let Ok(cfg) = serde_json::from_str::<Value>(&raw) else {
-                // 坏包不拖垮整页：跳过并记一条，界面少一个角色好过整页报错。
-                crate::logging::shell_log!(
-                    "character pack skipped (bad config.json): {}",
-                    dir.display()
-                );
-                continue;
-            };
-            let id = dir
-                .file_name()
-                .map(|x| x.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let mut lists: Vec<Value> = Vec::new();
-            if let Some(arr) = cfg.get("lists").and_then(|v| v.as_array()) {
-                for l in arr {
-                    // `file` 相对包根（`dataset/xxx.list` —— 和 pack_role_pack.py
-                    // 的 `f in rels` 校验、train_worker 写回的 `dataset/<exp>.list`
-                    // 同一套约定）。它是包里带来的字符串：拦住 `..` / 绝对路径 /
-                    // 盘符，不然一个坏包就能把任意文件读给标注解析器。
-                    let file = l.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                    let rel = file.replace('\\', "/");
-                    let ok = !rel.is_empty()
-                        && !rel.starts_with('/')
-                        && !rel.contains(':')
-                        && rel
-                            .split('/')
-                            .all(|s| !s.is_empty() && s != "." && s != "..");
-                    if !ok {
-                        continue;
-                    }
-                    let path = dir.join(&rel);
-                    let Ok(parsed) = crate::annot::load(&path.to_string_lossy()) else {
-                        continue;
-                    };
-                    lists.push(json!({
-                        "file": file,
-                        "lang": l.get("lang").and_then(|v| v.as_str()).unwrap_or(""),
-                        "note": l.get("note").and_then(|v| v.as_str()).unwrap_or(""),
-                        "rows": parsed.get("rows").cloned().unwrap_or(json!([])),
-                    }));
+    for entry in character_dirs(&base) {
+        let dir = entry.path();
+        let Some(cfg) = read_character_config(&dir) else {
+            continue;
+        };
+        let name = entry.file_name();
+        let id = name.to_string_lossy();
+        let mut lists: Vec<Value> = Vec::new();
+        if let Some(arr) = cfg.get("lists").and_then(|v| v.as_array()) {
+            for l in arr {
+                // `file` 相对包根（`dataset/xxx.list` —— 和 pack_role_pack.py
+                // 的 `f in rels` 校验、train_worker 写回的 `dataset/<exp>.list`
+                // 同一套约定）。它是包里带来的字符串：拦住 `..` / 绝对路径 /
+                // 盘符，不然一个坏包就能把任意文件读给标注解析器。
+                let file = l.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                let rel = file.replace('\\', "/");
+                let ok = !rel.is_empty()
+                    && !rel.starts_with('/')
+                    && !rel.contains(':')
+                    && rel
+                        .split('/')
+                        .all(|s| !s.is_empty() && s != "." && s != "..");
+                if !ok {
+                    continue;
                 }
+                let path = dir.join(&rel);
+                let Ok(rows) = crate::annot::read_rows(&path) else {
+                    continue;
+                };
+                lists.push(json!({
+                    "file": file,
+                    "lang": l.get("lang").and_then(|v| v.as_str()).unwrap_or(""),
+                    "note": l.get("note").and_then(|v| v.as_str()).unwrap_or(""),
+                    "rows": rows,
+                }));
             }
-            roles.push(json!({
-                "id": id,
-                "name": cfg.get("name").and_then(|v| v.as_str()).unwrap_or(&id),
-                "author": cfg.get("author").and_then(|v| v.as_str()).unwrap_or(""),
-                "version": cfg.get("version").and_then(|v| v.as_str()).unwrap_or("v2ProPlus"),
-                "cover": cfg.get("cover").and_then(|v| v.as_str()).unwrap_or(""),
-                "cover_exists": dir.join(cfg.get("cover").and_then(|v| v.as_str()).unwrap_or("")).is_file(),
-                "params": cfg.get("params").cloned().unwrap_or(json!({})),
-                "lists": lists,
-                "dir": dir.to_string_lossy(),
-            }));
         }
+        roles.push(json!({
+            "id": id,
+            "name": cfg.get("name").and_then(|v| v.as_str()).unwrap_or(id.as_ref()),
+            "author": cfg.get("author").and_then(|v| v.as_str()).unwrap_or(""),
+            "version": cfg.get("version").and_then(|v| v.as_str()).unwrap_or("v2ProPlus"),
+            "cover": cfg.get("cover").and_then(|v| v.as_str()).unwrap_or(""),
+            "cover_exists": dir.join(cfg.get("cover").and_then(|v| v.as_str()).unwrap_or("")).is_file(),
+            "params": cfg.get("params").cloned().unwrap_or(json!({})),
+            "lists": lists,
+            "dir": dir.to_string_lossy(),
+        }));
     }
     roles.sort_by(|a, b| {
         a.get("name")
@@ -485,15 +587,21 @@ pub fn synthesize(
             return Err(crate::i18n::t("s.synthErrBusy"));
         }
         *g = true;
+        *OWNER.lock().unwrap_or_else(|e| e.into_inner()) =
+            opts["owner"].as_str().map(str::to_owned);
+        cancel_flag().store(false, Ordering::SeqCst);
     }
-    cancel_flag().store(false, Ordering::SeqCst);
     let out = synthesize_inner(
-        app, root, role_id, role_dir, version, text, ref_wav, ref_text, ref_lang, params, streaming,
-        opts,
+        app, root, role_id, role_dir, version, text, ref_wav, ref_text, ref_lang, params,
+        streaming, opts,
     );
-    *BUSY.lock().unwrap_or_else(|e| e.into_inner()) = false;
-    let _ = std::fs::remove_file(stop_file(root));
-    cancel_flag().store(false, Ordering::SeqCst);
+    {
+        let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = std::fs::remove_file(stop_file(root));
+        cancel_flag().store(false, Ordering::SeqCst);
+        *OWNER.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *busy = false;
+    }
     out
 }
 
@@ -526,11 +634,29 @@ fn synthesize_inner(
         }
     }
     // 带毫秒：批量合成一秒内可能出好几条。
-    let job = format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S_%3f"));
+    let job = opts["job_id"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S_%3f")));
+    let output = opts["output_dir"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| out_dir(root));
+    std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     let stop = stop_file(root);
     let _ = std::fs::remove_file(&stop);
 
-    ensure_worker(root)?;
+    let backend = Backend::from_options(opts)?;
+    if backend == Backend::Vulkan {
+        if let Some((code, fallback)) = gsv_cpp::request_error(
+            root, version, text, ref_text, ref_lang, params, streaming, opts,
+        ) {
+            let message = gsv_cpp::message(code, fallback);
+            emit_progress(app, "synth-error", json!({"job": job, "code": code, "message": message}));
+            return Err(message);
+        }
+    }
+    ensure_worker(root, backend)?;
 
     let mut g = RESIDENT.lock().unwrap_or_else(|e| e.into_inner());
     let Some(resident) = g.as_mut() else {
@@ -546,6 +672,7 @@ fn synthesize_inner(
             "sovits": sovits.to_string_lossy(),
             "gpt": gpt.to_string_lossy(),
             "version": version,
+            "gsv_cache": gsv_cpp::cache_root(root),
             // 两个都得是**目录**：worker 那边最终走的是
             // `HubertModel.from_pretrained()` / `AutoTokenizer.from_pretrained()`，
             // 指到 pretrained_model2.pth 这种具体权重文件上会当场报错。
@@ -564,9 +691,18 @@ fn synthesize_inner(
         if cancel_flag().load(Ordering::SeqCst) {
             let _ = std::fs::write(&stop, b"stop");
         }
-        let line = read_line_with_deadline(resident, Duration::from_secs(180))
-            .map_err(|_| crate::i18n::t("s.synthErrLoadTimeout"))?;
-        let Some(v) = parse_event(&line) else { continue };
+        let timeout = Duration::from_secs(if backend == Backend::Vulkan { 600 } else { 180 });
+        let line = match read_line_with_deadline(resident, timeout) {
+            Ok(line) => line,
+            Err(_) if backend == Backend::Vulkan && cancel_flag().load(Ordering::SeqCst) => {
+                *g = None;
+                return Ok(json!({"ok": true, "cancelled": true, "job": job}));
+            }
+            Err(_) => return Err(crate::i18n::t("s.synthErrLoadTimeout")),
+        };
+        let Some(v) = parse_event(&line) else {
+            continue;
+        };
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "ready" => {
                 if let Some(d) = v.get("device").and_then(|x| x.as_str()) {
@@ -578,6 +714,10 @@ fn synthesize_inner(
                 // worker 报文带 message_code（msg.synth.* 语言包）+ detail
                 // （异常原文）；翻译不到时 t_worker_msg 回退 message。
                 let msg = crate::i18n::t_worker_msg(&v);
+                if backend == Backend::Vulkan {
+                    emit_progress(app, "synth-error", json!({"job": job, "code": v["code"], "message": msg}));
+                    return Err(msg);
+                }
                 let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
                 let msg = if detail.is_empty() {
                     msg
@@ -590,9 +730,13 @@ fn synthesize_inner(
         }
     }
 
+    if backend == Backend::Vulkan && cancel_flag().load(Ordering::SeqCst) {
+        return Ok(json!({"ok": true, "cancelled": true, "job": job}));
+    }
+
     // 2) synth：分片经事件转发，done/error 收尾。
     let format = opts.get("format").and_then(|x| x.as_str()).unwrap_or("wav");
-    let out_path = out_dir(root).join(format!("{job}.{format}"));
+    let out_path = output.join(format!("{job}.{format}"));
     send(
         resident,
         &json!({
@@ -606,7 +750,7 @@ fn synthesize_inner(
             "streaming": streaming,
             "aux_refs": opts.get("aux_refs").cloned().unwrap_or(json!([])),
             "format": format,
-            "out_dir": out_dir(root).to_string_lossy(),
+            "out_dir": output.to_string_lossy(),
             "stop_file": stop.to_string_lossy(),
         }),
     )?;
@@ -627,19 +771,31 @@ fn synthesize_inner(
             Err(_) => {
                 // worker 没了（看门狗杀的或崩溃）：按取消/失败收场，别把互斥卡死。
                 *g = None;
-                if cancelled {
+                if backend == Backend::Vulkan {
+                    let _ = std::fs::remove_file(out_path.with_extension("wav.part"));
+                }
+                if cancelled || cancel_flag().load(Ordering::SeqCst) {
+                    if backend == Backend::Vulkan {
+                        let _ = std::fs::remove_file(&out_path);
+                    }
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
                 return Err(crate::i18n::t("s.synthErrWorkerGone"));
             }
         };
-        let Some(v) = parse_event(&line) else { continue };
+        let Some(v) = parse_event(&line) else {
+            continue;
+        };
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "chunk" => {
-                let _ = app.emit("synth-chunk", v);
+                emit_progress(app, "synth-chunk", v);
             }
             "done" => {
-                let _ = app.emit("synth-done", &v);
+                if backend == Backend::Vulkan && cancel_flag().load(Ordering::SeqCst) {
+                    let _ = std::fs::remove_file(&out_path);
+                    return Ok(json!({"ok": true, "cancelled": true, "job": job}));
+                }
+                emit_progress(app, "synth-done", v.clone());
                 let out = v
                     .get("out")
                     .and_then(|x| x.as_str())
@@ -653,6 +809,7 @@ fn synthesize_inner(
                         "role_name": opts.get("role_name").cloned().unwrap_or(json!(role_id)),
                         "ref_wav": ref_wav,
                         "params": params,
+                        "backend": backend.id(),
                         "audio_sec": v.get("audio_sec").cloned().unwrap_or(json!(0)),
                         "t_first_ms": v.get("t_first_ms").cloned().unwrap_or(json!(0)),
                         "t_total_ms": v.get("t_total_ms").cloned().unwrap_or(json!(0)),
@@ -661,6 +818,7 @@ fn synthesize_inner(
                 return Ok(json!({
                     "ok": true,
                     "job": job,
+                    "backend": backend.id(),
                     "out": v.get("out").cloned().unwrap_or(json!(out_path.to_string_lossy())),
                     "t_first_ms": v.get("t_first_ms").cloned().unwrap_or(json!(0)),
                     "t_total_ms": v.get("t_total_ms").cloned().unwrap_or(json!(0)),
@@ -669,7 +827,7 @@ fn synthesize_inner(
             "error" => {
                 let code = v.get("code").and_then(|x| x.as_str()).unwrap_or("");
                 if code == "cancelled" || cancelled {
-                    let _ = app.emit("synth-error", json!({"job": job, "code": "cancelled"}));
+                    emit_progress(app, "synth-error", json!({"job": job, "code": "cancelled"}));
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
                 let msg = crate::i18n::t_worker_msg(&v);
@@ -679,7 +837,11 @@ fn synthesize_inner(
                 } else {
                     format!("{msg}（{detail}）")
                 };
-                let _ = app.emit("synth-error", json!({"job": job, "code": code, "message": msg}));
+                emit_progress(
+                    app,
+                    "synth-error",
+                    json!({"job": job, "code": code, "message": msg}),
+                );
                 return Err(msg);
             }
             _ => {}
@@ -689,6 +851,18 @@ fn synthesize_inner(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn role_edits_require_idle_synthesis_and_hold_admission() {
+        let admission = std::sync::Mutex::new(true);
+        assert!(super::edit_when_idle(&admission, || -> Result<(),String> { panic!("busy engine must not edit weights"); }).is_err());
+        *admission.lock().unwrap() = false;
+        super::edit_when_idle(&admission, || {
+            assert!(admission.try_lock().is_err(), "synthesis cannot enter during a file edit");
+            Ok(())
+        }).unwrap();
+        assert!(admission.try_lock().is_ok());
+    }
+
     use super::*;
 
     /// 角色扫描遇到坏包要跳过而不是整页报错 —— 用户手改 config.json 写坏一个
@@ -711,6 +885,13 @@ mod tests {
         let roles = v["roles"].as_array().unwrap();
         assert_eq!(roles.len(), 1);
         assert_eq!(roles[0]["name"], "好角色");
+        assert!(has_characters(&root));
+        let (dir, cfg) = find_character_config(&root, "good").unwrap();
+        assert_eq!(dir, base.join("good"));
+        assert_eq!(cfg["name"], roles[0]["name"]);
+        assert!(find_character_config(&root, "bad").is_none());
+        assert!(find_character_config(&root, "GOOD").is_none());
+        assert!(find_character_config(&root, "../good").is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
 
 /// 按魔数认类型。只认能当背景图的那几种，认不出来就不给。
-fn sniff_mime(b: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff_mime(b: &[u8]) -> Option<&'static str> {
     if b.len() > 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF {
         return Some("image/jpeg");
     }
@@ -36,7 +36,7 @@ fn sniff_mime(b: &[u8]) -> Option<&'static str> {
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-fn encode_base64(data: &[u8]) -> String {
+pub(crate) fn encode_base64(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for c in data.chunks(3) {
         let b = [c[0], *c.get(1).unwrap_or(&0), *c.get(2).unwrap_or(&0)];

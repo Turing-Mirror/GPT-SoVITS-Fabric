@@ -9,7 +9,7 @@ import type { PageId } from "./nav";
 
 type Kind = "synthRole" | "annotList" | "trainDataset";
 
-let navigate: ((page: PageId) => void) | null = null;
+let navigate: ((page: PageId) => void | Promise<boolean>) | null = null;
 const pending: Partial<Record<Kind, string>> = {};
 const listeners = new Set<() => void>();
 
@@ -20,14 +20,16 @@ const TARGET: Record<Kind, PageId> = {
 };
 
 /** App 挂载时登记换页函数。 */
-export function registerNavigator(fn: ((page: PageId) => void) | null): void {
+export function registerNavigator(fn: ((page: PageId) => void | Promise<boolean>) | null): void {
   navigate = fn;
 }
 
 function hand(kind: Kind, value: string): void {
-  pending[kind] = value;
-  navigate?.(TARGET[kind]);
-  listeners.forEach((fn) => fn());
+  void Promise.resolve(navigate?.(TARGET[kind])).then(allowed => {
+    if (allowed === false) return;
+    pending[kind] = value;
+    listeners.forEach((fn) => fn());
+  });
 }
 
 /** 只换页，不交接东西。 */

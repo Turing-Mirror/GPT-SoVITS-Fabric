@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useAudioPreview } from "../hooks/useAudioPreview";
 import { Btn } from "./ui";
 import { Select } from "./controls";
 import { t } from "../i18n/t";
@@ -42,6 +43,7 @@ export function SynthResults({
   tick,
   latest,
   format,
+  formatDisabled = false,
   onFormat,
   onReuse,
   onError,
@@ -51,15 +53,15 @@ export function SynthResults({
   /** 刚合成出的文件：重读后自动选中。 */
   latest: string;
   format: OutFormat;
+  formatDisabled?: boolean;
   onFormat: (f: OutFormat) => void;
   onReuse: (rec: SynthRecord) => void;
   onError: (msg: string) => void;
 }) {
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [sel, setSel] = useState("");
-  const [playing, setPlaying] = useState("");
+  const { playing, play: playAudio, player } = useAudioPreview();
   const [renaming, setRenaming] = useState(false);
-  const audio = useRef<HTMLAudioElement | null>(null);
 
   const reload = useCallback(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -76,30 +78,10 @@ export function SynthResults({
     if (latest) setSel(latest);
   }, [latest]);
 
-  const stop = useCallback(() => {
-    audio.current?.pause();
-    audio.current = null;
-    setPlaying("");
-  }, []);
-
-  useEffect(() => stop, [stop]);
-
-  const play = (path: string) => {
-    if (playing === path) {
-      stop();
-      return;
-    }
-    stop();
-    const a = new Audio(convertFileSrc(path));
-    a.onended = () => setPlaying("");
-    a.onerror = () => {
-      setPlaying("");
-      onError(t("synth.playFailed"));
-    };
-    audio.current = a;
-    void a.play();
-    setPlaying(path);
-  };
+  useEffect(() => {
+    player.retain(rows.map(r => r.path));
+  }, [rows, player]);
+  const play = (path: string) => playAudio(path, () => onError(t("synth.playFailed")));
 
   const current = rows.find((r) => r.path === sel) ?? null;
   const seed = current?.record?.params?.seed;
@@ -114,6 +96,7 @@ export function SynthResults({
 
   const rename = (name: string) => {
     if (!current) return;
+    player.stopPath(current.path);
     setRenaming(false);
     void invoke<string>("synth_rename", { path: current.path, name })
       .then((p) => {
@@ -125,7 +108,7 @@ export function SynthResults({
 
   const remove = () => {
     if (!current) return;
-    if (playing === current.path) stop();
+    player.stopPath(current.path);
     void invoke("synth_delete", { path: current.path })
       .then(() => {
         setSel("");
@@ -137,14 +120,15 @@ export function SynthResults({
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="flex-none flex items-center gap-2 mb-2.5">
-        <h3 className="text-[15.5px] font-semibold m-0">{t("synth.resultTitle")}</h3>
-        <span className="text-[12px] text-[var(--meta)]">{rows.length}</span>
+        <h3 className="text-[15px] font-semibold m-0">{t("synth.resultTitle")}</h3>
+        <span className="text-[12.5px] text-[var(--meta)]">{rows.length}</span>
         <div className="ml-auto flex items-center gap-1.5">
           <Select
             width={84}
             value={format}
+            disabled={formatDisabled}
             options={OUT_FORMATS.map((f) => ({ id: f, label: f }))}
-            onChange={(v) => onFormat(v as OutFormat)}
+            onChange={(v) => { if (!formatDisabled) onFormat(v as OutFormat); }}
           />
         </div>
       </div>
@@ -164,7 +148,7 @@ export function SynthResults({
                 onDoubleClick={() => play(r.path)}
                 onKeyDown={(e) => e.key === "Enter" && setSel(r.path)}
                 className={[
-                  "flex items-start gap-2 px-2 py-2 rounded-[var(--rs)] cursor-pointer transition-colors duration-150 outline-none",
+                  "flex items-start gap-2 px-2 py-2 rounded-[var(--rs)] cursor-pointer transition-colors duration-200 outline-none",
                   on ? "bg-[var(--accent-soft)]" : "hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]",
                 ].join(" ")}
               >
@@ -178,7 +162,7 @@ export function SynthResults({
                   className={[
                     "shrink-0 mt-px w-[22px] h-[22px] rounded-full grid place-items-center border-0 cursor-pointer",
                     playing === r.path
-                      ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                      ? "bg-[var(--accent-fill)] text-[var(--accent-ink)]"
                       : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--ink-muted)]",
                   ].join(" ")}
                 >
@@ -199,7 +183,7 @@ export function SynthResults({
         )}
       </div>
       {fields.length ? (
-        <dl className="flex-none m-0 mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
+        <dl className="flex-none m-0 mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12.5px]">
           {fields.map(([k, v]) => (
             <Fragment key={k}>
               <dt className="text-[var(--meta)]">{k}</dt>

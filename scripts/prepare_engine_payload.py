@@ -169,6 +169,7 @@ def vendor(up: Path) -> None:
 #: 我们自己维护的、住在 `tools/` 里的东西。合并时这些不许被上游覆盖。
 OURS_IN_TOOLS = {
     "synth_worker.py",
+    "weight_inspect.py",
     "train_worker.py",
     "separate_worker.py",
     "pymss",

@@ -23,6 +23,7 @@ pub fn defaults() -> Map<String, Value> {
     // 合成台（GPT-SoVITS 自己的键）。参数在角色推荐值与用户手调值之间
     // 由前端合并，这里存的是用户最后用过的那份。
     m.insert("synth_role".into(), json!(""));
+    m.insert("synth_backend".into(), json!("cuda"));
     m.insert("synth_out_dir".into(), json!(""));
     m.insert("synth_streaming".into(), json!(true));
     m.insert("synth_speed".into(), json!(1.0));
@@ -191,7 +192,7 @@ pub fn persist_perf_caps(root: &Path) {
     }
 }
 
-fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     if let Some(p) = path.parent() {
         std::fs::create_dir_all(p)?;
     }
@@ -279,11 +280,11 @@ pub fn set_plaza_seen(root: &Path, newest: &str) -> Result<(), String> {
     write_atomic(&paths::app_config_path(root), &text).map_err(|e| crate::i18n::te("s.1455f353e7", &(e)))
 }
 
-/// Key holding the folder trained voices are written to. Not a settings key:
-/// it never reaches the engine config — it only widens the voice library scan.
+/// Saved training-weight output folder. This is passed in each training request;
+/// completed characters are always collected into User_Data/characters.
 const TRAIN_OUT_DIR: &str = "train_output_dir";
 
-/// 用户给训练音色选的存放目录。空 = 默认的 `User_Data/models`。
+/// 用户选择的训练权重目录。空值使用实验目录下的 `weights`。
 pub fn train_output_dir(root: &Path) -> String {
     read_json(&paths::app_config_path(root))
         .get(TRAIN_OUT_DIR)
@@ -293,10 +294,7 @@ pub fn train_output_dir(root: &Path) -> String {
         .to_string()
 }
 
-/// 记住这个选择。音色库要一直扫这个目录，否则重启之后训好的音色就「消失」了。
-///
-/// 空字符串是有意义的输入，不是「没传」：用户从自定义改回默认时必须把旧的那条
-/// 清掉，不然音色库会一直扫一个他已经不用的地方。
+/// 记住训练权重目录供下次填写。空字符串恢复实验目录下的 `weights`。
 pub fn set_train_output_dir(root: &Path, dir: &str) -> Result<(), String> {
     let dir = dir.trim();
     let mut saved = read_json(&paths::app_config_path(root));

@@ -43,3 +43,6 @@ data/
 # 打包前由 prepare_engine_payload.py --runtime 生成
 app/src-tauri/engine-payload/GPT_SoVITS/text/ja_userdic/user.dict
 app/src-tauri/engine-payload/GPT_SoVITS/text/ja_userdic/userdict.md5
+
+# Local API jobs and generated audio
+/User_Data/api/

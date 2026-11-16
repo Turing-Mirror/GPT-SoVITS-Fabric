@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { peekCharacters, readCharacters } from "../lib/characters";
+import { useCallback, useEffect, useMemo, useState, memo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Block, Btn, PageHead, PagePad } from "../components/ui";
-import { Select } from "../components/controls";
+import { Select, Slider } from "../components/controls";
 import { SegmentControl } from "../components/SegmentControl";
 import { ErrorNote } from "../components/ErrorNote";
 import { openTool } from "../components/ToolWindow";
-import { pickPath } from "../lib/nativeDialog";
-import { askConfirm, askPrompt } from "../lib/webDialog";
+import { pickPath } from "trm-ui/fabric";
+import { askConfirm, askPrompt } from "trm-ui/fabric";
 import { onHandoff, take, trainWith } from "../lib/intent";
 import { Pager, SearchBox, useDir, usePaged } from "../trm";
-import { Swap, stagger } from "../components/Motion";
+import { CatalogTransition } from "../components/CatalogTransition";
 import { t } from "../i18n/t";
 import { useI18n } from "../i18n";
+import { ModelCard } from "../components/ModelCard";
+import { useAudioPreview } from "../hooks/useAudioPreview";
+import { registerLeaveGuard } from "../lib/navigationGuard";
+import { usePageActive, usePageLeave } from "trm-ui";
+import { useConfig } from "../hooks/useConfig";
+import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
 /**
  * `.list` 标注管理。
@@ -56,12 +63,18 @@ type Loaded = {
 /** 上游认得的语种记号。和 annot.rs 的 KNOWN_LANGS 一致。 */
 const LANGS = ["zh", "ja", "en", "ko", "yue", "all_zh", "all_ja", "all_ko", "auto"];
 
-const PAGE_SIZE = 60;
-/** 未打开文件时，角色标注列表每页几条。 */
-const ROLE_LIST_SIZE = 8;
+const PAGE_SIZE = 10;
 
 /** 角色包里的一份标注。 */
-type RoleList = { key: string; role: string; file: string; path: string; rows: number };
+function listsOf(roles: NonNullable<ReturnType<typeof peekCharacters>>): RoleList[] {
+  return roles.flatMap(role => (role.lists ?? []).map(l => ({
+    key: `${role.id}/${l.file}`, roleId: role.id, role: role.name || role.id,
+    cover: role.cover_exists && role.cover ? convertFileSrc(`${role.dir}/${role.cover}`) : undefined,
+    file: l.file, path: `${role.dir}/${l.file}`, rows: l.rows?.length ?? 0,
+  })));
+}
+
+type RoleList = { key: string; roleId: string; role: string; cover?: string; file: string; path: string; rows: number };
 
 /** 文件所在的目录。 */
 function dirOf(path: string): string {
@@ -96,10 +109,18 @@ function AnnotPageImpl() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  usePageLeave(() => setMsg(""));
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState<"all" | "bad">("all");
-  const [playing, setPlaying] = useState("");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const config = useConfig();
+  const savedVolume = config.num("annot_preview_volume", 100);
+  const volume = Number.isFinite(savedVolume) ? Math.max(0, Math.min(100, savedVolume)) : 100;
+  const { playing, play: playAudio, stop: stopAudio, player } = useAudioPreview(volume / 100);
+  const active = usePageActive();
+  useEffect(() => {
+    if (!dirty || !active) return;
+    return registerLeaveGuard(() => busy ? Promise.resolve(false) : askConfirm(t("s.annot.dropChanges")));
+  }, [dirty, busy, active]);
 
   // 页面消息自己消失。不消失的话下一条会盖掉上一条，用户更容易漏看。
   useEffect(() => {
@@ -108,21 +129,13 @@ function AnnotPageImpl() {
     return () => window.clearTimeout(id);
   }, [msg]);
 
-  // 离开这一页 / 关掉软件时把正在响的那段停掉。不停的话音频会一直播到底，
-  // 而界面上已经没有任何能按停它的东西了。
-  useEffect(() => {
-    return () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
-    };
-  }, []);
-
   const apply = useCallback((r: Loaded) => {
+    stopAudio();
     setPath(r.path);
     setRows(r.rows || []);
     setSpeakers(r.speakers || []);
     setDirty(false);
-  }, []);
+  }, [stopAudio]);
 
   const openPath = useCallback(async (p: string) => {
     if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
@@ -159,34 +172,19 @@ function AnnotPageImpl() {
   }, [openPath]);
 
   // 各角色自带的标注文件，未打开文件时列出来，点一下即可打开。
-  const [roleLists, setRoleLists] = useState<RoleList[]>([]);
+  const [roleLists, setRoleLists] = useState<RoleList[]>(() => listsOf(peekCharacters() ?? []));
   const loadRoleLists = useCallback(() => {
     if (!isTauri()) return;
-    void invoke<{ roles?: { id: string; name: string; dir: string; lists?: { file: string; rows?: unknown[] }[] }[] }>("synth_characters")
-      .then((r) =>
-        setRoleLists(
-          (r?.roles ?? []).flatMap((role) =>
-            (role.lists ?? []).map((l) => ({
-              key: `${role.id}/${l.file}`,
-              role: role.name || role.id,
-              file: l.file,
-              path: `${role.dir}/${l.file}`,
-              rows: l.rows?.length ?? 0,
-            })),
-          ),
-        ),
-      )
-      .catch(() => setRoleLists([]));
+    void readCharacters().then(roles => setRoleLists(listsOf(roles))).catch(e => setErr(String(e)));
   }, []);
   useEffect(loadRoleLists, [loadRoleLists]);
-  const rolePaged = usePaged(roleLists, ROLE_LIST_SIZE);
-  const roleDir = useDir(rolePaged.page);
+  const roleGrid = useModelGrid();
+  const rolePaged = usePaged(roleLists, roleGrid.pageSize);
 
   /** 关掉当前文件，回到角色标注文件的列表。 */
   const close = useCallback(async () => {
     if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
-    audioRef.current?.pause();
-    setPlaying("");
+    stopAudio();
     setPath("");
     setRows([]);
     setSpeakers([]);
@@ -194,7 +192,7 @@ function AnnotPageImpl() {
     setQuery("");
     setOnly("all");
     setErr("");
-  }, [dirty]);
+  }, [dirty, stopAudio]);
 
   const reload = useCallback(async () => {
     if (!path) return;
@@ -248,27 +246,9 @@ function AnnotPageImpl() {
     setDirty(true);
   }, []);
 
-  const play = useCallback((r: Row) => {
-    if (!r.exists || !r.abs) return;
-    audioRef.current?.pause();
-    if (playing === r.abs) {
-      setPlaying("");
-      return;
-    }
-    try {
-      const a = new Audio(isTauri() ? convertFileSrc(r.abs) : r.abs);
-      a.onended = () => setPlaying("");
-      a.onerror = () => {
-        setPlaying("");
-        setErr(t("s.annot.playFailed", { v0: r.wav }));
-      };
-      audioRef.current = a;
-      void a.play();
-      setPlaying(r.abs);
-    } catch (e) {
-      setErr(String(e));
-    }
-  }, [playing]);
+  const play = (r: Row) => {
+    if (r.exists && r.abs) playAudio(r.abs, () => setErr(t("s.annot.playFailed", { v0: r.wav })));
+  };
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -285,7 +265,11 @@ function AnnotPageImpl() {
 
   const paged = usePaged(view, PAGE_SIZE, `${path}|${query}|${only}`);
   const pageDir = useDir(paged.page);
+  const filterDir = useDir(only === "bad" ? 1 : 0);
   const pageRows = paged.slice;
+  useEffect(() => {
+    player.retain(pageRows.map(r => r.abs));
+  }, [pageRows, player]);
 
   const bad = useMemo(() => rows.filter((r) => r.issues.length > 0).length, [rows]);
   const missing = useMemo(
@@ -344,11 +328,19 @@ function AnnotPageImpl() {
                   {t("s.annot.openWindow")}
                 </Btn>
               ) : null}
-              <Btn onClick={() => void open()} busy={busy && !path}>
+              {!path ? <Btn primary onClick={() => void open()} busy={busy}>
                 {t("s.annot.open")}
-              </Btn>
+              </Btn> : null}
               {path ? (
                 <>
+                  <div className="flex items-center gap-2" role="group" aria-label={t("s.annot.volume")}>
+                    <span className="text-[12.5px] text-[var(--ink-muted)] whitespace-nowrap">{t("s.annot.volume")}</span>
+                    <div className="w-[170px]">
+                      <Slider value={volume} min={0} max={100} step={1} defaultValue={100}
+                        ariaLabel={t("s.annot.volume")} format={value => `${value}%`}
+                        onChange={value => void config.set("annot_preview_volume", value)} />
+                    </div>
+                  </div>
                   <Btn onClick={() => void reload()} disabled={busy}>
                     {t("s.annot.reload")}
                   </Btn>
@@ -369,45 +361,33 @@ function AnnotPageImpl() {
           }
         />
 
-        {err ? <ErrorNote text={err} /> : null}
+        {err || config.error ? <ErrorNote text={err || config.error} /> : null}
         {msg ? (
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
         ) : null}
 
+        <CatalogTransition scope={path ? "editor" : "library"} dir={path ? 1 : -1}>
         {!path && roleLists.length ? (
           <Block title={t("s.annot.roleListsTitle")} note={String(roleLists.length)}>
-            <Swap k={String(rolePaged.page)} dir={roleDir}>
-              <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-1">
-                {rolePaged.slice.map((l, i) => (
-                  <div key={l.key} className="rise flex items-center gap-3 py-3" style={stagger(i)}>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] text-[var(--ink)] truncate">{l.role}</div>
-                      <div className="text-[12px] text-[var(--meta)] truncate">
-                        {t("s.annot.roleListMeta", { v0: l.file, v1: l.rows })}
+            <div ref={roleGrid.ref} style={roleGrid.style}>
+              <CatalogTransition scope="role-lists" page={rolePaged.page}>
+                <div className={MODEL_GRID_CLASS}>
+                  {rolePaged.slice.map(list => (
+                    <ModelCard key={list.key} id={list.roleId} name={list.role} cover={list.cover}
+                      disabled={busy} onOpen={() => void openPath(list.path)}>
+                      <div className="text-[11.5px] text-[var(--meta)] mt-1 leading-relaxed break-words">
+                        {t("s.annot.roleListMeta", { v0: list.file, v1: list.rows })}
                       </div>
-                    </div>
-                    <Btn onClick={() => void openPath(l.path)}>{t("s.annot.openThis")}</Btn>
-                  </div>
-                ))}
-              </div>
-            </Swap>
+                    </ModelCard>
+                  ))}
+                </div>
+              </CatalogTransition>
+            </div>
             <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
           </Block>
         ) : null}
 
-        {!path ? (
-          <Block title={t("s.annot.emptyTitle")}>
-            <div className="bg-[var(--group)] rounded-[var(--r)] px-5 py-6 text-[13px] text-[var(--help)] leading-relaxed">
-              <p className="m-0 mb-3">{t("s.annot.emptyBody")}</p>
-              <pre className="m-0 mb-4 font-mono text-[12px] text-[var(--meta)] overflow-x-auto">
-                audios/0001.wav|爱丽丝|ja|ブルーアーカイブ
-              </pre>
-              <Btn primary onClick={() => void open()}>
-                {t("s.annot.open")}
-              </Btn>
-            </div>
-          </Block>
-        ) : (
+        {path ? (
           <>
             <Block
               title={t("s.annot.fileTitle")}
@@ -429,7 +409,7 @@ function AnnotPageImpl() {
                   ]}
                 />
                 <span className="ml-auto flex items-center gap-2 flex-wrap">
-                  <span className="text-[12px] text-[var(--meta)]">
+                  <span className="text-[12.5px] text-[var(--meta)]">
                     {t("s.annot.bulkOn", { v0: view.length })}
                   </span>
                   <Btn onClick={() => void bulkSpeaker()} disabled={!view.length}>
@@ -449,7 +429,7 @@ function AnnotPageImpl() {
                 </span>
               </div>
 
-              <Swap k={String(paged.page)} dir={pageDir}>
+              <CatalogTransition scope={`${path}|${only}|${query}`} page={paged.page} dir={filterDir || pageDir || 1}>
               <div className="overflow-x-auto bg-[var(--group)] rounded-[var(--r)]">
                 <table className="w-full border-collapse text-[12.5px]">
                   <thead>
@@ -488,7 +468,7 @@ function AnnotPageImpl() {
                                 "shrink-0 w-[22px] h-[22px] rounded-full border-0 cursor-pointer",
                                 "inline-flex items-center justify-center",
                                 r.exists
-                                  ? "bg-transparent text-[var(--accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_42%,transparent)]"
+                                  ? "bg-transparent text-[var(--accent-text)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_42%,transparent)]"
                                   : "bg-transparent text-[var(--meta)] shadow-[inset_0_0_0_1px_var(--line)] cursor-default",
                               ].join(" ")}
                             >
@@ -521,7 +501,7 @@ function AnnotPageImpl() {
                               {r.issues.map((i) => (
                                 <span
                                   key={i}
-                                  className="text-[10.5px] px-1.5 py-px rounded-full text-[var(--danger)] bg-[var(--danger-soft)]"
+                                  className="text-[11.5px] px-1.5 py-px rounded-full text-[var(--danger-text)] bg-[var(--danger-soft)]"
                                 >
                                   {issueText(i)}
                                 </span>
@@ -530,6 +510,7 @@ function AnnotPageImpl() {
                           ) : null}
                         </td>
                         <td className={CELL}>
+                          {/* design-allow: py-1(12.5px) 与 compact(7px 9px, 13px) 高度差 6px 且描边色不同（--line 对 --hairline）。 */}
                           <input
                             value={r.speaker}
                             onChange={(e) => edit(r.line, { speaker: e.target.value })}
@@ -537,6 +518,7 @@ function AnnotPageImpl() {
                           />
                         </td>
                         <td className={CELL}>
+                          {/* design-allow: py-1(12.5px) 与 compact(7px 9px, 13px) 高度差 6px 且描边色不同（--line 对 --hairline）。 */}
                           <input
                             value={r.lang}
                             list="annot-langs"
@@ -545,6 +527,7 @@ function AnnotPageImpl() {
                           />
                         </td>
                         <td className={CELL}>
+                          {/* design-allow: py-1(12.5px)+min-h-[30px] 与 compact/field 高度差超过 5px 且 compact 描边色不同（--line 对 --hairline）。 */}
                           <textarea
                             value={r.text}
                             rows={1}
@@ -553,15 +536,15 @@ function AnnotPageImpl() {
                           />
                         </td>
                         <td className={CELL}>
-                          <button
-                            type="button"
+                          <Btn
+                            text
+                            danger
                             onClick={() => removeRow(r.line)}
-                            aria-label={t("s.annot.removeRow")}
-                            title={t("s.annot.removeRow")}
-                            className="w-[22px] h-[22px] rounded-[var(--rs)] border-0 bg-transparent text-[var(--meta)] cursor-pointer hover:text-[var(--danger)]"
+                            ariaLabel={t("s.annot.removeRow")}
+                            className="!px-0 !py-0 w-[22px] h-[22px] inline-flex items-center justify-center"
                           >
                             ×
-                          </button>
+                          </Btn>
                         </td>
                       </tr>
                     ))}
@@ -578,7 +561,7 @@ function AnnotPageImpl() {
                   </tbody>
                 </table>
               </div>
-              </Swap>
+              </CatalogTransition>
               <datalist id="annot-langs">
                 {LANGS.map((l) => (
                   <option key={l} value={l} />
@@ -588,7 +571,8 @@ function AnnotPageImpl() {
               <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />
             </Block>
           </>
-        )}
+        ) : null}
+        </CatalogTransition>
       </PagePad>
     </div>
   );

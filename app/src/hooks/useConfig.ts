@@ -1,3 +1,4 @@
+import { configSnapshot } from "../lib/configSnapshot";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getConfig, notifyConfigPatch, setConfig, type Config } from "../lib/config";
@@ -11,19 +12,45 @@ import { applyAppearance } from "../lib/appearance";
  * instead of silently doing nothing, which is what the old placeholder UI did.
  */
 export function useConfig() {
-  const [cfg, setCfg] = useState<Config>({});
-  const [loaded, setLoaded] = useState(false);
+  const [cfg, setCfg] = useState<Config>(() => configSnapshot.get().config);
+  const [loaded, setLoaded] = useState(() => configSnapshot.get().loaded);
   const [error, setError] = useState("");
   const [restartKeys, setRestartKeys] = useState<string[]>([]);
   const pending = useRef<Config>({});
   const timer = useRef<number | null>(null);
+  const optimistic = useRef<Config>({});
+  const revision = useRef(0);
+  const mounted = useRef(false);
+
+  const flush = useCallback(async () => {
+    const patch = pending.current;
+    pending.current = {};
+    if (!Object.keys(patch).length) return;
+    const current = ++revision.current;
+    try {
+      const out = await setConfig(patch);
+      if (!mounted.current) return;
+      if (out.needs_restart.length) {
+        setRestartKeys((prev) => Array.from(new Set([...prev, ...out.needs_restart])));
+      }
+      if (current !== revision.current) return;
+      optimistic.current = { ...pending.current };
+      setCfg({ ...out.config, ...optimistic.current });
+      setError("");
+    } catch (e) {
+      if (mounted.current && current === revision.current) setError(String(e));
+    }
+  }, []);
+
 
   useEffect(() => {
     let alive = true;
+    mounted.current = true;
+    let received: Config = {};
     getConfig()
       .then((c) => {
         if (alive) {
-          setCfg(c);
+          setCfg({ ...c, ...received, ...optimistic.current });
           setLoaded(true);
         }
       })
@@ -33,17 +60,23 @@ export function useConfig() {
       if (!alive) return;
       const next = ev.payload?.config;
       if (next && typeof next === "object") {
-        setCfg({ ...next, ...pending.current });
+        configSnapshot.receive(next, undefined, next);
+        received = next;
+        setCfg({ ...next, ...optimistic.current });
       }
     }).then((fn) => {
       if (!alive) fn();
       else unCfg = fn;
-    });
+    }).catch(() => {});
     return () => {
       alive = false;
+      mounted.current = false;
       unCfg?.();
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = null;
+      void flush();
     };
-  }, []);
+  }, [flush]);
 
   /**
    * 外观改一下就套一下，不等写盘、不等换页。
@@ -68,23 +101,6 @@ export function useConfig() {
     cfg.home_banner_opacity,
   ]);
 
-  const flush = useCallback(async () => {
-    const patch = pending.current;
-    pending.current = {};
-    if (!Object.keys(patch).length) return;
-    try {
-      const out = await setConfig(patch);
-      setCfg({ ...out.config, ...pending.current });
-      if (out.needs_restart.length) {
-        setRestartKeys((prev) =>
-          Array.from(new Set([...prev, ...out.needs_restart])),
-        );
-      }
-      setError("");
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
 
   /**
    * Coalesce rapid changes (slider drags) into one write.
@@ -99,13 +115,14 @@ export function useConfig() {
     (key: string, value: unknown, immediate = false): Promise<void> => {
       setCfg((c) => ({ ...c, [key]: value }));
       pending.current[key] = value;
+      optimistic.current[key] = value;
       notifyConfigPatch({ [key]: value });
       if (timer.current) window.clearTimeout(timer.current);
       if (immediate) {
         timer.current = null;
         return flush();
       }
-      timer.current = window.setTimeout(() => void flush(), 220);
+      timer.current = window.setTimeout(() => { timer.current = null; void flush(); }, 220);
       return Promise.resolve();
     },
     [flush],

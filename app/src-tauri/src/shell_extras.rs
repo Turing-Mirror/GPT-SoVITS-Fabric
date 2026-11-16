@@ -44,7 +44,10 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => focus_main(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                focus_main(app);
+                let _ = app.emit_to("main", "app://exit-requested", ());
+            },
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -68,22 +71,6 @@ pub fn install_tray(app: &AppHandle) -> Result<(), String> {
         .build(app)
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-/// 上一次弹出「关闭询问」但**还没被回答**的时刻。
-///
-/// 用来兜住「界面卡死了，用户连窗口都关不掉」：10 秒内第二次点 X 就直接退出。
-///
-/// 关键是**答完必须清掉**（`clear_close_ask`）。以前它是个闭包里的局部变量，
-/// 谁也够不着，于是用户点 X → 选「最小化到托盘」→ 一会儿又点 X，第二次就撞上
-/// 这条兜底：软件不问一声直接没了。用户报的「再次点 X 软件会崩溃」就是这个 ——
-/// 它没崩，是被自己的救命开关退掉了。答过一次就证明界面是活的，计时该归零。
-static LAST_ASK: std::sync::Mutex<Option<std::time::Instant>> =
-    std::sync::Mutex::new(None);
-
-/// 用户答过关闭询问了：界面是活的，把「卡死」计时清掉。
-pub fn clear_close_ask() {
-    *LAST_ASK.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 fn focus_main(app: &AppHandle) {
@@ -644,42 +631,89 @@ fn diag_entry_text(e: &DiagEntry, redaction: Option<&(String, String)>) -> Optio
 /// 不知道是谁占的。异步跑：logs 下可能有好几万个文件。
 pub fn storage_usage(root: &Path) -> Value {
     let ud = paths::user_data(root);
-    let items = [
-        // 训练实验（数据集特征 + 检查点），现在在 User_Data/train 下。
-        ("logs", crate::train::exp_root(root)),
-        ("weights", root.join("assets").join("weights")),
-        ("models", ud.join("models")),
-        ("update_cache", paths::update_cache(root)),
-        ("diagnostics", ud.join("diagnostics")),
-        ("perf_reports", ud.join("perf_reports")),
-        ("app_logs", paths::logs_dir(root)),
+    let names = ["characters", "training", "outputs", "runtime", "pretrained", "separation", "cache", "other"];
+    let vulkan_cache = crate::gsv_cpp::cache_root(root);
+    let vulkan_cache_bytes = storage_bytes(&vulkan_cache, &mut std::collections::BTreeSet::new());
+    let groups = [
+        vec![crate::synth::characters_dir(root)],
+        vec![crate::train::exp_root(root)],
+        vec![ud.join("synth"), ud.join("api"), ud.join("separate")],
+        vec![paths::legacy_runtime_dir(root), paths::user_data(root).join("runtimes")],
+        vec![root.join("GPT_SoVITS/pretrained_models"), root.join("GPT_SoVITS/text/G2PWModel"), crate::gsv_cpp::asset_root(root)],
+        vec![crate::separate::model_dir(root)],
+        vec![paths::update_cache(root), paths::temp_dir(root), paths::ch_banner_dir(root), vulkan_cache],
     ];
-    let list: Vec<Value> = items
-        .iter()
-        .map(|(name, p)| json!({ "name": name, "bytes": dir_bytes(p) }))
-        .collect();
-    let total: u64 = list
-        .iter()
-        .filter_map(|v| v.get("bytes").and_then(|b| b.as_u64()))
-        .sum();
-    json!({
-        "items": list,
-        "total_bytes": total,
-        "free_bytes": paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null),
+    let mut locations: Vec<(usize, PathBuf)> = groups.into_iter().enumerate()
+        .flat_map(|(index, paths)| paths.into_iter().map(move |path| (index, path))).collect();
+    let product = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let data = std::fs::canonicalize(&ud).unwrap_or_else(|_| ud.clone());
+    let mut direct_outputs = Vec::new();
+    let training_output = config::train_output_dir(root);
+    let custom = [(1, PathBuf::from(training_output)), (2, crate::synth::out_dir(root))];
+    for (index, path) in custom {
+        if path.as_os_str().is_empty() { continue; }
+        let Ok(canonical) = std::fs::canonicalize(&path) else { continue; };
+        if product.starts_with(&canonical) || canonical == data {
+            // A shared parent is not a product data directory. Only count the
+            // outputs written directly there, never its code or unrelated folders.
+            direct_outputs.push((index, canonical));
+        } else { locations.push((index, canonical)); }
+    }
+    // A custom output may be nested within a standard directory. The most
+    // specific path owns those bytes; the parent receives only its remainder.
+    locations.sort_by_cached_key(|(_, p)| std::cmp::Reverse(
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()).components().count()));
+    let mut visited = std::collections::BTreeSet::new();
+    let mut sizes = [0u64; 8];
+    for (index, path) in locations { sizes[index] += storage_bytes(&path, &mut visited); }
+    for (index, path) in direct_outputs {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+                let output = if index == 1 { ["pth", "ckpt"].contains(&ext.as_str()) }
+                    else { crate::train::DATASET_AUDIO_EXT.contains(&ext.as_str()) };
+                if output && path.is_file() { sizes[index] += storage_bytes(&path, &mut visited); }
+            }
+        }
+    }
+    sizes[7] += storage_bytes(&ud, &mut visited);
+    let items: Vec<Value> = names.iter().zip(sizes).map(|(name, bytes)|
+        json!({"name":name,"bytes":bytes,"kind":name})).collect();
+    let total: u64 = sizes.iter().sum();
+    json!({"items":items,"total_bytes":total,"total_gb":total as f64 / 1073741824.0,
+        "vulkan_cache_bytes":vulkan_cache_bytes,
+        "free_bytes":paths::free_space_bytes(root).map(Value::from).unwrap_or(Value::Null)})
+}
+
+pub fn clear_gsv_cpp_cache(root: &Path) -> Result<Value, String> {
+    crate::synth::while_idle(|| {
+        let cache = crate::gsv_cpp::cache_root(root);
+        let resolved = match std::fs::canonicalize(&cache) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(json!({"freed_bytes": 0})),
+            Err(err) => return Err(err.to_string()),
+        };
+        let user_data = std::fs::canonicalize(paths::user_data(root)).map_err(|err| err.to_string())?;
+        if resolved != user_data.join("cache").join("gsv-cpp") {
+            return Err("The Vulkan cache is outside the application data directory.".into());
+        }
+        crate::synth::shutdown_vulkan();
+        let bytes = storage_bytes(&resolved, &mut std::collections::BTreeSet::new());
+        std::fs::remove_dir_all(&resolved).map_err(|err| err.to_string())?;
+        Ok(json!({"freed_bytes": bytes}))
     })
 }
 
-fn dir_bytes(p: &Path) -> u64 {
-    let Ok(meta) = std::fs::metadata(p) else {
-        return 0;
-    };
-    if meta.is_file() {
-        return meta.len();
-    }
-    let Ok(rd) = std::fs::read_dir(p) else {
-        return 0;
-    };
-    rd.flatten().map(|e| dir_bytes(&e.path())).sum()
+/// Resolve directory links once: developer Runtime/model junctions are real usage,
+/// but aliases, nested output folders, and cycles must not duplicate their bytes.
+fn storage_bytes(path: &Path, visited: &mut std::collections::BTreeSet<PathBuf>) -> u64 {
+    let Ok(canonical) = std::fs::canonicalize(path) else { return 0; };
+    if !visited.insert(canonical.clone()) { return 0; }
+    let Ok(meta) = std::fs::metadata(&canonical) else { return 0; };
+    if meta.is_file() { return meta.len(); }
+    let Ok(entries) = std::fs::read_dir(canonical) else { return 0; };
+    entries.flatten().map(|entry| storage_bytes(&entry.path(), visited)).sum()
 }
 
 /// 一段可以直接粘进群里的环境信息。
@@ -705,16 +739,9 @@ pub fn summary_text(root: &Path) -> String {
     // 合成台把选中的角色 id 存在 synth_role；摘要里要的是人看的名字。
     let role = {
         let id = cv("synth_role");
-        crate::synth::list_characters(root)
-            .get("roles")
-            .and_then(|r| r.as_array())
-            .and_then(|a| {
-                a.iter()
-                    .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
-            })
-            .and_then(|r| r.get("name").and_then(|v| v.as_str()))
-            .unwrap_or("")
-            .to_string()
+        crate::synth::find_character_config(root, &id)
+            .map(|(_, cfg)| cfg["name"].as_str().unwrap_or(&id).to_string())
+            .unwrap_or_default()
     };
     let findings = crate::selfcheck::run(root);
     let findings_line = if findings.is_empty() {
@@ -1044,30 +1071,16 @@ pub fn install_close_handler(app: &AppHandle) {
 
         match action.as_str() {
             "exit" => {
-                for win in handle.webview_windows().into_values() {
-                    let _ = win.hide();
-                }
+                api.prevent_close();
+                let _ = handle.emit_to("main", "app://exit-requested", ());
             }
             "tray" => {
                 api.prevent_close();
                 let _ = w.hide();
             }
             _ => {
-                // If the UI is wedged it can never answer, and the user would
-                // be unable to close the window at all. Second attempt within
-                // 10s falls back to a plain exit.
+                // Repeated clicks must not bypass unsaved annotation confirmation.
                 api.prevent_close();
-                let now = std::time::Instant::now();
-                let mut last = LAST_ASK.lock().unwrap_or_else(|e| e.into_inner());
-                let stuck = last
-                    .map(|t: std::time::Instant| now.duration_since(t).as_secs() < 10)
-                    .unwrap_or(false);
-                *last = Some(now);
-                drop(last);
-                if stuck {
-                    handle.exit(0);
-                    return;
-                }
                 let _ = handle.emit("app://close-requested", ());
             }
         }
@@ -1076,8 +1089,6 @@ pub fn install_close_handler(app: &AppHandle) {
 
 /// Called by the UI once the user answered the close prompt.
 pub fn finish_close(app: &AppHandle, to_tray: bool) {
-    // 答过了就说明界面是活的，「点两次 X 强退」那条兜底该重新计时。
-    clear_close_ask();
     if to_tray {
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.hide();
@@ -1394,4 +1405,72 @@ mod tests {
         acts.dedup();
         assert_eq!(acts.len(), n);
     }
+    #[test]
+    fn storage_tracks_gsv_directories_without_nested_output_duplicates() {
+        let root = crate::testutil::scratch("gsv-storage");
+        for (path, bytes) in [("User_Data/characters/voice/models/sovits.pth",11usize),
+            ("User_Data/train/voice/checkpoint.pth",13), ("User_Data/synth/sample.wav",17),
+            ("Runtime/python.exe",19), ("GPT_SoVITS/pretrained_models/base.pth",23),
+            ("assets/pymss/model.pth",29), ("User_Data/update_cache/partial.zip",31),
+            ("User_Data/logs/shell/test.log",37), ("User_Data/cache/gsv-cpp/role/ar.gguf",41),
+            ("GSV_CPP/shared/bert-f16.gguf",43)] {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, vec![0u8;bytes]).unwrap();
+        }
+        let stats = storage_usage(&root);
+        let items=stats["items"].as_array().unwrap();
+        for (name, bytes) in [("characters",11u64),("training",13),("outputs",17),
+            ("runtime",19),("pretrained",66),("separation",29),("cache",72)] {
+            let item=items.iter().find(|v|v["name"]==name).unwrap();
+            assert_eq!(item["bytes"],bytes,"{name}");
+        }
+        let mut seen=std::collections::BTreeSet::new();
+        assert_eq!(storage_bytes(&root.join("User_Data/synth"),&mut seen),17);
+        assert_eq!(storage_bytes(&root.join("User_Data/synth/sample.wav"),&mut seen),0);
+        assert_eq!(stats["vulkan_cache_bytes"], 41);
+        let cleared = clear_gsv_cpp_cache(&root).unwrap();
+        assert_eq!(cleared["freed_bytes"], 41);
+        assert_eq!(storage_usage(&root)["vulkan_cache_bytes"], 0);
+        assert!(root.join("GSV_CPP/shared/bert-f16.gguf").is_file());
+        assert!(root.join("User_Data/characters/voice/models/sovits.pth").is_file());
+        let _=std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn custom_training_outputs_keep_their_category_inside_shared_parents() {
+        let root = crate::testutil::scratch("storage-custom-training");
+        for (path, bytes) in [("User_Data/characters/voice/models/sovits.pth", 11usize),
+            ("User_Data/synth/custom/voice.pth", 13), ("User_Data/synth/sample.wav", 17),
+            ("Runtime/python.exe", 19), ("tools/not-product-data.bin", 23),
+            ("top-level.ckpt", 29), ("User_Data/loose.pth", 31)] {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, vec![0u8; bytes]).unwrap();
+        }
+        let bytes = |stats: &Value, key: &str| stats["items"].as_array().unwrap().iter()
+            .find(|item| item["name"] == key).unwrap()["bytes"].as_u64().unwrap();
+        config::set_train_output_dir(&root, &root.join("User_Data/synth/custom").to_string_lossy()).unwrap();
+        let stats = storage_usage(&root);
+        assert_eq!(bytes(&stats, "characters"), 11);
+        assert_eq!(bytes(&stats, "training"), 13);
+        assert_eq!(bytes(&stats, "outputs"), 17);
+        config::set_train_output_dir(&root, &root.to_string_lossy()).unwrap();
+        let stats = storage_usage(&root);
+        assert_eq!(bytes(&stats, "training"), 29);
+        assert_eq!(bytes(&stats, "characters"), 11);
+        assert_eq!(bytes(&stats, "runtime"), 19);
+        assert_eq!(bytes(&stats, "outputs"), 30);
+        let expected = 11 + 13 + 17 + 19 + 29 + 31
+            + std::fs::metadata(paths::app_config_path(&root)).unwrap().len();
+        assert_eq!(stats["total_bytes"].as_u64(), Some(expected));
+        config::set_train_output_dir(&root, &root.join("User_Data").to_string_lossy()).unwrap();
+        let stats = storage_usage(&root);
+        assert_eq!(bytes(&stats, "training"), 31);
+        assert_eq!(bytes(&stats, "characters"), 11);
+        assert_eq!(bytes(&stats, "runtime"), 19);
+        assert_eq!(bytes(&stats, "outputs"), 30);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

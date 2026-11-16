@@ -24,4 +24,4 @@ export function Leave({ children, ms = EXIT_MS }: { children: ReactNode; ms?: nu
 }
 
 /** 展开区：与 TRM UI 共用一个，展开与收起都有高度过渡，收起放完才卸下。 */
-export { Collapse } from "../trm/components/motion";
+export { Collapse } from "../trm";

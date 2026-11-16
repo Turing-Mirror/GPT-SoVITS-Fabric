@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useExit } from "../hooks/useExit";
+import { usePageActive } from "../trm";
 import { useLeaving } from "./Presence";
 
 /**
@@ -30,7 +31,8 @@ export function Modal({
   children?: ReactNode;
 }) {
   const outerLeaving = useLeaving();
-  const show = open && !outerLeaving;
+  const active = usePageActive();
+  const show = open && !outerLeaving && active;
   const { mounted, leaving } = useExit(show);
   const last = useRef<ReactNode>(null);
   if (show) last.current = children;
@@ -38,6 +40,7 @@ export function Modal({
   const layer = (
     <div
       data-leaving={leaving || undefined}
+      inert={leaving}
       className={`modal-scrim ${contained ? "absolute" : "fixed"} inset-0 grid place-items-center p-6 bg-[color-mix(in_srgb,var(--ink)_28%,transparent)]`}
       style={{ zIndex: z }}
       onClick={leaving ? undefined : onBackdrop}

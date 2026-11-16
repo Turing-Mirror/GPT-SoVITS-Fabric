@@ -4,11 +4,12 @@ import { listen } from "@tauri-apps/api/event";
 import { Btn } from "./ui";
 import { HelpMark } from "./Tooltip";
 import { ErrorNote } from "./ErrorNote";
-import { RangeBar } from "./controls";
+import { RangeBar, SliderValue } from "./controls";
 import { openDownloadModels } from "../lib/downloadModels";
 import { openHelpSection } from "../lib/helpNav";
 import { ToolActions, ToolBody } from "./ToolWindow";
-import { pickPath } from "../lib/nativeDialog";
+import { PopupSelect, TOOL_BOX } from "trm-ui";
+import { pickPath } from "trm-ui/fabric";
 import { t } from "../i18n/t";
 
 /**
@@ -49,8 +50,6 @@ const ROW = "flex items-center gap-3 py-2.5";
  * 看着是有意为之，而不是挤坏了。
  */
 const LABEL = "w-[96px] shrink-0 text-[13px] leading-tight";
-const FIELD =
-  "rounded-[var(--rs)] border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-[13px]";
 const PATH =
   "flex-1 min-w-0 truncate text-[12.5px] text-[var(--ink-muted)] font-mono";
 const FORMATS = ["wav", "flac", "mp3", "m4a"] as const;
@@ -165,7 +164,7 @@ export function SeparatePanel() {
   return (
     <ToolBody>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <h3 className="m-0 text-[17px] font-semibold">{t("sep.title")}</h3>
+        <h3 className="m-0 text-[16px] font-semibold">{t("sep.title")}</h3>
         <Btn onClick={() => openHelpSection("separate")}>{t("sep.help")}</Btn>
       </div>
       <p className="m-0 mb-4 text-[12.5px] text-[var(--ink-muted)]">{t("sep.desc")}</p>
@@ -201,37 +200,28 @@ export function SeparatePanel() {
         </div>
         <div className={ROW}>
           <span className={LABEL}>{t("sep.model")}</span>
-          <select
-            aria-label={t("sep.model")}
-            className="flex-1 min-w-0 rounded-[var(--rs)] border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-[13px]"
+          <PopupSelect
+            box={TOOL_BOX}
+            className="flex-1 min-w-0"
+            ariaLabel={t("sep.model")}
             value={model}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {(st.models || []).map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-            {!st.models?.length ? <option value="">{t("sep.noModel")}</option> : null}
-          </select>
+            onChange={setModel}
+            options={(st.models || []).map((m) => ({ id: m, label: m }))}
+            placeholder={t("sep.noModel")}
+          />
         </div>
         <div className={ROW}>
           <span className={`${LABEL} flex items-center gap-1.5`}>
             {t("sep.format")}
             <HelpMark title={t("sep.formatTip")} />
           </span>
-          <select
-            aria-label={t("sep.format")}
-            className={FIELD}
+          <PopupSelect
+            box={TOOL_BOX}
+            ariaLabel={t("sep.format")}
             value={fmt}
-            onChange={(e) => setFmt(e.target.value as (typeof FORMATS)[number])}
-          >
-            {FORMATS.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setFmt(v as (typeof FORMATS)[number])}
+            options={FORMATS.map((f) => ({ id: f, label: f }))}
+          />
         </div>
         <div className={ROW}>
           <span className={`${LABEL} flex items-center gap-1.5`}>
@@ -249,7 +239,8 @@ export function SeparatePanel() {
               ariaLabel={t("sep.agg")}
             />
           </div>
-          <span className="w-[36px] text-right text-[13px] tabular-nums">{agg}</span>
+          <SliderValue value={agg} min={0} max={20} step={1} onChange={setAgg}
+            ariaLabel={t("sep.agg")} className="w-[36px] text-right text-[13px] tabular-nums" />
         </div>
       </div>
 
@@ -261,7 +252,7 @@ export function SeparatePanel() {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <p className="m-0 mt-2 text-[12px] text-[var(--meta)]">
+          <p className="m-0 mt-2 text-[12.5px] text-[var(--meta)]">
             {prog.message} {prog.phase === "run" ? `${pct}%` : ""}
           </p>
         </div>

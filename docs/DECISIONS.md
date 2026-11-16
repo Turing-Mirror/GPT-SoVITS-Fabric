@@ -11,7 +11,8 @@
 ## D2 总体架构 [已定]
 
 - 复用 RVC-Fabric 三层架构：Tauri(Rust) 壳 + Python Worker，JSON 文件协议 + stdout 行协议。
-- 推理内核：常驻 worker 直接 `import GPT_SoVITS.TTS_infer_pack.TTS`，不走 api_v2.py HTTP（避免端口/防火墙）；api_v2 作为高级功能保留入口。
+- 默认 CUDA 推理通过常驻 worker 直接载入 `GPT_SoVITS.TTS_infer_pack.TTS`，沿用行协议。
+- 可选 Vulkan 推理由本机 gsv.cpp 服务处理。合成页选择引擎，桌面与本机 API 共用合成任务、取消和输出流程。可选资源按需下载，角色首次使用时生成本地 GGUF 缓存。
 - 显存管理在 Python worker 内：同一时刻只驻留一个角色，换角色即热切换；显存不足时释放缓存并报 `oom`。
 - 上游的模块搜索路径、DLL 目录与工作目录由 `tools/portable_runtime.activate()` 设置，worker 首次加载模型前调用；上游的 `print` 改走 stderr，stdout 只留给行协议。
 - 长文本/批量队列由 Rust 侧编排（逐句喂 worker），复用 cancel/进度事件模式。
@@ -31,7 +32,7 @@
 │                     # lists: [{file, lang, note}] 声明包内标注文件
 │                     # params: {top_k, top_p, temperature, repetition_penalty, speed}
 │                     #         （作者推荐值；可整体省略；未知字段忽略；加载时范围钳制；
-│                     #          用户在 UI 改过则以用户本地持久化值为准）
+│                     #          用户点击“保存角色参数”后，以该角色的本地保存值为准）
 ├─ cover.jpg
 ├─ models/
 │  ├─ sovits.pth
@@ -42,9 +43,10 @@
 ```
 
 - `.list` 同时服务：合成台参考音频挑选器（行=候选参考，带文本稿+语种）、训练台数据集（直接喂格式化工具）。
-- 包内路径一律相对包根（禁止绝对路径）。
-- 支持语种子集命名约定 `<id>_JP.list` / `<id>_ZH.list`（沿用现有素材库习惯）。
+- `config.json` 中的文件路径相对角色包根目录。`.list` 每行的音频路径相对该 `.list` 所在目录。
+- 支持语种子集命名约定 `<id>_JP.list` / `<id>_ZH.list`。应用导出的 ZIP 为每份关联标注生成一个 `.list`，并在 `config.json` 中记录其路径。
 - params 只收音质调校知识（采样类 + 可选 speed）；设备相关项（batch_size、流式阈值等）禁止入包。
+- 模型卡片的“标注”入口管理权重及 lists 关联。用户保存的参数按角色 ID 写入应用配置 synth_role_params，不改作者推荐值、不随角色包导出；恢复推荐值会删除该角色的本地覆盖。完整操作见 [角色绑定 v1](role-binding-v1.md)。
 
 ## D5 版本矩阵 [已定]
 
@@ -58,9 +60,8 @@
   `set_default` 与训练页滑杆。界面换版本时回到该版本的默认值，用户可改。
 - **默认版本 v5dev。** v5turbo 推理更快，但上游 #2857（连续推理 CUDA 非法访存）
   未修，而合成 worker 正是常驻连续推理。
-- **推理**支持上游认得的全部版本，版本由上游 `TTS.init_vits_weights` 从检查点
-  自己认。V5（`v5dev` / `v5turbo`，48 kHz 输出）底模 `gsv-v5-pretrained`
-  作为可选 extras `gsv-v5`，不进 engine-core。
+- **CUDA 推理**支持上游识别的模型，版本由 `TTS.init_vits_weights` 从检查点识别。V5（`v5dev` / `v5turbo`，48 kHz 输出）底模通过可选资源 `gsv-v5` 提供。
+- **Vulkan 推理**首版支持 Windows 上的 `v5turbo` 中日文合成，使用单条主参考，批次为 1，输出完整 WAV。辅助参考、旧版模型、流式合成和 FLAC 继续使用 CUDA 引擎。
 - **训练**开放上游训练页的全部版本（当前 v2 / v2Pro / v2ProPlus / v4 / v5dev /
   v5turbo）。`v3v4set` 里的版本走 `s2_train_v3_lora.py`（LoRA，无判别器底模，
   检查点在 `logs_s2_<版本>_lora_<秩>`），其余走 `s2_train.py`。SoVITS 与 GPT 两段
@@ -157,11 +158,14 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
 
 ## D7 UI/UX 继承 [已定]
 
-组件与设计令牌改用 TRM UI（`Turing-Mirror/TRM-UI`），复制到 `app/src/trm/`：
+组件与设计令牌改用 TRM UI（`Turing-Mirror/TRM-UI`）的组件包 `trm-ui`，在
+`app/package.json` 中固定提交版本（2026-11-05 起，此前为复制进 `app/src/trm/` 的源码）。
 `components/` 下的 ui / controls / SegmentControl / Tooltip / ErrorBoundary 是对
-`../trm/components/*` 的转出；i18n 的语言状态由 TRM 的 `I18nProvider` 持有，产品侧只
-补 Tauri 存储、`tMsg` 与术语表；`index.css` 取 TRM 的令牌，颜色一律走令牌。更新 TRM UI
-时整目录覆盖 `app/src/trm/`。ErrorNote、TitleBar 仍是产品自有版本。
+`../trm` 的转出，`app/src/trm/index.ts` 转出组件包；`app/src/trm/i18n/` 保留产品自己的
+语言包加载，并用组件包的 `I18nScope` 把语言状态交给共享组件，产品侧只补 Tauri 存储、
+`tMsg` 与术语表。`index.css` 引入 `trm-ui/styles.css`，只写产品自己的样式，颜色一律走
+令牌。更新 TRM UI 时升级 `trm-ui` 的固定版本，再运行构建与测试。ErrorNote、TitleBar
+仍是产品自有版本。
 
 与 RVC Fabric 当前界面对齐的部分（2026-10-31）：
 
@@ -202,7 +206,7 @@ RVC-Fabric 只读参考，**不共用代码**。这一条本来是 D1 的一句�
     实际种子；不固定种子时界面先抽一个，「复用参数」可复现。支持 wav / flac、
     试听、在文件夹中显示、重命名、移到回收站（`trash` 库，同 RVC）。
   - 训练页：左栏四步（版本与底模、训练集、训练参数、开始训练），中栏是当前步骤，
-    右栏是状态（运行环境、底模、显卡、训练集）和运行日志。训练进行中自动停在第四步。
+    右栏是状态（运行环境、底模、显卡、训练集）和持久训练队列。训练进行中可继续填写并加入下一任务；队列逐项执行，重启后手动继续。见 [训练队列 v1](training-queue-v1.md)。
 
 以下从 RVC-Fabric 沿用（只读复制后改造，不回写）：
 

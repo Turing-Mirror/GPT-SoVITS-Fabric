@@ -12,6 +12,7 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
+trm-app-protocol = { git = "https://github.com/Turing-Mirror/trm-app-protocol.git", rev = "f02269b436215a04980b0b450edf7764a5d79493", features = ["codegen"] }
 tauri-build = { version = "2", features = [] }
 
 [[bin]]
@@ -23,6 +24,7 @@ name = "catalog-check"
 path = "src/bin/catalog-check.rs"
 
 [dependencies]
+trm-app-protocol = { git = "https://github.com/Turing-Mirror/trm-app-protocol.git", rev = "f02269b436215a04980b0b450edf7764a5d79493" }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
@@ -31,9 +33,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Multi-part HTTP range downloader (https://github.com/sam0x17/ripget) — aria2-style
 ripget = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "sync", "net", "io-util"] }
 # Catalog JSON fetch (lightweight)
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+openidconnect = { version = "=4.1.0", features = ["timing-resistant-secret-traits"] }
+keyring = { version = "=4.2.0", features = ["v1"] }
+url = "2"
 sha2 = "0.10"
 hex = "0.4"
 tar = "0.4"
@@ -74,3 +79,7 @@ windows-sys = { version = "0.59", features = [
   # 诊断自检要看产品所在盘还剩多少（GetDiskFreeSpaceExW）。
   "Win32_Storage_FileSystem",
 ] }
+
+[[bin]]
+name = "gpt-sovits-fabric-mcp"
+path = "src/bin/mcp.rs"

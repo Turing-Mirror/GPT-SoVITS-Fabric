@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, memo } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import {
   AccordionGroup,
   Block,
@@ -68,6 +68,7 @@ const SECTIONS: {
       { id: "synth2", q: "help.synthQ2", h: "help.synthH2", a: "help.synthA2" },
       { id: "synth3", q: "help.synthQ3", h: "help.synthH3", a: "help.synthA3" },
       { id: "synth4", q: "help.synthQ4", h: "help.synthH4", a: "help.synthA4" },
+      { id: "synthEngine", q: "help.synthEngineQ", h: "help.synthEngineH", a: "help.synthEngineA" },
     ],
   },
   {
@@ -102,10 +103,15 @@ const SECTIONS: {
 
 function useHelpFocus(focus: string, focusNonce: number) {
   const [hit, setHit] = useState("");
+  // 页面常驻，每次回来副作用都会重新执行：已处理过的跳转不再重复高亮。
+  const done = useRef(0);
   useEffect(() => {
-    if (!focus || !focusNonce) return;
+    if (!focus || !focusNonce || done.current === focusNonce) return;
     setHit(focus);
-    const timer = window.setTimeout(() => setHit(""), 2400);
+    const timer = window.setTimeout(() => {
+      done.current = focusNonce;
+      setHit("");
+    }, 2400);
     return () => window.clearTimeout(timer);
   }, [focus, focusNonce]);
   return hit;
@@ -180,8 +186,10 @@ function HelpPageImpl({
 
   // 跳转落地：focus 形如「synth」或「synth#synth2」。带条目 id 时
   // 直接把那条展开 —— 指到一整块等于没指。
+  const landed = useRef(0);
   useEffect(() => {
-    if (!focus || !focusNonce) return;
+    if (!focus || !focusNonce || landed.current === focusNonce) return;
+    landed.current = focusNonce;
     const [sec, itemId] = focus.split("#");
     if (!sec || !HELP_ANCHORS.has(sec)) return;
     if (sec === "glossary") {
@@ -205,7 +213,7 @@ function HelpPageImpl({
   }, [focus, focusNonce]);
 
   return (
-    <PagePad>
+    <PagePad width="read">
       <PageHead
         title={t("help.title")}
         sub={t("help.subtitle")}
@@ -229,6 +237,7 @@ function HelpPageImpl({
         <Block
           key={s.anchor}
           id={`help-${s.anchor}`}
+          className="!mt-6"
           title={s.title}
           note={note(s.shown, s.items)}
           action={s.anchor === "firstrun" && onStartGuide ? <Btn primary onClick={() => onStartGuide()}>{t("help.guideStart")}</Btn> : undefined}
@@ -246,7 +255,7 @@ function HelpPageImpl({
       })}
 
       {shownGlossary.length ? (
-        <Block id="help-glossary" title={glossaryTitle} note={note(shownGlossary, glossaryItems)}>
+        <Block id="help-glossary" className="!mt-6" title={glossaryTitle} note={note(shownGlossary, glossaryItems)}>
           <AccordionGroup
             items={shownGlossary}
             openId={openTerm}

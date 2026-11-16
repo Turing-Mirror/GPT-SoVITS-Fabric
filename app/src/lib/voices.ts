@@ -19,9 +19,12 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+export type VoiceAuthor = { name: string; url?: string };
+
 export type StoreVoice = {
   id: string;
   name: string;
+  name_i18n?: Record<string, string>;
   /** Japanese display name when different from name */
   name_ja?: string;
   /** English / romanization */
@@ -29,6 +32,7 @@ export type StoreVoice = {
   /** Traditional Chinese */
   name_zh_Hant?: string;
   tag?: string;
+  tag_i18n?: Record<string, string>;
   version?: string;
   pack_url?: string;
   pth_url?: string;
@@ -40,10 +44,16 @@ export type StoreVoice = {
   size_label?: string;
   sha256?: string;
   description?: string;
+  description_i18n?: Record<string, string>;
   author?: string;
+  author_i18n?: Record<string, string>;
   author_url?: string;
+  author_url_label?: string;
+  /** 多作者写法（清单的 authors 数组）。 */
+  authors?: VoiceAuthor[];
   date?: string;
   series?: string;
+  series_i18n?: Record<string, string>;
   series_ja?: string;
   series_en?: string;
   series_zh_Hant?: string;
@@ -57,6 +67,13 @@ export type StoreVoice = {
   source_url?: string;
   official?: boolean;
   installed?: boolean;
+  installed_role_id?: string;
+  update_available?: boolean;
+  community_release?: string;
+  community_staging_id?: string;
+  community_version_id?: string;
+  community_author_id?: string;
+  license?: { id?: string; text?: string; url?: string };
 };
 
 export type StoreCatalog = {

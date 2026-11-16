@@ -1,16 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { peekCharacters, readCharacters } from "../lib/characters";
+import { TextInput, usePageLeave } from "trm-ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExportCharacterPackages } from "../components/ExportCharacterPackages";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field } from "../components/controls";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { CropCoverDialog } from "../components/CropCoverDialog";
 import { AdBanner } from "../components/AdBanner";
 import { Modal } from "../components/Modal";
 import { Leave } from "../components/Presence";
-import { Swap, stagger } from "../components/Motion";
-import { Dropdown, MoreBtn, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
+import { CatalogTransition } from "../components/CatalogTransition";
+import { FlowList, Dropdown, Pager, SearchBox, Tag, useDir, useMenu, usePaged, type MenuItem } from "../trm";
 import type { PlazaItem } from "../lib/plaza";
-import { artOf } from "../lib/art";
-import { askConfirm } from "../lib/webDialog";
-import { goTo, openInAnnot, synthWithRole } from "../lib/intent";
+import { ModelCard } from "../components/ModelCard";
+import { RoleAssetsDialog } from "../components/RoleAssetsDialog";
+import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
+import { askConfirm } from "trm-ui/fabric";
+import { goTo, synthWithRole } from "../lib/intent";
 import { t } from "../i18n/t";
 import { joinClauses } from "../lib/text";
 
@@ -44,37 +50,51 @@ type Role = {
 
 type Sort = "name" | "refs";
 
-/** 每页几张卡。 */
-const PAGE_SIZE = 12;
-
 const refCount = (r: Role) => (r.lists ?? []).reduce((n, l) => n + (l.rows?.length ?? 0), 0);
 
 export function ModelsPage({
   onOpenPlaza,
   banner,
+  active = true,
 }: {
   onOpenPlaza?: () => void;
+  active?: boolean;
   /** 广场投放到本页的那一条（`plaza::pick_models_banner`，至多一条且必须可关）。 */
   banner?: PlazaItem | null;
 }) {
   const [busy, setBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportInstance, setExportInstance] = useState(0);
   const [msg, setMsg] = useState("");
-  const [roles, setRoles] = useState<Role[]>([]);
+  usePageLeave(() => setMsg(""));
+  const [loading, setLoading] = useState(() => isTauri() && peekCharacters() === null);
+  const [roles, setRoles] = useState<Role[]>(() => peekCharacters() ?? []);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [editing, setEditing] = useState<Role | null>(null);
+  const [managing, setManaging] = useState<Role | null>(null);
   // 封面换过之后浏览器会按旧地址缓存，地址上带一个版本号
   const [coverVer, setCoverVer] = useState(0);
+  const [coverEdit, setCoverEdit] = useState<Role | null>(null);
+  const loadRequest = useRef(0);
   const menu = useMenu();
 
   const reload = useCallback(() => {
     if (!isTauri()) return;
-    void invoke<{ roles?: Role[] }>("synth_characters")
-      .then((r) => setRoles(r?.roles ?? []))
-      .catch(() => setRoles([]));
+    const request = ++loadRequest.current;
+    setLoading(true);
+    void readCharacters()
+      .then((r) => { if (request === loadRequest.current) setRoles(r); })
+      .catch((e) => { if (request === loadRequest.current) setMsg(String(e)); })
+      .finally(() => { if (request === loadRequest.current) setLoading(false); });
   }, []);
 
-  useEffect(reload, [reload]);
+  useEffect(() => {
+    if (active) reload();
+    else { setEditing(null); setCoverEdit(null); setManaging(null); }
+    const counter = loadRequest;
+    return () => { counter.current++; };
+  }, [active, reload]);
 
   // 页面消息自己消失，免得一条旧结果一直挂着。
   useEffect(() => {
@@ -88,7 +108,8 @@ export function ModelsPage({
     const list = q ? roles.filter((r) => `${r.name} ${r.author ?? ""} ${r.id}`.toLowerCase().includes(q)) : roles;
     return [...list].sort((a, b) => (sort === "refs" ? refCount(b) - refCount(a) : (a.name || a.id).localeCompare(b.name || b.id)));
   }, [roles, query, sort]);
-  const paged = usePaged(shown, PAGE_SIZE, `${query}|${sort}`);
+  const grid = useModelGrid();
+  const paged = usePaged(shown, grid.pageSize, `${query}|${sort}`);
   const pageDir = useDir(paged.page);
 
   async function importPack() {
@@ -120,30 +141,23 @@ export function ModelsPage({
   };
 
   const itemsFor = (r: Role): MenuItem[] => {
-    const lists = r.lists ?? [];
     return [
-      { id: "synth", label: t("library.useInSynth"), icon: "play", onSelect: () => synthWithRole(r.id) },
-      lists.length > 1
-        ? {
-            id: "annot",
-            label: t("library.editList"),
-            icon: "note",
-            items: lists.map((l) => ({ id: l.file, label: l.file, onSelect: () => openInAnnot(`${r.dir}/${l.file}`) })),
-          }
-        : { id: "annot", label: t("library.editList"), icon: "note", disabled: !lists.length, onSelect: () => openInAnnot(`${r.dir}/${lists[0].file}`) },
-      { id: "g1", gap: true },
       { id: "edit", label: t("library.editInfo"), icon: "edit", onSelect: () => setEditing(r) },
       {
         id: "cover",
         label: t("library.setCover"),
         icon: "image",
-        onSelect: () =>
-          void run(async () => {
-            const res = await invoke<{ cover?: string } | null>("role_set_cover", { id: r.id });
-            if (!res) return null;
-            setCoverVer((v) => v + 1);
-            return t("library.coverDone");
-          }),
+        onSelect: () => setCoverEdit(r),
+      },
+      {
+        id: "reset-cover",
+        label: t("library.resetCover"),
+        icon: "image",
+        onSelect: () => void run(async () => {
+          await invoke("role_cover_reset", { id: r.id });
+          setCoverVer((v) => v + 1);
+          return t("library.coverDone");
+        }),
       },
       {
         id: "export",
@@ -182,6 +196,7 @@ export function ModelsPage({
           <>
             <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
             <Btn onClick={() => goTo("train")}>{t("library.goTrain")}</Btn>
+            {roles.length > 0 && <Btn onClick={() => { setExportInstance((n) => n + 1); setExportOpen(true); }}>{t("publication.exportPacks")}</Btn>}
             <Btn primary busy={busy} onClick={() => void importPack()}>
               {t("library.import")}
             </Btn>
@@ -189,6 +204,7 @@ export function ModelsPage({
         }
       />
 
+      <ExportCharacterPackages key={exportInstance} open={active && exportOpen} roles={roles} onClose={() => setExportOpen(false)} />
       <AdBanner banner={banner ?? null} />
 
       <Block
@@ -208,46 +224,41 @@ export function ModelsPage({
           ) : undefined
         }
       >
-        {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 selectable">{msg}</div> : null}
+        {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 whitespace-pre-line selectable">{msg}</div> : null}
         {roles.length ? (
           <>
-            <Swap k={`${paged.page}|${query}|${sort}`} dir={pageDir}>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
-                {paged.slice.map((r, i) => {
-                  const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
-                  return (
-                    <div
-                      key={r.id}
-                      className="group rise relative rounded-[var(--r)] bg-[var(--group)] p-2.5 cursor-pointer transition-colors duration-200 hover:bg-[color-mix(in_srgb,var(--ink)_3%,var(--group))]"
-                      style={stagger(i)}
-                      onClick={() => synthWithRole(r.id)}
-                      onContextMenu={(e) => menu.open(e, itemsFor(r))}
-                    >
-                      <div
-                        className="w-full aspect-[4/3] rounded-[calc(var(--r)-4px)] mb-2.5 bg-center bg-cover"
-                        style={cover ? { backgroundImage: `url("${cover}")` } : { background: artOf(r.id) }}
-                      />
-                      <div className="absolute top-4 right-4">
-                        <MoreBtn onOpen={(el) => menu.open(el, itemsFor(r))} />
-                      </div>
-                      <div className="text-[13.5px] font-medium leading-tight truncate">{r.name || r.id}</div>
-                      <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
-                        {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
-                      </div>
-                      <div className="mt-1.5">
-                        <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Swap>
+            <div ref={grid.ref} style={grid.style}>
+              <CatalogTransition scope="models" page={paged.page} dir={pageDir || 1}>
+                <FlowList layout="grid" items={paged.slice} keyOf={(r) => r.id}
+                  className={MODEL_GRID_CLASS}
+                  render={(r) => {
+                    const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
+                    return (
+                      <ModelCard id={r.id} name={r.name || r.id} cover={cover}>
+                        <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
+                          {r.author ? t("home.author", { author: r.author }) : t("library.noAuthor")}
+                        </div>
+                        <div className="mt-1.5">
+                          <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
+                        </div>
+                        <div className="mt-2.5 flex items-center gap-1.5" onClick={event => event.stopPropagation()}>
+                          <Btn className="flex-1 min-w-0" onClick={() => synthWithRole(r.id)}><span className="block truncate" title={t("nav.synth")}>{t("nav.synth")}</span></Btn>
+                          <Btn className="flex-1 min-w-0" onClick={() => setManaging(r)}><span className="block truncate" title={t("library.manageAssets")}>{t("library.manageAssets")}</span></Btn>
+                          <Btn className="shrink-0 px-2.5" ariaLabel={t("ui.common.more")} onClick={event => menu.open(event.currentTarget, itemsFor(r))}>⋯</Btn>
+                        </div>
+                      </ModelCard>
+                    );
+                  }} />
+              </CatalogTransition>
+            </div>
             {shown.length === 0 ? <p className="text-[13px] text-[var(--ink-muted)] m-0">{t("library.noHit")}</p> : null}
             <Pager page={paged.page} pages={paged.pages} onChange={paged.setPage} />
           </>
+        ) : loading ? (
+          <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.valueLoading")}</p>
         ) : (
           <div className="rounded-[var(--r)] border border-dashed border-[var(--line)] p-6 text-center">
-            <div className="text-[13.5px] font-medium">{t("library.emptyTitle")}</div>
+            <div className="text-[13px] font-medium">{t("library.emptyTitle")}</div>
             <div className="text-[12.5px] text-[var(--help)] mt-2 leading-relaxed max-w-[420px] mx-auto">
               {t("library.emptyDesc")}
             </div>
@@ -255,22 +266,22 @@ export function ModelsPage({
         )}
       </Block>
 
-      <Block title={t("library.fmtTitle")} titleTip={t("library.fmtTip")}>
-        <pre className=" rounded-[var(--r)] bg-[var(--page-bg)] p-3.5 text-[11.5px] leading-relaxed text-[var(--ink-muted)] overflow-auto m-0">{`character.zip
-├─ config.json      # ${t("library.fmtConfig")}
-├─ cover.jpg
-├─ models/
-│  ├─ sovits.pth    # ${t("library.fmtSovits")}
-│  └─ gpt.ckpt      # ${t("library.fmtGpt")}
-└─ dataset/
-   ├─ name.list     # ${t("library.fmtList")}
-   └─ audios/`}</pre>
-      </Block>
-
       {menu.node}
+      <Leave>{managing ? <RoleAssetsDialog key={managing.id} role={managing} onClose={() => setManaging(null)} onChanged={reload} /> : null}</Leave>
+      <Leave>{coverEdit ? (
+        <CropCoverDialog key={coverEdit.id} model={coverEdit}
+          onClose={() => setCoverEdit(null)}
+          onSaved={() => {
+            setCoverEdit(null);
+            setCoverVer((v) => v + 1);
+            setMsg(t("library.coverDone"));
+            reload();
+          }} />
+      ) : null}</Leave>
       <Leave>
         {editing ? (
           <EditDialog
+            key={editing.id}
             role={editing}
             onClose={() => setEditing(null)}
             onSaved={(name) => {
@@ -291,8 +302,6 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
   const [author, setAuthor] = useState(role.author ?? "");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const INPUT =
-    "w-full px-3 py-2 rounded-[var(--rs)] text-[13px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)] selectable";
   const save = async () => {
     setBusy(true);
     setErr("");
@@ -313,12 +322,12 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-[440px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6"
       >
-        <h2 className="text-[19px] font-semibold m-0 mb-5">{t("library.editInfo")}</h2>
+        <h2 className="text-[16px] font-semibold m-0 mb-5">{t("library.editInfo")}</h2>
         <div className="flex flex-col gap-4">
-          <Field label={t("library.fieldName")} control={<input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} autoFocus />} />
-          <Field label={t("library.fieldAuthor")} control={<input value={author} onChange={(e) => setAuthor(e.target.value)} className={INPUT} />} />
+          <Field label={t("library.fieldName")} control={<TextInput value={name} onChange={setName} className="selectable" autoFocus />} />
+          <Field label={t("library.fieldAuthor")} control={<TextInput value={author} onChange={setAuthor} className="selectable" />} />
         </div>
-        {err ? <div className="mt-3 text-[12.5px] text-[var(--danger)]">{err}</div> : null}
+        {err ? <div className="mt-3 text-[12.5px] text-[var(--danger-text)]">{err}</div> : null}
         <div className="mt-6 flex gap-2.5 justify-end">
           <Btn onClick={onClose} disabled={busy}>{t("library.cancel")}</Btn>
           <Btn primary busy={busy} disabled={!name.trim()} onClick={() => void save()}>{t("library.save")}</Btn>

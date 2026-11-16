@@ -24,7 +24,7 @@
 //!   一个跑不了的角色，比导入失败难查得多：用户要点到合成才会发现。
 
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -160,14 +160,18 @@ fn str_field(v: &Value, key: &str) -> String {
 
 /// 解析并落盘。返回装好的角色摘要（id / name / dir）。
 pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
+    install_zip_as(root, zip_path, None)
+}
+
+pub(crate) fn install_zip_as(root: &Path, zip_path: &Path, role_id: Option<&str>) -> Result<Value, String> {
     let z = read_zip(zip_path)?;
 
     let cfg_bytes = z
         .files
         .get("config.json")
         .ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
-    let cfg: Value = serde_json::from_slice(cfg_bytes)
-        .map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))?;
+    let mut cfg: Value =
+        serde_json::from_slice(cfg_bytes).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))?;
 
     let name = str_field(&cfg, "name");
     if name.trim().is_empty() {
@@ -181,6 +185,13 @@ pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
         }
     }
 
+    if cfg["lists"].is_null() {
+        let found = bundled_references(&z.files);
+        if !found.is_empty() {
+            cfg["lists"] = json!(found);
+        }
+    }
+
     // id 优先用包里声明的，其次退到文件名。两条都过清洗。
     let declared = str_field(&cfg, "id");
     let fallback = zip_path
@@ -189,32 +200,76 @@ pub fn install_zip(root: &Path, zip_path: &Path) -> Result<Value, String> {
         .unwrap_or("role")
         .trim_end_matches("_voice")
         .to_string();
-    let id = safe_id(if declared.trim().is_empty() {
+    let id = safe_id(role_id.unwrap_or_else(|| if declared.trim().is_empty() {
         &fallback
     } else {
         &declared
-    });
+    }));
 
-    let dest = paths::user_data(root).join("characters").join(&id);
-    // 覆盖安装：先清空，避免上一版留下的多余权重被当成这一版的。
-    if dest.exists() {
-        std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    }
-    std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let parent = paths::user_data(root).join("characters");
+    let dest = parent.join(&id);
+    let nonce = crate::role_assets::unique();
+    let stage = paths::user_data(root).join(format!(".install-{nonce}"));
+    let backup = paths::user_data(root).join(format!(".previous-{nonce}"));
+    std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        for (rel, bytes) in &z.files {
+            // 落盘前再查一遍：剥包装目录是字符串操作，别让它把校验绕过去。
+            check_entry_path(rel)?;
+            let out = stage.join(rel);
+            // 最后一道：算出来的路径必须仍在角色目录里。
+            if !out.starts_with(&stage) {
+                return Err(format!("entry escapes the pack dir: {rel}"));
+            }
+            if rel == "config.json" {
+                continue;
+            }
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("{}: {e}", parent.display()))?;
+            }
+            std::fs::write(&out, bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+        }
 
-    for (rel, bytes) in &z.files {
-        // 落盘前再查一遍：剥包装目录是字符串操作，别让它把校验绕过去。
-        check_entry_path(rel)?;
-        let out = dest.join(rel);
-        // 最后一道：算出来的路径必须仍在角色目录里。
-        if !out.starts_with(&dest) {
-            return Err(format!("entry escapes the pack dir: {rel}"));
+        if crate::paths::runtime_python(root).is_some()
+            && root.join("tools/weight_inspect.py").is_file()
+        {
+            let detected = crate::role_assets::inspect_replacement(
+                root,
+                "sovits",
+                &stage.join("models/sovits.pth"),
+                Some(&stage.join("models/gpt.ckpt")),
+                None,
+            )?;
+            cfg["version"] = detected["version"].clone();
+            cfg["weight_info"] = json!({"gpt": detected["gpt"], "sovits": detected["sovits"]});
+            cfg["weight_validation"] = json!("verified");
+        } else {
+            cfg["weight_validation"] = json!("pending");
         }
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        write_cfg(&stage, &cfg)?;
+        static INSTALL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let replacing = dest.exists();
+        if replacing {
+            std::fs::rename(&dest, &backup).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&out, bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+        if let Err(e) = std::fs::rename(&stage, &dest) {
+            if replacing {
+                std::fs::rename(&backup, &dest).map_err(|restore| format!("{e}; {restore}"))?;
+            }
+            return Err(e.to_string());
+        }
+        if replacing {
+            let _ = std::fs::remove_dir_all(&backup);
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&stage);
     }
+    result?;
 
     let version = {
         let v = str_field(&cfg, "version");
@@ -245,10 +300,10 @@ pub fn pick_pack(win: Option<&tauri::WebviewWindow>) -> Vec<PathBuf> {
 // --- 角色管理：改名、删除、导出、换封面 ------------------------------------
 
 /// 封面接受的图片格式。
-const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const COVER_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
 
 /// 已装角色的目录。id 必须原样就是清洗过的目录名，不能借它指到别处。
-fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
+pub(crate) fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
     if id.is_empty() || safe_id(id) != id {
         return Err(crate::i18n::t("s.roleErrNotFound"));
     }
@@ -259,14 +314,14 @@ fn role_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn read_cfg(dir: &Path) -> Result<Value, String> {
+pub(crate) fn read_cfg(dir: &Path) -> Result<Value, String> {
     let raw = std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))
 }
 
-fn write_cfg(dir: &Path, cfg: &Value) -> Result<(), String> {
+pub(crate) fn write_cfg(dir: &Path, cfg: &Value) -> Result<(), String> {
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("config.json"), text).map_err(|e| e.to_string())
+    crate::config::write_atomic(&dir.join("config.json"), &text).map_err(|e| e.to_string())
 }
 
 /// 改名称与作者。只动这两项，其余字段原样保留。
@@ -290,61 +345,337 @@ pub fn delete(root: &Path, id: &str) -> Result<(), String> {
     std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))
 }
 
-/// 换封面：复制成 `cover.<扩展名>`，旧封面文件一并去掉。
-pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
-    let dir = role_dir(root, id)?;
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .filter(|e| COVER_EXTS.contains(&e.as_str()))
-        .ok_or_else(|| crate::i18n::t("s.roleErrCoverType"))?;
-    let mut cfg = read_cfg(&dir)?;
-    let old = str_field(&cfg, "cover");
-    let name = format!("cover.{ext}");
-    std::fs::copy(src, dir.join(&name)).map_err(|e| e.to_string())?;
-    if !old.is_empty() && old != name && check_entry_path(&old).is_ok() {
-        let _ = std::fs::remove_file(dir.join(&old));
-    }
-    if let Some(obj) = cfg.as_object_mut() {
-        obj.insert("cover".into(), json!(name));
-    }
-    write_cfg(&dir, &cfg)?;
-    Ok(json!({ "id": id, "cover": name }))
+/// Local image bytes are shared with wallpaper sampling so canvas stays same-origin.
+pub fn cover_data_url(src: &str) -> Result<String, String> {
+    crate::wallpaper::data_url(src).map_err(|_| crate::i18n::t("s.roleErrCoverType"))
 }
 
-/// 把角色目录打成角色包，格式与导入时一致（无包装目录）。
-pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
-    use std::io::Write;
+const CUSTOM_COVER_PREFIX: &str = "cover-custom-";
+const MAX_COVER_BYTES: usize = 16 * 1024 * 1024;
+
+/// Preserve the package cover; edits are separate content-addressed files.
+pub fn save_cover(root: &Path, id: &str, data_url: &str) -> Result<Value, String> {
+    use sha2::{Digest, Sha256};
     let dir = role_dir(root, id)?;
-    let file = std::fs::File::create(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    let mut zw = zip::ZipWriter::new(file);
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .large_file(true);
-    let mut stack = vec![dir.clone()];
-    let mut count = 0usize;
-    while let Some(d) = stack.pop() {
-        let rd = std::fs::read_dir(&d).map_err(|e| e.to_string())?;
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
+    let invalid = || crate::i18n::t("s.roleErrCoverType");
+    let (header, encoded) = data_url.split_once(',').ok_or_else(invalid)?;
+    if !["data:image/png;base64", "data:image/jpeg;base64", "data:image/webp;base64", "data:image/bmp;base64"].contains(&header)
+        || encoded.len() > MAX_COVER_BYTES.div_ceil(3) * 4 {
+        return Err(invalid());
+    }
+    let bytes = crate::shell_extras::base64_decode(encoded).ok_or_else(invalid)?;
+    let ext = match crate::wallpaper::sniff_mime(&bytes) {
+        Some("image/png") => "png",
+        Some("image/jpeg") => "jpg",
+        Some("image/webp") => "webp",
+        Some("image/bmp") => "bmp",
+        _ => return Err(invalid()),
+    };
+    if bytes.len() > MAX_COVER_BYTES { return Err(invalid()); }
+    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let name = format!("{CUSTOM_COVER_PREFIX}{}.{ext}", &digest[..16]);
+    let mut cfg = read_cfg(&dir)?;
+    let previous = str_field(&cfg, "cover");
+    let obj = cfg.as_object_mut().ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    if !obj.contains_key("original_cover") {
+        obj.insert("original_cover".into(), json!(previous));
+    }
+    std::fs::write(dir.join(&name), bytes).map_err(|e| e.to_string())?;
+    obj.insert("cover".into(), json!(name));
+    write_cfg(&dir, &cfg)?;
+    if previous != name && previous != str_field(&cfg, "original_cover") && previous.starts_with(CUSTOM_COVER_PREFIX) && check_entry_path(&previous).is_ok() {
+        let _ = std::fs::remove_file(dir.join(previous));
+    }
+    Ok(json!({"id": id, "cover": name}))
+}
+
+pub fn reset_cover(root: &Path, id: &str) -> Result<Value, String> {
+    let dir = role_dir(root, id)?;
+    let mut cfg = read_cfg(&dir)?;
+    let current = str_field(&cfg, "cover");
+    let Some(original) = cfg.get("original_cover").and_then(Value::as_str).map(str::to_string) else {
+        return Ok(json!({"id":id,"cover":current}));
+    };
+    let obj = cfg.as_object_mut().ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    obj.insert("cover".into(), json!(original));
+    obj.remove("original_cover");
+    write_cfg(&dir, &cfg)?;
+    if current != original && current.starts_with(CUSTOM_COVER_PREFIX) && check_entry_path(&current).is_ok() {
+        let _ = std::fs::remove_file(dir.join(current));
+    }
+    Ok(json!({"id":id,"cover":original}))
+}
+
+/// Compatibility entry point for callers that already have a local image path.
+pub fn set_cover(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
+    let data = cover_data_url(&src.to_string_lossy())?;
+    save_cover(root, id, &data)
+}
+
+fn portable_path(path: &str) -> Option<String> {
+    let path = path.replace('\\', "/");
+    (!path.contains(':')
+        && path.split('/').all(|part| !part.is_empty() && part != "." && part != ".."))
+        .then_some(path)
+}
+
+fn is_annotation(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("list"))
+}
+
+fn bundled_references(files: &BTreeMap<String, Vec<u8>>) -> Vec<Value> {
+    files
+        .iter()
+        .filter_map(|(path, bytes)| {
+            if !path.starts_with("dataset/") || !is_annotation(path) {
+                return None;
             }
-            let rel = p
-                .strip_prefix(&dir)
-                .map_err(|e| e.to_string())?
-                .to_string_lossy()
-                .replace('\\', "/");
-            zw.start_file(rel, opts).map_err(|e| e.to_string())?;
-            let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
-            zw.write_all(&bytes).map_err(|e| e.to_string())?;
-            count += 1;
+            let path = portable_path(path)?;
+            let (parent, _) = path.rsplit_once('/')?;
+            let rows = crate::annot::parse_rows(std::str::from_utf8(bytes).ok()?);
+            let complete = !rows.is_empty()
+                && rows.iter().all(|row| {
+                    row.is_complete()
+                        && portable_path(&row.wav).is_some_and(|audio| {
+                            files
+                                .get(&format!("{parent}/{audio}"))
+                                .is_some_and(|data| !data.is_empty())
+                        })
+                });
+            complete.then(|| json!({ "file": path }))
+        })
+        .collect()
+}
+
+fn export_lists(dir: &Path, config: &Value) -> Vec<Value> {
+    if let Some(lists) = config["lists"].as_array() {
+        return lists.clone();
+    }
+    if !config["lists"].is_null() {
+        return Vec::new();
+    }
+    // Older role directories may have their own .list but no saved association.
+    let mut paths: Vec<_> = std::fs::read_dir(dir.join("dataset"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| is_annotation(name))
+        .collect();
+    paths.sort();
+    paths.into_iter().map(|name| json!({ "file": format!("dataset/{name}") })).collect()
+}
+
+fn role_file(dir: &Path, path: &str) -> Option<PathBuf> {
+    let source = dir.join(portable_path(path)?).canonicalize().ok()?;
+    (source.starts_with(dir) && source.is_file()).then_some(source)
+}
+
+fn add_export_references(
+    dir: &Path,
+    lists: &mut [Value],
+    files: &mut BTreeMap<String, PathBuf>,
+) -> Result<BTreeMap<String, String>, String> {
+    let invalid_list = || crate::i18n::t("s.roleErrListInvalid");
+    let missing_audio = || crate::i18n::t("s.roleErrListAudio");
+    let mut annotations = BTreeMap::new();
+    let mut audio_entries = BTreeMap::<PathBuf, String>::new();
+    for (index, list) in lists.iter_mut().enumerate() {
+        let original = list["file"].as_str().filter(|path| is_annotation(path)).ok_or_else(invalid_list)?;
+        let source = role_file(dir, original).ok_or_else(invalid_list)?;
+        let rows = crate::annot::read_rows(&source)?;
+        if rows.is_empty() || rows.iter().any(|row| !row.is_complete()) {
+            return Err(invalid_list());
+        }
+        let mut body = String::new();
+        for row in rows {
+            let audio = Path::new(&row.abs).canonicalize().map_err(|_| missing_audio())?;
+            let ext = audio.extension().and_then(|ext| ext.to_str())
+                .map(str::to_ascii_lowercase)
+                .filter(|ext| crate::train::DATASET_AUDIO_EXT.contains(&ext.as_str()))
+                .ok_or_else(missing_audio)?;
+            if !audio.starts_with(dir)
+                || !std::fs::metadata(&audio).is_ok_and(|info| info.is_file() && info.len() > 0)
+            {
+                return Err(missing_audio());
+            }
+            let next = audio_entries.len() + 1;
+            let relative = audio_entries.entry(audio.clone()).or_insert_with(|| {
+                let relative = format!("audios/{next:05}.{ext}");
+                files.insert(format!("dataset/{relative}"), audio);
+                relative
+            });
+            body.push_str(&format!("{relative}|{}|{}|{}\n", row.speaker, row.lang, row.text));
+        }
+        let file = format!("dataset/references-{:02}.list", index + 1);
+        annotations.insert(file.clone(), body);
+        if list["note"].as_str().is_none_or(str::is_empty) {
+            list["note"] = json!(Path::new(original).file_name().unwrap_or_default().to_string_lossy());
+        }
+        list["file"] = json!(file);
+    }
+    Ok(annotations)
+}
+
+/// Export a self-contained character with both weights and all linked references.
+pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
+    let dir = role_dir(root, id)?.canonicalize().map_err(|e| e.to_string())?;
+    let mut config = read_cfg(&dir)?;
+    if !config.is_object() {
+        return Err(crate::i18n::t("s.roleErrNoConfig"));
+    }
+    let mut lists = export_lists(&dir, &config);
+    if lists.is_empty() {
+        return Err(crate::i18n::t("s.roleExportNeedsList"));
+    }
+
+    let mut files = BTreeMap::new();
+    for name in ["models/sovits.pth", "models/gpt.ckpt"] {
+        let file = role_file(&dir, name)
+            .ok_or_else(|| crate::i18n::te("s.roleErrMissingWeight", &name))?;
+        files.insert(name.to_string(), file);
+    }
+    for key in ["cover", "original_cover"] {
+        if let Some(name) = config[key].as_str().and_then(portable_path) {
+            if let Some(source) = role_file(&dir, &name) {
+                files.insert(name, source);
+            }
         }
     }
-    zw.finish().map_err(|e| e.to_string())?;
-    Ok(json!({ "path": dest.to_string_lossy(), "files": count }))
+    let mut annotations = add_export_references(&dir, &mut lists, &mut files)?;
+    config["lists"] = json!(lists);
+    let config_text = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    annotations.insert("config.json".into(), config_text);
+    let mut total = 0_u64;
+    for size in files
+        .values()
+        .map(|source| std::fs::metadata(source).map(|info| info.len()))
+        .chain(annotations.values().map(|text| Ok(text.len() as u64)))
+    {
+        let size = size.map_err(|e| e.to_string())?;
+        total = total.saturating_add(size);
+        if size > MAX_ENTRY_BYTES || total > MAX_TOTAL_BYTES {
+            return Err(crate::i18n::t("publication.packTooLarge"));
+        }
+    }
+
+    let stage = dest.with_extension(format!("{}.tmp", crate::role_assets::unique()));
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&stage)
+        .map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .large_file(true);
+        for (name, source) in &files {
+            zip.start_file(name, opts).map_err(|e| e.to_string())?;
+            let mut file = std::fs::File::open(source).map_err(|e| e.to_string())?;
+            std::io::copy(&mut file, &mut zip).map_err(|e| e.to_string())?;
+        }
+        for (name, text) in &annotations {
+            zip.start_file(name, opts).map_err(|e| e.to_string())?;
+            zip.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        }
+        drop(zip.finish().map_err(|e| e.to_string())?);
+        std::fs::rename(&stage, dest).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&stage);
+    }
+    result?;
+    Ok(json!({ "path": dest.to_string_lossy(), "files": files.len() + annotations.len() }))
+}
+
+/// Read metadata without extracting the archive or loading model weights.
+pub(crate) fn pack_metadata(root: &Path, path: &Path) -> Result<Value, String> {
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let mut names = Vec::new();
+    let mut indexed = BTreeMap::new();
+    let mut total = 0u64;
+    for index in 0..zip.len() {
+        let entry = zip.by_index_raw(index).map_err(|e| e.to_string())?;
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().replace('\\', "/");
+        check_entry_path(&name)?;
+        if entry.size() > MAX_ENTRY_BYTES {
+            return Err(format!("entry too large: {name}"));
+        }
+        total = total.saturating_add(entry.size());
+        if total > MAX_TOTAL_BYTES {
+            return Err("pack too large".into());
+        }
+        if indexed.insert(name.clone(), index).is_some() {
+            return Err("Duplicate package path.".into());
+        }
+        names.push(name);
+    }
+
+    let prefix = content_root(&names);
+    let path_index = |file: &str| {
+        let key = if prefix.is_empty() { file.to_owned() } else { format!("{prefix}/{file}") };
+        indexed.get(&key).copied()
+    };
+    let weights = ["models/sovits.pth", "models/gpt.ckpt"]
+        .map(|name| path_index(name).map(|index| (name, index))
+            .ok_or_else(|| crate::i18n::te("s.roleErrMissingWeight", &name)));
+    let [sovits, gpt] = weights;
+    let weights = [sovits?, gpt?];
+    let index = path_index("config.json").ok_or_else(|| crate::i18n::t("s.roleErrNoConfig"))?;
+    let mut bytes = Vec::new();
+    zip.by_index(index)
+        .map_err(|e| e.to_string())?
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Package metadata is too large.".into());
+    }
+    let mut config: Value = serde_json::from_slice(&bytes).map_err(|e| crate::i18n::te("s.roleErrBadConfig", &e))?;
+    if str_field(&config, "name").trim().is_empty() {
+        return Err(crate::i18n::t("s.roleErrNoName"));
+    }
+
+    let declared = str_field(&config, "id");
+    let fallback = path.file_stem().and_then(|name| name.to_str()).unwrap_or("").trim_end_matches("_voice");
+    let id = safe_id(if declared.trim().is_empty() { fallback } else { &declared });
+    if let Ok(dir) = role_dir(root, &id) {
+        if let Ok(local) = read_cfg(&dir) {
+            if weights.iter().all(|(name, index)| {
+                let Ok(entry) = zip.by_index(*index) else { return false; };
+                same_weight(entry, &dir.join(name))
+            }) {
+                for key in ["name", "author", "author_url", "description", "version", "series", "group", "club", "language", "lang", "license", "lists"] {
+                    if config[key].is_null() || config[key].as_str().is_some_and(|value| value.trim().is_empty()) {
+                        config[key] = local[key].clone();
+                    }
+                }
+                if local["weight_validation"] == "verified" && local["version"].is_string() {
+                    config["version"] = local["version"].clone();
+                }
+            }
+        }
+    }
+    Ok(config)
+}
+
+fn same_weight(entry: zip::read::ZipFile<'_>, installed: &Path) -> bool {
+    use sha2::{Digest, Sha256};
+    let size = entry.size();
+    if size == 0 || size > MAX_ENTRY_BYTES || !std::fs::metadata(installed).is_ok_and(|file| file.is_file() && file.len() == size) {
+        return false;
+    }
+    let Ok(local_hash) = crate::download::file_sha256(installed) else { return false; };
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut entry.take(size + 1), &mut hasher).is_ok_and(|bytes| bytes == size)
+        && hex::encode(hasher.finalize()) == local_hash
 }
 
 /// 选封面图片。
@@ -387,10 +718,39 @@ mod tests {
         w.write_all(b"gpt").unwrap();
         w.start_file(p("dataset/role.list"), opts()).unwrap();
         w.write_all("audios/a.wav|角色|ZH|你好\n".as_bytes()).unwrap();
+        w.start_file(p("dataset/audios/a.wav"), opts()).unwrap();
+        w.write_all(b"reference audio").unwrap();
         w.finish().unwrap();
     }
 
     const CFG: &str = r#"{"id":"Yuzu","name":"柚子","author":"某人","version":"v2ProPlus"}"#;
+
+    #[test]
+    fn external_pack_fills_missing_local_details_only_when_both_weights_match() {
+        let root = crate::testutil::scratch("external-publication-pack");
+        std::fs::create_dir_all(&root).unwrap();
+        let archive = root.join("local_voice.zip");
+        make_pack(&archive, "wrapped/", r#"{"id":"local","name":"Package name","version":"v2"}"#);
+        install_zip(&root, &archive).unwrap();
+
+        let installed = role_dir(&root, "local").unwrap();
+        let mut cfg = read_cfg(&installed).unwrap();
+        cfg["author"] = json!("Local author");
+        cfg["weight_validation"] = json!("verified");
+        cfg["version"] = json!("v5turbo");
+        write_cfg(&installed, &cfg).unwrap();
+
+        let matching = pack_metadata(&root, &archive).unwrap();
+        assert_eq!(matching["name"], "Package name");
+        assert_eq!(matching["author"], "Local author");
+        assert_eq!(matching["version"], "v5turbo");
+
+        std::fs::write(installed.join("models/gpt.ckpt"), b"new").unwrap();
+        let other = pack_metadata(&root, &archive).unwrap();
+        assert!(other["author"].is_null());
+        assert_eq!(other["version"], "v2");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_pack_lands_where_the_synth_page_looks_for_it() {
@@ -501,6 +861,81 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     #[test]
+    fn export_binds_all_reference_audio_and_preserves_the_original_role() {
+        let root = crate::testutil::scratch("role-reference-export");
+        std::fs::create_dir_all(&root).unwrap();
+        let original = root.join("original.zip");
+        make_pack(&original, "wrapped/", CFG);
+        install_zip(&root, &original).unwrap();
+        let dir = role_dir(&root, "yuzu").unwrap();
+        let mut config = read_cfg(&dir).unwrap();
+        assert_eq!(config["lists"][0]["file"], "dataset/role.list");
+
+        let primary = dir.join("dataset/role.list");
+        let shared_audio = dir.join("dataset/audios/a.wav");
+        let linked = dir.join("dataset/second.list");
+        let other_audio = dir.join("dataset/other/a.wav");
+        std::fs::create_dir_all(other_audio.parent().unwrap()).unwrap();
+        std::fs::write(&other_audio, b"another reference").unwrap();
+        std::fs::write(dir.join("dataset/audios/unlinked.wav"), b"other recording").unwrap();
+        let external_style = format!("\u{feff}{}|Yuzu|JA|one|two\r\n", shared_audio.display());
+        std::fs::write(&primary, &external_style).unwrap();
+        std::fs::write(&linked, "audios/a.wav|Yuzu|JA|same recording\nother/a.wav|Yuzu|EN|different recording\n").unwrap();
+        config["lists"][0]["lang"] = json!("ja");
+        config["lists"].as_array_mut().unwrap().push(json!({ "file": "dataset/second.list", "note": "More references" }));
+        write_cfg(&dir, &config).unwrap();
+
+        let output = root.join("exported.zip");
+        export_zip(&root, "yuzu", &output).unwrap();
+        assert_eq!(read_cfg(&dir).unwrap(), config);
+        assert_eq!(std::fs::read_to_string(primary).unwrap(), external_style);
+        let entries = read_zip(&output).unwrap().files;
+        assert!(!entries.contains_key("dataset/audios/unlinked.wav"));
+        assert_eq!(entries.keys().filter(|name| name.starts_with("dataset/audios/")).count(), 2);
+
+        let restored = root.join("restored");
+        install_zip(&restored, &output).unwrap();
+        let roles = crate::synth::list_characters(&restored);
+        let lists = roles["roles"][0]["lists"].as_array().unwrap();
+        assert_eq!(lists.len(), 2);
+        assert_eq!(lists[0]["lang"], "ja");
+        assert_eq!(lists[1]["note"], "More references");
+        assert_eq!(lists[0]["rows"][0]["text"], "one|two");
+        assert_eq!(lists[0]["rows"][0]["wav"], lists[1]["rows"][0]["wav"]);
+        for (row, expected) in [
+            (&lists[0]["rows"][0], b"reference audio".as_slice()),
+            (&lists[1]["rows"][1], b"another reference".as_slice()),
+        ] {
+            assert_eq!(row["exists"], true);
+            assert!(!Path::new(row["wav"].as_str().unwrap()).is_absolute());
+            assert_eq!(std::fs::read(row["abs"].as_str().unwrap()).unwrap(), expected);
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_missing_reference_does_not_overwrite_an_existing_export() {
+        let root = crate::testutil::scratch("missing-export-reference");
+        std::fs::create_dir_all(&root).unwrap();
+        let original = root.join("original.zip");
+        make_pack(&original, "", CFG);
+        install_zip(&root, &original).unwrap();
+        let output = root.join("exported.zip");
+        std::fs::write(&output, b"previous export").unwrap();
+
+        let dir = role_dir(&root, "yuzu").unwrap();
+        std::fs::remove_file(dir.join("dataset/audios/a.wav")).unwrap();
+        assert_eq!(export_zip(&root, "yuzu", &output).unwrap_err(), crate::i18n::t("s.roleErrListAudio"));
+        assert_eq!(std::fs::read(&output).unwrap(), b"previous export");
+
+        let mut config = read_cfg(&dir).unwrap();
+        config["lists"] = json!([]);
+        write_cfg(&dir, &config).unwrap();
+        assert_eq!(export_zip(&root, "yuzu", &output).unwrap_err(), crate::i18n::t("s.roleExportNeedsList"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn a_role_can_be_renamed_exported_and_deleted() {
         let root = crate::testutil::scratch("roles-manage");
         std::fs::create_dir_all(&root).unwrap();
@@ -532,4 +967,55 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&root);
     }
+    #[test]
+    fn cover_edits_preserve_original_and_change_the_asset_url() {
+        let root = crate::testutil::scratch("cover-reset");
+        let dir = root.join("User_Data/characters/voice");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.json"), r#"{"name":"Voice","cover":"original.png"}"#).unwrap();
+        std::fs::write(dir.join("original.png"), b"original").unwrap();
+        let first = save_cover(&root, "voice", "data:image/png;base64,iVBORw0KGgoAAAAAAAAAAA==").unwrap();
+        let second = save_cover(&root, "voice", "data:image/png;base64,iVBORw0KGgoBAAAAAAAAAA==").unwrap();
+        assert_ne!(first["cover"], second["cover"]);
+        assert!(!dir.join(first["cover"].as_str().unwrap()).exists());
+        assert_eq!(read_cfg(&dir).unwrap()["original_cover"], "original.png");
+        assert_eq!(reset_cover(&root,"voice").unwrap()["cover"], "original.png");
+        assert_eq!(std::fs::read(dir.join("original.png")).unwrap(), b"original");
+        assert!(!dir.join(second["cover"].as_str().unwrap()).exists());
+        assert_eq!(reset_cover(&root,"voice").unwrap()["cover"], "original.png");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_cover_does_not_change_the_role() {
+        let root = crate::testutil::scratch("cover-invalid");
+        let dir = root.join("User_Data/characters/voice");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = r#"{"name":"Voice","cover":"original.png"}"#;
+        std::fs::write(dir.join("config.json"), config).unwrap();
+        assert!(save_cover(&root,"voice","data:image/png;base64,bm90IGFuIGltYWdl").is_err());
+        assert_eq!(std::fs::read_to_string(dir.join("config.json")).unwrap(), config);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn imported_custom_named_default_cover_survives_edit_and_reset() {
+        let root = crate::testutil::scratch("cover-custom-default");
+        let dir = root.join("User_Data/characters/voice");
+        std::fs::create_dir_all(&dir).unwrap();
+        let original = "cover-custom-imported.jpg";
+        std::fs::write(dir.join("config.json"), json!({"name":"Voice", "cover":original}).to_string()).unwrap();
+        std::fs::write(dir.join(original), b"original").unwrap();
+        let edited = save_cover(&root, "voice", "data:image/png;base64,iVBORw0KGgoAAAAAAAAAAA==").unwrap();
+        assert_eq!(std::fs::read(dir.join(original)).unwrap(), b"original");
+        assert_eq!(reset_cover(&root, "voice").unwrap()["cover"], original);
+        assert!(dir.join(original).is_file());
+        assert!(!dir.join(edited["cover"].as_str().unwrap()).exists());
+        // A package may already store the default as both fields.
+        std::fs::write(dir.join("config.json"), json!({"cover":original, "original_cover":original}).to_string()).unwrap();
+        reset_cover(&root, "voice").unwrap();
+        assert!(dir.join(original).is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }
