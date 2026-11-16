@@ -73,7 +73,7 @@
         "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/updater.json"
       ],
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1MzNGQ0Y0Qjk1OTBEMkMKUldRc0RWbTU5UHd6MVhJTmVYQ0V3NldHN1krdW8wcjNjZzJQRGQ1ZU1kL01jbmNTQWVxQkk5OGUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1Q0VCQjUzQ0EyQUNCOApSV1M0cktJOHRldGNEQjJwcnRYMDVMY1Z6a3VBNS92RzREbDlqTTFYZzRKeUd5SHVJdUVIdTY3Qwo=",
       "windows": {
         "installMode": "passive"
       }

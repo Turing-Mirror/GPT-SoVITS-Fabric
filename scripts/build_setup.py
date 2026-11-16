@@ -31,6 +31,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -88,6 +89,7 @@ def main() -> int:
     ap.add_argument("--upstream", help="上游 GPT-SoVITS 源码树（传给 prepare_engine_payload）")
     ap.add_argument("--runtime", help="Runtime 目录（传给 prepare_engine_payload，预编译日语词典）")
     ap.add_argument("--skip-frontend", action="store_true", help="跳过 npm run build")
+    ap.add_argument("--unsigned", action="store_true", help="构建不带更新签名的候选安装包")
     ap.add_argument("--dry-run", action="store_true", help="只跑到 tauri build 之前")
     args = ap.parse_args()
 
@@ -116,7 +118,14 @@ def main() -> int:
         print("[setup] --dry-run：到此为止")
         return 0
 
-    run([npm(), "run", "tauri", "--", "build"], APP, "Tauri 打包")
+    build = [npm(), "run", "tauri", "--", "build"]
+    if args.unsigned:
+        with tempfile.TemporaryDirectory(prefix="gsvf-setup-") as temp:
+            config = Path(temp) / "unsigned.json"
+            config.write_text(json.dumps({"bundle": {"createUpdaterArtifacts": False}}), encoding="utf-8")
+            run([*build, "--bundles", "nsis", "--config", str(config), "--", "--locked"], APP, "Tauri 打包")
+    else:
+        run(build, APP, "Tauri 打包")
 
     src = find_installer()
     DIST.mkdir(parents=True, exist_ok=True)
