@@ -16,6 +16,8 @@ import type { PageId } from "../lib/nav";
  * 第一次打开时先显示反馈须知，确认过的写进 feedback_notice_done，之后不再出现。
  */
 
+const FEEDBACK_NOTICE_SECONDS = 5;
+
 export type GuideStep = "runtime" | "role" | "synth" | "own";
 export const GUIDE_STEPS: GuideStep[] = ["runtime", "role", "synth", "own"];
 
@@ -121,12 +123,15 @@ export function SetupGuide({ open, step, onStep, onMinimize, onFinish, onNavigat
       steps={steps}
       step={step}
       onStep={(id) => onStep(id as GuideStep)}
-      onMinimize={onMinimize}
+      onMinimize={() => {
+        if (notice === false) onMinimize();
+      }}
       onFinish={onFinish}
       notice={
         notice
           ? {
               title: t("guide.notice.title"),
+              seconds: FEEDBACK_NOTICE_SECONDS,
               body: (
                 <ol className="m-0 pl-5 list-decimal flex flex-col gap-3">
                   <li>{t("guide.notice.where")}</li>

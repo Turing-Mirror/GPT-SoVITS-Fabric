@@ -250,7 +250,7 @@ export default function App() {
   // 新装 ui_locale_picked===false 时先选语言，再走 Runtime 补全。
   const [showLangGate, setShowLangGate] = useState(false);
   const [langGateChecked, setLangGateChecked] = useState(false);
-  const [guidePending, setGuidePending] = useState(false);
+  const [guidePending, setGuidePending] = useState<{ showNotice: boolean } | null>(null);
 
   const engine = useEngine();
 
@@ -397,12 +397,12 @@ export default function App() {
     })();
   }, [synthDone]);
 
-  // 新手引导：运行环境装好后自动打开；中途可收成右下角的小按钮，走完或关掉后不再出现。
+  // 新手引导先显示反馈须知，确认后可收起引导，稍后继续。
   // 已经合成过的老用户不主动打扰，从说明页随时可以再打开。
   const [guide, setGuide] = useState<{ open: boolean; step: GuideStep; pill: boolean }>({ open: false, step: "runtime", pill: false });
   const openGuide = useCallback((step?: GuideStep) => setGuide((g) => ({ open: true, pill: false, step: step ?? g.step })), []);
   const finishGuide = useCallback(() => {
-    setGuidePending(false);
+    setGuidePending(null);
     setGuide((g) => ({ ...g, open: false, pill: false }));
     void invoke("config_set", { patch: { setup_guide_done: true, onboard_dismiss: true } }).catch(() => {});
   }, []);
@@ -424,7 +424,11 @@ export default function App() {
         setCoreOnly(true);
         setShowProvision(true);
       } else {
-        setGuide(g => g.open || g.pill ? g : { ...g, pill: true });
+        setGuide(g => g.open || g.pill ? g : {
+          ...g,
+          open: guidePending.showNotice,
+          pill: !guidePending.showNotice,
+        });
       }
     });
     return () => { alive = false; };
@@ -522,7 +526,8 @@ export default function App() {
         const cfg = await invoke<Record<string, unknown>>("config_get");
         if (alive) {
           setShowLangGate(cfg.ui_locale_picked === false);
-          setGuidePending(cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true);
+          const showGuide = cfg.setup_guide_done !== true && cfg.onboard_dismiss !== true && cfg.onboard_convert !== true;
+          setGuidePending(showGuide ? { showNotice: cfg.feedback_notice_done !== true } : null);
         }
       } catch {
         /* 预览 */
