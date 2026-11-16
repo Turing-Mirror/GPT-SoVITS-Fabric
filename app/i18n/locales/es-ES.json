@@ -1549,7 +1549,7 @@
     "packTooLarge": "El paquete de personaje supera el tamaño permitido.",
     "exportPacks": "Exportar paquetes",
     "selectAll": "Seleccionar todo",
-    "selectResults": "Seleccionar resultados",
+    "selectResults": "Seleccionar todos los resultados",
     "batchFilter": "Mostrar solo este lote",
     "authorLink": "Enlace a la página del autor",
     "authorLinkName": "Nombre del enlace",

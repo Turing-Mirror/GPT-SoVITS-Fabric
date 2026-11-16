@@ -1549,7 +1549,7 @@
     "packTooLarge": "キャラクターパックがサイズ制限を超えています。",
     "exportPacks": "パッケージを書き出す",
     "selectAll": "すべて選択",
-    "selectResults": "検索結果を選択",
+    "selectResults": "検索結果をすべて選択",
     "batchFilter": "このバッチのみ表示",
     "authorLink": "作者ページのリンク",
     "authorLinkName": "リンク名",

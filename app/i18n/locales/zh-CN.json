@@ -1549,7 +1549,7 @@
     "packTooLarge": "角色包超出大小限制。",
     "exportPacks": "导出模型包",
     "selectAll": "全选",
-    "selectResults": "选择搜索结果",
+    "selectResults": "全选搜索结果",
     "batchFilter": "仅显示此批次",
     "authorLink": "作者主页链接",
     "authorLinkName": "链接名称",
