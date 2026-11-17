@@ -70,6 +70,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://www.turingmirror.com/releases/gpt-sovits-fabric/updater.json",
         "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/git/raw/main/updater.json"
       ],
       "dialog": false,
