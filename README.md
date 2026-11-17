@@ -4,6 +4,10 @@
 
 # GPT-SoVITS Fabric
 
+<!-- lang-nav -->
+简体中文　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　[한국어](./README_ko.md)　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
+<!-- lang-nav -->
+
 **Windows 语音合成与角色声音训练软件**
 
 基于 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 开发，由 [图灵镜 Turing Mirror](https://github.com/Turing-Mirror) 维护。
