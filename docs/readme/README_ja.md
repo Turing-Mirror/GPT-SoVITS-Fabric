@@ -1,25 +1,25 @@
 <div align="center">
 
-<img src="app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
+<img src="../../app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
 
 # GPT-SoVITS Fabric
 
 <!-- lang-nav -->
-[简体中文](./README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　日本語　·　[한국어](./README_ko.md)　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
+[简体中文](../../README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　日本語　·　[한국어](./README_ko.md)　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
 <!-- lang-nav -->
 
 **Windows 向け音声合成・キャラクターボイス学習ソフトウェア**
 
 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) を基に開発し、[图灵镜 Turing Mirror](https://github.com/Turing-Mirror) が保守しています。
 
-[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](./app/src-tauri/engine-payload/LICENSE)
+[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
 [GitHub リポジトリ](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [CNB 成果物ダウンロード](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
 
 **ソーシャルメディア**　[bilibili @图灵镜](https://space.bilibili.com/3546871148579062)　·　[抖音 @图灵镜](https://v.douyin.com/6NxXcrKK9cc)（抖音 ID `TuringMirror`）　·　[小紅書 @图灵镜](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094)（小紅書 ID `TuringMirror`）　·　[YouTube @图灵镜](https://www.youtube.com/@TuringMirror)（YouTube ハンドル `@TuringMirror`）　·　QQ グループ @图灵镜社区（グループ番号 `1077458748`）
 
-<img src="app/src/assets/qq_group.jpg" alt="QQ グループの QR コード" width="200">
+<img src="../../app/src/assets/qq_group.jpg" alt="QQ グループの QR コード" width="200">
 
 </div>
 
@@ -27,9 +27,9 @@
 
 ## スクリーンショット
 
-![ホーム画面](docs/screenshots/home.png)
+![ホーム画面](../screenshots/home.png)
 
-![音声合成](docs/screenshots/synthesis.png)
+![音声合成](../screenshots/synthesis.png)
 
 ## プロジェクト概要
 
@@ -43,14 +43,14 @@ GPT-SoVITS Fabric は Turing Mirror が GPT-SoVITS を基に開発する無料�
 - **注釈・素材処理**：内蔵の `.list` 注釈エディターで音声欠損、空テキスト、重複行、言語タグを保存前に検査できます。学習素材や参照音声の整理に使えるボーカル分離、音声分割、自動文字起こしツールを備えています。
 - **モデル学習**：素材準備から SoVITS・GPT のファインチューニングまでを一貫して行えます。`v2`、`v2Pro`、`v2ProPlus`、`v4`、`v5dev`、`v5turbo` の学習に対応し、順次実行キューと中断後の再開を備えています。
 - **コミュニティとリソース取得**：コミュニティ画面で公開キャラクターパック、エンジン基本リソース、各バージョンのベースモデル、ボーカル分離モデルを閲覧してマルチスレッド・レジューム対応でダウンロードできます。Turing Mirror アカウントでログインするとキャラクターの投稿や更新を行えます。
-- **ローカル API と MCP**：独立したバックグラウンドサービスと `gpt-sovits-fabric-mcp.exe` を同梱しており、ローカルアプリや MCP クライアントからキャラクター照会や音声合成を実行できます。詳細は [API v1](docs/api-v1.md) を参照してください。
+- **ローカル API と MCP**：独立したバックグラウンドサービスと `gpt-sovits-fabric-mcp.exe` を同梱しており、ローカルアプリや MCP クライアントからキャラクター照会や音声合成を実行できます。詳細は [API v1](../api-v1.md) を参照してください。
 
 ## クイックスタート
 
 1. GPT-SoVITS Fabric をインストールし、初回起動時の案内に従って実行環境（NVIDIA GPU は CUDA 版、それ以外は CPU 版）とエンジン基本リソースをダウンロードします。
 2. 「コミュニティ」から公開キャラクターパックをダウンロードするか、「モデル」画面でローカルのキャラクターパックをインポートします。独自の音声を作る場合は「学習」画面で素材を準備して学習を行います。
 3. 「合成」を開き、キャラクターと 3〜10 秒の参照音声を選び、テキストを入力して推論エンジンを選択してから合成を開始します。
-4. 外部アプリや MCP クライアントと連携する場合は、[API v1](docs/api-v1.md) を参照して `gpt-sovits-fabric-mcp.exe` を設定するか、`--headless` でバックグラウンドサービスを起動します。
+4. 外部アプリや MCP クライアントと連携する場合は、[API v1](../api-v1.md) を参照して `gpt-sovits-fabric-mcp.exe` を設定するか、`--headless` でバックグラウンドサービスを起動します。
 
 ## 技術アーキテクチャと開発
 
@@ -86,7 +86,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 ./target/debug/gpt-sovits-fabric.exe --product-root $env:TM_VOICE_ROOT
 ```
 
-ブラウザ上で UI のみ確認する場合は `app/` で `npm run dev` を実行してください。ビルド手順の詳細やトラブルシューティング、設計方針は [Windows 開発 v1](docs/development-v1.md) および [設計判断記録](docs/DECISIONS.md) を参照してください。
+ブラウザ上で UI のみ確認する場合は `app/` で `npm run dev` を実行してください。ビルド手順の詳細やトラブルシューティング、設計方針は [Windows 開発 v1](../development-v1.md) および [設計判断記録](../DECISIONS.md) を参照してください。
 
 ### ビルドとテスト
 
@@ -100,7 +100,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 
 ## ライセンスと音声の利用許諾
 
-- 本プロジェクトのソースコードは [MIT License](./app/src-tauri/engine-payload/LICENSE) の下で公開されています。
+- 本プロジェクトのソースコードは [MIT License](../../app/src-tauri/engine-payload/LICENSE) の下で公開されています。
 - モデルの重み、キャラクターパック、サードパーティのリソースはそれぞれの元のライセンスに従います。
 - 他人の声を学習や音声合成に使用する前に権利者の許諾を取得し、現地の法令を遵守してください。
 

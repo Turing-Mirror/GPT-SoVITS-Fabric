@@ -1,25 +1,25 @@
 <div align="center">
 
-<img src="app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
+<img src="../../app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
 
 # GPT-SoVITS Fabric
 
 <!-- lang-nav -->
-[简体中文](./README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　[한국어](./README_ko.md)　·　Español　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
+[简体中文](../../README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　[한국어](./README_ko.md)　·　Español　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
 <!-- lang-nav -->
 
 **Aplicación de síntesis de voz y entrenamiento de voces de personajes para Windows**
 
 Basado en [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) y mantenido por [Turing Mirror](https://github.com/Turing-Mirror).
 
-[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](./app/src-tauri/engine-payload/LICENSE)
+[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
 [Repositorio de GitHub](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [Descarga de artefactos CNB](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
 
 **Redes sociales**　[Bilibili @Turing Mirror](https://space.bilibili.com/3546871148579062)　·　[Douyin @Turing Mirror](https://v.douyin.com/6NxXcrKK9cc) (ID de Douyin `TuringMirror`)　·　[Xiaohongshu @Turing Mirror](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094) (ID de Xiaohongshu `TuringMirror`)　·　[YouTube @Turing Mirror](https://www.youtube.com/@TuringMirror) (identificador de YouTube `@TuringMirror`)　·　Grupo de QQ @Comunidad Turing Mirror (ID de grupo `1077458748`)
 
-<img src="app/src/assets/qq_group.jpg" alt="Código QR del grupo de QQ" width="200">
+<img src="../../app/src/assets/qq_group.jpg" alt="Código QR del grupo de QQ" width="200">
 
 </div>
 
@@ -27,9 +27,9 @@ Basado en [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) y mantenido por [
 
 ## Capturas de pantalla
 
-![Pantalla de inicio](docs/screenshots/home.png)
+![Pantalla de inicio](../screenshots/home.png)
 
-![Síntesis de voz](docs/screenshots/synthesis.png)
+![Síntesis de voz](../screenshots/synthesis.png)
 
 ## Introducción al proyecto
 
@@ -43,14 +43,14 @@ GPT-SoVITS Fabric es una aplicación de escritorio gratuita y de código abierto
 - **Anotaciones y preparación de datos**: Incluye un editor de archivos `.list` que comprueba antes de guardar si faltan audios, hay textos vacíos, entradas duplicadas o códigos de idioma desconocidos; incorpora herramientas de separación vocal, corte de audio y transcripción automática.
 - **Entrenamiento de modelos**: Ofrece el flujo completo desde la preparación de datos hasta el ajuste fino de SoVITS y GPT para las versiones `v2`, `v2Pro`, `v2ProPlus`, `v4`, `v5dev` y `v5turbo`, con cola de entrenamiento secuencial y reanudación tras interrupciones.
 - **Comunidad y descarga de recursos**: Permite explorar y descargar paquetes de personajes, componentes base del motor, modelos preentrenados por versión y modelos de separación vocal con descargas multiconexión reanudables; al iniciar sesión con una cuenta de Turing Mirror es posible enviar y actualizar publicaciones de personajes.
-- **API local y MCP**: Incluye un servicio local independiente y `gpt-sovits-fabric-mcp.exe` para que programas locales o clientes MCP consulten personajes e inicien tareas de síntesis. Consulte [API v1](docs/api-v1.md).
+- **API local y MCP**: Incluye un servicio local independiente y `gpt-sovits-fabric-mcp.exe` para que programas locales o clientes MCP consulten personajes e inicien tareas de síntesis. Consulte [API v1](../api-v1.md).
 
 ## Inicio rápido
 
 1. Instale GPT-SoVITS Fabric y siga la guía del primer inicio para descargar el entorno de ejecución (elija CUDA para tarjetas NVIDIA o CPU en caso contrario) y los recursos base del motor.
 2. Vaya a **Comunidad** para descargar un paquete de personaje público o importe uno local en **Modelos**; si desea entrenar su propia voz, prepare los materiales y realice el ajuste fino en **Entrenar**.
 3. Abra **Síntesis**, elija un personaje y un audio de referencia de 3 a 10 segundos, escriba el texto, seleccione el motor de inferencia e inicie la síntesis.
-4. Para integrarlo con programas externos o un cliente MCP, consulte [API v1](docs/api-v1.md) para configurar `gpt-sovits-fabric-mcp.exe` o iniciar el servicio en segundo plano con `--headless`.
+4. Para integrarlo con programas externos o un cliente MCP, consulte [API v1](../api-v1.md) para configurar `gpt-sovits-fabric-mcp.exe` o iniciar el servicio en segundo plano con `--headless`.
 
 ## Arquitectura técnica y desarrollo
 
@@ -86,7 +86,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 ./target/debug/gpt-sovits-fabric.exe --product-root $env:TM_VOICE_ROOT
 ```
 
-Para previsualizar únicamente la interfaz web en el navegador, ejecute `npm run dev` en `app/`. Consulte [Desarrollo en Windows v1](docs/development-v1.md) y [Registro de decisiones](docs/DECISIONS.md) para obtener instrucciones detalladas, solución de problemas y detalles de arquitectura.
+Para previsualizar únicamente la interfaz web en el navegador, ejecute `npm run dev` en `app/`. Consulte [Desarrollo en Windows v1](../development-v1.md) y [Registro de decisiones](../DECISIONS.md) para obtener instrucciones detalladas, solución de problemas y detalles de arquitectura.
 
 ### Compilación y pruebas
 
@@ -100,7 +100,7 @@ Para previsualizar únicamente la interfaz web en el navegador, ejecute `npm run
 
 ## Licencia y autorización de uso de voz
 
-- El código fuente de este proyecto está publicado bajo la [Licencia MIT](./app/src-tauri/engine-payload/LICENSE).
+- El código fuente de este proyecto está publicado bajo la [Licencia MIT](../../app/src-tauri/engine-payload/LICENSE).
 - Los pesos de modelos, paquetes de personajes y recursos de terceros se rigen por sus licencias originales.
 - Obtenga la autorización del titular de los derechos antes de entrenar o sintetizar la voz de otra persona y cumpla con la legislación local aplicable.
 

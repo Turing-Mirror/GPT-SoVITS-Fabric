@@ -1,25 +1,25 @@
 <div align="center">
 
-<img src="app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
+<img src="../../app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
 
 # GPT-SoVITS Fabric
 
 <!-- lang-nav -->
-[简体中文](./README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　한국어　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
+[简体中文](../../README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　한국어　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　[Русский](./README_ru.md)
 <!-- lang-nav -->
 
 **Windows용 음성 합성 및 캐릭터 음성 학습 소프트웨어**
 
 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)를 기반으로 개발되었으며 [Turing Mirror](https://github.com/Turing-Mirror)가 유지보수합니다.
 
-[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](./app/src-tauri/engine-payload/LICENSE)
+[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
 [GitHub 저장소](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [CNB 아티팩트 다운로드](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
 
 **소셜 미디어**　[Bilibili @Turing Mirror](https://space.bilibili.com/3546871148579062)　·　[Douyin @Turing Mirror](https://v.douyin.com/6NxXcrKK9cc) (Douyin ID `TuringMirror`)　·　[Xiaohongshu @Turing Mirror](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094) (Xiaohongshu ID `TuringMirror`)　·　[YouTube @Turing Mirror](https://www.youtube.com/@TuringMirror) (YouTube 핸들 `@TuringMirror`)　·　QQ 그룹 @Turing Mirror 커뮤니티 (그룹 번호 `1077458748`)
 
-<img src="app/src/assets/qq_group.jpg" alt="QQ 그룹 QR 코드" width="200">
+<img src="../../app/src/assets/qq_group.jpg" alt="QQ 그룹 QR 코드" width="200">
 
 </div>
 
@@ -27,9 +27,9 @@
 
 ## 스크린샷
 
-![홈 화면](docs/screenshots/home.png)
+![홈 화면](../screenshots/home.png)
 
-![음성 합성](docs/screenshots/synthesis.png)
+![음성 합성](../screenshots/synthesis.png)
 
 ## 프로젝트 소개
 
@@ -43,14 +43,14 @@ GPT-SoVITS Fabric은 Turing Mirror가 GPT-SoVITS를 기반으로 개발한 무�
 - **주석 및 데이터 준비**: 내장 `.list` 주석 편집기에서 저장 전에 누락된 오디오, 빈 텍스트, 중복 항목, 언어 태그를 검사합니다. 학습 데이터와 합성 참조 정리를 위한 보컬 분리, 오디오 분할, 자동 전사 도구를 제공합니다.
 - **모델 학습**: 데이터 준비부터 SoVITS 및 GPT 미세 조정까지의 전체 흐름을 제공합니다. `v2`, `v2Pro`, `v2ProPlus`, `v4`, `v5dev`, `v5turbo` 버전 학습을 지원하며 순차 학습 대기열과 중단 후 재개를 지원합니다.
 - **커뮤니티 및 리소스 다운로드**: 커뮤니티 화면에서 공개 캐릭터 팩, 엔진 기본 리소스, 버전별 기반 모델, 보컬 분리 모델을 찾아 다중 연결 및 이어받기로 다운로드할 수 있습니다. Turing Mirror 계정에 로그인하면 캐릭터 게시물을 제출하고 업데이트할 수 있습니다.
-- **로컬 API 및 MCP**: 독립 백그라운드 서비스와 `gpt-sovits-fabric-mcp.exe`가 함께 제공되어 로컬 프로그램이나 MCP 클라이언트가 캐릭터 목록을 조회하고 음성 합성 작업을 실행할 수 있습니다. 자세한 내용은 [API v1](docs/api-v1.md)을 참조하십시오.
+- **로컬 API 및 MCP**: 독립 백그라운드 서비스와 `gpt-sovits-fabric-mcp.exe`가 함께 제공되어 로컬 프로그램이나 MCP 클라이언트가 캐릭터 목록을 조회하고 음성 합성 작업을 실행할 수 있습니다. 자세한 내용은 [API v1](../api-v1.md)을 참조하십시오.
 
 ## 빠른 시작
 
 1. GPT-SoVITS Fabric을 설치한 뒤 첫 실행 안내에 따라 실행 환경(NVIDIA GPU는 CUDA 버전, 그 외에는 CPU 버전)과 엔진 기본 리소스를 다운로드합니다.
 2. 「커뮤니티」에서 공개 캐릭터 팩을 내려받거나 「모델」 화면에서 로컬 캐릭터 팩을 가져옵니다. 직접 음성을 만들려면 「학습」 화면에서 데이터를 준비하고 미세 조정을 진행합니다.
 3. 「합성」을 열어 캐릭터와 3~10초 참조 오디오를 선택하고 텍스트를 입력한 뒤 추론 엔진을 골라 합성을 시작합니다.
-4. 외부 프로그램이나 MCP 클라이언트와 연동하려면 [API v1](docs/api-v1.md)을 참고해 `gpt-sovits-fabric-mcp.exe`를 구성하거나 `--headless`로 백그라운드 서비스를 실행하십시오.
+4. 외부 프로그램이나 MCP 클라이언트와 연동하려면 [API v1](../api-v1.md)을 참고해 `gpt-sovits-fabric-mcp.exe`를 구성하거나 `--headless`로 백그라운드 서비스를 실행하십시오.
 
 ## 기술 아키텍처 및 개발
 
@@ -86,7 +86,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 ./target/debug/gpt-sovits-fabric.exe --product-root $env:TM_VOICE_ROOT
 ```
 
-브라우저에서 UI만 미리 보려면 `app/`에서 `npm run dev`를 실행하십시오. 자세한 빌드 절차, 의존성 빌드 문제 해결, 설계 결정은 [Windows 개발 v1](docs/development-v1.md)과 [설계 결정 기록](docs/DECISIONS.md)을 참조하십시오.
+브라우저에서 UI만 미리 보려면 `app/`에서 `npm run dev`를 실행하십시오. 자세한 빌드 절차, 의존성 빌드 문제 해결, 설계 결정은 [Windows 개발 v1](../development-v1.md)과 [설계 결정 기록](../DECISIONS.md)을 참조하십시오.
 
 ### 빌드 및 테스트
 
@@ -100,7 +100,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 
 ## 라이선스 및 음성 사용 허가
 
-- 본 프로젝트의 소스 코드는 [MIT License](./app/src-tauri/engine-payload/LICENSE)에 따라 오픈 소스로 제공됩니다.
+- 본 프로젝트의 소스 코드는 [MIT License](../../app/src-tauri/engine-payload/LICENSE)에 따라 오픈 소스로 제공됩니다.
 - 모델 가중치, 캐릭터 팩 및 서드파티 리소스는 각각의 원 라이선스를 따릅니다.
 - 타인의 목소리를 학습하거나 음성 합성에 사용하기 전에 권리자의 허가를 받고 현지 법규를 준수하십시오.
 

@@ -1,25 +1,25 @@
 <div align="center">
 
-<img src="app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
+<img src="../../app/src/assets/brand/gsvf-main-logo.svg" alt="GPT-SoVITS Fabric" width="128">
 
 # GPT-SoVITS Fabric
 
 <!-- lang-nav -->
-[简体中文](./README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　[한국어](./README_ko.md)　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　Русский
+[简体中文](../../README.md)　·　[繁體中文](./README_zh-TW.md)　·　[English](./README_en.md)　·　[日本語](./README_ja.md)　·　[한국어](./README_ko.md)　·　[Español](./README_es.md)　·　[Français](./README_fr.md)　·　Русский
 <!-- lang-nav -->
 
 **Приложение для синтеза речи и обучения голосов персонажей под Windows**
 
 Основано на [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) и поддерживается [Turing Mirror](https://github.com/Turing-Mirror).
 
-[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](./app/src-tauri/engine-payload/LICENSE)
+[![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
 [Репозиторий GitHub](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [Загрузка артефактов CNB](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
 
 **Социальные сети**　[Bilibili @Turing Mirror](https://space.bilibili.com/3546871148579062)　·　[Douyin @Turing Mirror](https://v.douyin.com/6NxXcrKK9cc) (Douyin ID `TuringMirror`)　·　[Xiaohongshu @Turing Mirror](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094) (Xiaohongshu ID `TuringMirror`)　·　[YouTube @Turing Mirror](https://www.youtube.com/@TuringMirror) (аккаунт YouTube `@TuringMirror`)　·　Группа QQ @Сообщество Turing Mirror (номер группы `1077458748`)
 
-<img src="app/src/assets/qq_group.jpg" alt="QR-код группы QQ" width="200">
+<img src="../../app/src/assets/qq_group.jpg" alt="QR-код группы QQ" width="200">
 
 </div>
 
@@ -27,9 +27,9 @@
 
 ## Снимки экрана
 
-![Главный экран](docs/screenshots/home.png)
+![Главный экран](../screenshots/home.png)
 
-![Синтез речи](docs/screenshots/synthesis.png)
+![Синтез речи](../screenshots/synthesis.png)
 
 ## О проекте
 
@@ -43,14 +43,14 @@ GPT-SoVITS Fabric — бесплатное настольное приложен
 - **Разметка и подготовка данных**: Встроенный редактор `.list` перед сохранением проверяет отсутствие аудиофайлов, пустые строки, дубликаты и коды языков; также доступны инструменты разделения вокала, нарезки аудио и автоматической транскрибации.
 - **Обучение моделей**: Охватывает подготовку данных и дообучение SoVITS и GPT для версий `v2`, `v2Pro`, `v2ProPlus`, `v4`, `v5dev` и `v5turbo`, включая последовательную очередь обучения и возобновление после прерывания.
 - **Сообщество и загрузка ресурсов**: Позволяет просматривать и скачивать пакеты персонажей, базовые компоненты движка, предобученные модели разных версий и модели разделения вокала с многопоточной загрузкой и докачкой; после входа в аккаунт Turing Mirror можно отправлять и обновлять публикации персонажей.
-- **Локальный API и MCP**: В комплект входят автономная фоновая служба и `gpt-sovits-fabric-mcp.exe`, позволяющие локальным программам и MCP-клиентам запрашивать персонажей и запускать синтез речи. Подробности приведены в [API v1](docs/api-v1.md).
+- **Локальный API и MCP**: В комплект входят автономная фоновая служба и `gpt-sovits-fabric-mcp.exe`, позволяющие локальным программам и MCP-клиентам запрашивать персонажей и запускать синтез речи. Подробности приведены в [API v1](../api-v1.md).
 
 ## Быстрый старт
 
 1. Установите GPT-SoVITS Fabric и следуйте подсказкам первого запуска для загрузки среды выполнения (выберите CUDA для видеокарт NVIDIA или CPU в остальных случаях) и базовых ресурсов движка.
 2. Откройте «Сообщество» для загрузки публичного пакета персонажа или импортируйте локальный пакет в разделе «Модели»; чтобы создать собственный голос, подготовьте материалы и выполните обучение в разделе «Обучение».
 3. Откройте «Синтез», выберите персонажа и эталонную аудиозапись длительностью 3–10 секунд, введите текст, выберите механизм вывода и запустите синтез.
-4. Для интеграции с внешними программами или MCP-клиентами обратитесь к [API v1](docs/api-v1.md) для настройки `gpt-sovits-fabric-mcp.exe` или запуска службы с флагом `--headless`.
+4. Для интеграции с внешними программами или MCP-клиентами обратитесь к [API v1](../api-v1.md) для настройки `gpt-sovits-fabric-mcp.exe` или запуска службы с флагом `--headless`.
 
 ## Техническая архитектура и разработка
 
@@ -86,7 +86,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 ./target/debug/gpt-sovits-fabric.exe --product-root $env:TM_VOICE_ROOT
 ```
 
-Для просмотра только веб-интерфейса в браузере выполните `npm run dev` в каталоге `app/`. Подробные инструкции по сборке, устранению ошибок и принятым решениям описаны в [Разработка для Windows v1](docs/development-v1.md) и [Журнал решений](docs/DECISIONS.md).
+Для просмотра только веб-интерфейса в браузере выполните `npm run dev` в каталоге `app/`. Подробные инструкции по сборке, устранению ошибок и принятым решениям описаны в [Разработка для Windows v1](../development-v1.md) и [Журнал решений](../DECISIONS.md).
 
 ### Сборка и тестирование
 
@@ -100,7 +100,7 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 
 ## Лицензия и разрешение на использование голоса
 
-- Исходный код проекта распространяется под лицензией [MIT License](./app/src-tauri/engine-payload/LICENSE).
+- Исходный код проекта распространяется под лицензией [MIT License](../../app/src-tauri/engine-payload/LICENSE).
 - Веса моделей, пакеты персонажей и сторонние ресурсы регулируются их собственными лицензионными соглашениями.
 - Перед использованием чужого голоса для обучения или синтеза речи получите разрешение правообладателя и соблюдайте требования применимого законодательства.
 
