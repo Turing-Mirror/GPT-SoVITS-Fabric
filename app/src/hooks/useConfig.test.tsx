@@ -19,6 +19,7 @@ const result = (value: string): ConfigWrite => ({ config: { value }, hot: {}, ne
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal("__TAURI_INTERNALS__", {});
   mocks.get.mockReset().mockResolvedValue({ value: "saved" });
   mocks.set.mockReset().mockImplementation(async (patch) => ({ config: patch, hot: {}, needs_restart: [] }));
   mocks.listen.mockReset().mockResolvedValue(() => {});
@@ -26,9 +27,22 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); vi.useRealTimers(); });
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("configuration page lifecycle", () => {
+  it("does not call desktop APIs when rendering a browser preview", async () => {
+    vi.unstubAllGlobals();
+    await act(async () => root.render(<Harness />));
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.listen).not.toHaveBeenCalled();
+    expect(state.error).toBe("");
+  });
+
   it("keeps a newer local edit while an earlier save responds", async () => {
     const resolvers: Array<(v: ConfigWrite) => void> = [];
     mocks.set.mockImplementation(() => new Promise<ConfigWrite>((resolve) => resolvers.push(resolve)));
