@@ -25,6 +25,12 @@
 
 ---
 
+## スクリーンショット
+
+![ホーム画面](docs/screenshots/home.png)
+
+![音声合成](docs/screenshots/synthesis.png)
+
 ## プロジェクト概要
 
 GPT-SoVITS Fabric は Turing Mirror が GPT-SoVITS を基に開発する無料のオープンソース Windows デスクトップアプリです。テキスト音声合成、キャラクター音声管理、`.list` 注釈の校正、ボーカル分離、モデル学習を一つのスタンドアロンクライアントに統合しています。Python 環境を個別に構築したりブラウザで WebUI を開いたりする必要はなく、インストール後の案内に従って実行環境とベースモデルを取得してすぐ使い始められます。

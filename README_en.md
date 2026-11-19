@@ -25,6 +25,12 @@ Based on [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) and maintained by 
 
 ---
 
+## Screenshots
+
+![Home screen](docs/screenshots/home.png)
+
+![Speech synthesis](docs/screenshots/synthesis.png)
+
 ## Project Introduction
 
 GPT-SoVITS Fabric is a free, open-source Windows desktop application developed by Turing Mirror on top of GPT-SoVITS. It brings text-to-speech synthesis, character voice management, `.list` annotation editing, vocal separation, and model training together into a standalone desktop client. You do not need to configure a Python environment or open a browser WebUI manually; after installation, the onboarding guide downloads the required runtime and base models for you.

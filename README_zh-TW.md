@@ -25,6 +25,12 @@
 
 ---
 
+## 介面截圖
+
+![首頁](docs/screenshots/home.png)
+
+![語音合成](docs/screenshots/synthesis.png)
+
 ## 專案簡介
 
 GPT-SoVITS Fabric 是圖靈鏡基於 GPT-SoVITS 開發的免費開源 Windows 桌面軟體，將文字轉語音合成、角色聲音管理、標註校對、人聲分離與模型訓練整合到一個獨立用戶端中。使用者無需自行設定 Python 環境或開啟瀏覽器網頁端，安裝後即可在軟體內依引導下載執行環境與基礎模型並開始使用。

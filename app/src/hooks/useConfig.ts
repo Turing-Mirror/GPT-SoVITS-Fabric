@@ -44,6 +44,7 @@ export function useConfig() {
 
 
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
     let alive = true;
     mounted.current = true;
     let received: Config = {};
