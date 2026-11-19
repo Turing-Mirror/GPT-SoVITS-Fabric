@@ -133,7 +133,6 @@ export function HomePage({ onNavigate, active = true }: Props) {
         <section className="home-section">
           <div className="home-section-head">
             <h3>{t("home.rolesTitle")}</h3>
-            {!isTauri() ? <span className="text-[11.5px] text-[var(--meta)]">{t("synth.demoBadge")}</span> : null}
             <Btn onClick={() => onNavigate("models")}>{t("home.allRoles")}</Btn>
           </div>
           {roles === null ? null : roles.length === 0 ? <div className="home-empty">{t("home.rolesEmpty")}</div> : (

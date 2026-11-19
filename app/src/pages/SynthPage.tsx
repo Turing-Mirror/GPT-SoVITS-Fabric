@@ -764,21 +764,14 @@ export function SynthPage() {
       <PageHead
         title={t("synth.title")}
         actions={
-          <div className="flex items-center gap-2">
-            {!isTauri() ? (
-              <span className="text-[12.5px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
-                {t("synth.demoBadge")}
-              </span>
-            ) : null}
-            <SegmentControl<Mode>
-              value={mode}
-              onChange={(m) => !busy && setMode(m)}
-              options={[
-                { id: "single", label: t("synth.modeSingle"), disabled: busy && mode !== "single" },
-                { id: "batch", label: t("synth.modeBatch"), disabled: busy && mode !== "batch" },
-              ]}
-            />
-          </div>
+          <SegmentControl<Mode>
+            value={mode}
+            onChange={(m) => !busy && setMode(m)}
+            options={[
+              { id: "single", label: t("synth.modeSingle"), disabled: busy && mode !== "single" },
+              { id: "batch", label: t("synth.modeBatch"), disabled: busy && mode !== "batch" },
+            ]}
+          />
         }
       />
 

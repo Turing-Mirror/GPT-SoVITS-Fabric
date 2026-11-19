@@ -500,16 +500,7 @@ export function TrainPage() {
 
   return (
     <PagePad fill>
-      <PageHead
-        title={t("train.title")}
-        actions={
-          !isTauri() ? (
-            <span className="text-[12.5px] px-2 py-1 rounded-[var(--rs)] bg-[var(--accent-soft)] text-[var(--accent-text)]">
-              {t("synth.demoBadge")}
-            </span>
-          ) : null
-        }
-      />
+      <PageHead title={t("train.title")} />
 
       {st.interrupted ? (
         <div className="flex-none mt-[18px] rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent-text)] px-4 py-3 text-[12.5px]">
