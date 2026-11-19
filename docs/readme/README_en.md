@@ -15,7 +15,7 @@ Based on [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) and maintained by 
 [![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
-[GitHub Repository](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [CNB Artifacts Download](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
+[GitHub Repository](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [GitHub Releases](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric/releases)
 
 **Social Media**　[Bilibili @Turing Mirror](https://space.bilibili.com/3546871148579062)　·　[Douyin @Turing Mirror](https://v.douyin.com/6NxXcrKK9cc) (Douyin ID `TuringMirror`)　·　[Xiaohongshu @Turing Mirror](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094) (Xiaohongshu ID `TuringMirror`)　·　[YouTube @Turing Mirror](https://www.youtube.com/@TuringMirror) (YouTube handle `@TuringMirror`)　·　QQ Group @Turing Mirror Community (Group ID `1077458748`)
 

@@ -15,7 +15,7 @@
 [![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
-[GitHub 저장소](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [CNB 아티팩트 다운로드](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
+[GitHub 저장소](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [GitHub Releases](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric/releases)
 
 **소셜 미디어**　[Bilibili @Turing Mirror](https://space.bilibili.com/3546871148579062)　·　[Douyin @Turing Mirror](https://v.douyin.com/6NxXcrKK9cc) (Douyin ID `TuringMirror`)　·　[Xiaohongshu @Turing Mirror](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094) (Xiaohongshu ID `TuringMirror`)　·　[YouTube @Turing Mirror](https://www.youtube.com/@TuringMirror) (YouTube 핸들 `@TuringMirror`)　·　QQ 그룹 @Turing Mirror 커뮤니티 (그룹 번호 `1077458748`)
 

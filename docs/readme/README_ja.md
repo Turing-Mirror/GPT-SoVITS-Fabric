@@ -15,7 +15,7 @@
 [![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](../../app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
-[GitHub リポジトリ](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [CNB 成果物ダウンロード](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
+[GitHub リポジトリ](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [GitHub Releases](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric/releases)
 
 **ソーシャルメディア**　[bilibili @图灵镜](https://space.bilibili.com/3546871148579062)　·　[抖音 @图灵镜](https://v.douyin.com/6NxXcrKK9cc)（抖音 ID `TuringMirror`）　·　[小紅書 @图灵镜](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094)（小紅書 ID `TuringMirror`）　·　[YouTube @图灵镜](https://www.youtube.com/@TuringMirror)（YouTube ハンドル `@TuringMirror`）　·　QQ グループ @图灵镜社区（グループ番号 `1077458748`）
 

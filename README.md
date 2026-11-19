@@ -15,7 +15,7 @@
 [![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=flat-square)](./app/src-tauri/engine-payload/LICENSE)
 [![Based on GPT-SoVITS](https://img.shields.io/badge/based%20on-GPT--SoVITS-1289F0?style=flat-square)](https://github.com/RVC-Boss/GPT-SoVITS)
 
-[GitHub 仓库](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [CNB 制品下载](https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases)
+[GitHub 仓库](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric) · [GitHub 发布页](https://github.com/Turing-Mirror/GPT-SoVITS-Fabric/releases)
 
 **社媒**　[哔哩哔哩 @图灵镜](https://space.bilibili.com/3546871148579062)　·　[抖音 @图灵镜](https://v.douyin.com/6NxXcrKK9cc)（抖音号 `TuringMirror`）　·　[小红书 @图灵镜](https://www.xiaohongshu.com/user/profile/65f56bf1000000000b00e094)（小红书号 `TuringMirror`）　·　[YouTube @图灵镜](https://www.youtube.com/@TuringMirror)（YouTube 号 `@TuringMirror`）　·　QQ 群 @图灵镜社区（群号 `1077458748`）
 
