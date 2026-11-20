@@ -1467,9 +1467,24 @@ fn run_inner(
         let _ = std::fs::create_dir_all(p);
     }
     let device = if is_nvidia(root) { "cuda" } else { "cpu" };
+    // 直接开训时也交给 worker 一份绝对路径的标注，按文件名找回的音频才用得上。
+    // 队列里的任务入队时已经换好了，不再换第二次。
+    let mut dataset = req.dataset.clone();
+    if job_id.is_none() {
+        let source = crate::train_queue::annotation_source(Path::new(&req.dataset)).ok().flatten();
+        if let (Some(source), Some(name)) = (source.as_ref(), source.as_ref().and_then(|s| s.file_name())) {
+            let text = crate::train_queue::resolved_annotation(source)?;
+            let resolved = paths::update_cache(root).join("train_dataset").join(name);
+            if let Some(p) = resolved.parent() {
+                let _ = std::fs::create_dir_all(p);
+            }
+            std::fs::write(&resolved, text).map_err(|e| crate::i18n::te("s.5ee0565f28", &(e)))?;
+            dataset = resolved.to_string_lossy().into_owned();
+        }
+    }
     let payload = json!({
         "exp": req.exp.trim(),
-        "dataset": req.dataset,
+        "dataset": dataset,
         "version": req.version,
         "sovits_epoch": req.sovits_epoch,
         "sovits_batch": req.sovits_batch,

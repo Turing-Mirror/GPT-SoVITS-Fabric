@@ -957,6 +957,15 @@ async fn annot_load(path: String) -> Result<Value, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// 选一个音频目录，在里面按文件名找回标注里缺失的音频。取消选择时返回 None。
+#[tauri::command]
+async fn annot_relocate(window: tauri::WebviewWindow, path: String, rows: Vec<annot::Row>) -> Result<Option<Value>, String> {
+    let Some(dir) = annot::pick_audio_dir(Some(&window)) else { return Ok(None) };
+    tauri::async_runtime::spawn_blocking(move || annot::relocate_in(&path, rows, &dir).map(Some))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn annot_save(path: String, rows: Vec<annot::Row>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || annot::save(&path, &rows))
@@ -1604,6 +1613,7 @@ pub fn run() {
             annot_pick,
             annot_load,
             annot_save,
+            annot_relocate,
             role_import_pack,
             role_assets_get,
             role_weight_replace,

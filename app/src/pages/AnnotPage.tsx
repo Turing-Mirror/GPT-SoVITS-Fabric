@@ -57,6 +57,10 @@ type Loaded = {
   total: number;
   bad: number;
   missing: number;
+  /** 按文件名找回的行数。这些行的路径已换成新位置，保存后写入文件。 */
+  relocated: number;
+  /** 有多个同名文件、没有自动选择的行数。 */
+  ambiguous: number;
   speakers: string[];
 };
 
@@ -137,6 +141,13 @@ function AnnotPageImpl() {
     setDirty(false);
   }, [stopAudio]);
 
+  /** 打开时自动找回了音频：新路径还没写进文件，算作未保存的改动。 */
+  const noteRelocated = useCallback((r: Loaded) => {
+    if (!r.relocated) return;
+    setDirty(true);
+    setMsg(t("s.annot.relocatedOnLoad", { v0: r.relocated }));
+  }, []);
+
   const openPath = useCallback(async (p: string) => {
     if (dirty && !(await askConfirm(t("s.annot.dropChanges")))) return;
     setErr("");
@@ -145,12 +156,13 @@ function AnnotPageImpl() {
       const r = await invoke<Loaded>("annot_load", { path: p });
       apply(r);
       // 行数和问题数已写在「当前标注」右侧，这里不再另报一遍。
+      noteRelocated(r);
     } catch (e) {
       setErr(String(e));
     } finally {
       setBusy(false);
     }
-  }, [apply, dirty]);
+  }, [apply, dirty, noteRelocated]);
 
   const open = useCallback(async () => {
     const p = await pickPath<string | null>(
@@ -200,14 +212,16 @@ function AnnotPageImpl() {
     setBusy(true);
     setErr("");
     try {
-      apply(await invoke<Loaded>("annot_load", { path }));
+      const r = await invoke<Loaded>("annot_load", { path });
+      apply(r);
       setMsg(t("s.annot.reloaded"));
+      noteRelocated(r);
     } catch (e) {
       setErr(String(e));
     } finally {
       setBusy(false);
     }
-  }, [apply, path, dirty]);
+  }, [apply, path, dirty, noteRelocated]);
 
   const save = useCallback(async () => {
     if (!path || busy) return;
@@ -299,6 +313,32 @@ function AnnotPageImpl() {
     setDirty(true);
     setMsg(t("s.annot.bulkDone", { v0: keep.size }));
   }, [view]);
+
+  /** 选一个音频目录，在里面按文件名找回缺失的音频。作用于整份文件，带着没保存的改动。 */
+  const findAudio = useCallback(async () => {
+    if (!path || busy) return;
+    setErr("");
+    const r = await pickPath<Loaded | null>(
+      "annot_relocate",
+      { path, rows },
+      t("s.annot.audioDirHint"),
+    ).catch((e) => {
+      setErr(String(e));
+      return null;
+    });
+    if (!r) return;
+    setRows(r.rows || []);
+    if (r.relocated) setDirty(true);
+    setMsg(
+      r.relocated
+        ? r.ambiguous
+          ? t("s.annot.relocatedSome", { v0: r.relocated, v1: r.ambiguous })
+          : t("s.annot.relocated", { v0: r.relocated })
+        : r.ambiguous
+          ? t("s.annot.relocatedAmbiguous", { v0: r.ambiguous })
+          : t("s.annot.relocatedNone"),
+    );
+  }, [busy, path, rows]);
 
   const dropMissing = useCallback(async () => {
     const n = missing;
@@ -423,6 +463,9 @@ function AnnotPageImpl() {
                     ]}
                     onChange={bulkLang}
                   />
+                  <Btn onClick={() => void findAudio()} disabled={!missing || busy}>
+                    {t("s.annot.findAudio")}
+                  </Btn>
                   <Btn onClick={() => void dropMissing()} disabled={!missing}>
                     {t("s.annot.dropMissing", { v0: missing })}
                   </Btn>

@@ -1,6 +1,7 @@
 import type { Config } from "./config";
 export type ReferenceSelection = { primary: string; auxiliary: string[] };
 const normalize = (path: string) => path.replace(/\\/g, "/").replace(/^\.\//, "");
+const fileName = (path: string) => normalize(path).split("/").pop()?.toLowerCase() ?? "";
 type Reference = { from: string; wav: string; speaker: string; lang: string; text: string };
 const identity = (row: Reference) => [normalize(row.from), normalize(row.wav), row.speaker, row.lang];
 export const referenceKey = (row: Reference) => JSON.stringify([...identity(row), row.text]);
@@ -13,7 +14,12 @@ export function findReference<T extends Reference>(rows: T[], key: string): T | 
   if (!Array.isArray(saved) || saved.length < 4) return undefined;
   const base = JSON.stringify(saved.slice(0, 4));
   const matches = rows.filter(row => JSON.stringify(identity(row)) === base);
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length) return matches.length === 1 ? matches[0] : undefined;
+  // 标注里找回的音频保存后路径会变；文件名、说话人、语种与文本都不变时仍认作同一条。
+  const [from, wav, speaker, lang, text] = saved.map(String);
+  const moved = rows.filter(row => normalize(row.from) === normalize(from) && fileName(row.wav) === fileName(wav)
+    && row.speaker === speaker && row.lang === lang && row.text === text);
+  return moved.length === 1 ? moved[0] : undefined;
 }
 export const referenceConfigKey = (roleId: string) => `synth_references:${roleId}`;
 export function roleReferences(config: Config, roleId: string): ReferenceSelection {

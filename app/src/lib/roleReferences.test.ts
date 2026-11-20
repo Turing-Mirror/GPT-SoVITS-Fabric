@@ -25,3 +25,8 @@ it("distinguishes repeated audio rows with different transcripts", () => {
   expect(findReference([row, other], referenceKey(other))).toBe(other);
   expect(findReference([row, other], referenceKey({ ...row, text: "deleted" }))).toBeUndefined();
 });
+it("keeps a reference whose audio was found in another folder and saved", () => {
+  const moved = { ...row, wav: "D:/new/place/ONE.wav" };
+  expect(findReference([moved], referenceKey(row))).toBe(moved);
+  expect(findReference([moved, { ...moved, wav: "elsewhere/one.wav" }], referenceKey(row))).toBeUndefined();
+});

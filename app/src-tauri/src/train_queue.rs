@@ -117,7 +117,9 @@ pub fn list(root: &Path) -> Result<Value, String> {
     Ok(view(load(&mut lock(), root)?))
 }
 
-fn annotation_snapshot(dataset: &Path) -> Result<Option<String>, String> {
+/// 数据集里训练要用的那份标注：选的是 .list 就是它，选的是目录就取排在最前的
+/// 一份，和 train_worker.find_list 一致。
+pub(crate) fn annotation_source(dataset: &Path) -> Result<Option<PathBuf>, String> {
     fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
         for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -147,17 +149,20 @@ fn annotation_snapshot(dataset: &Path) -> Result<Option<String>, String> {
         lists.sort();
         lists.into_iter().next()
     };
-    let Some(source) = source else {
-        return Ok(None);
-    };
-    let data = crate::annot::load(&source.to_string_lossy())?;
-    let rows: Vec<crate::annot::Row> =
-        serde_json::from_value(data["rows"].clone()).map_err(|e| e.to_string())?;
-    Ok(Some(
-        rows.iter()
-            .map(|r| format!("{}|{}|{}|{}\n", r.abs, r.speaker, r.lang, r.text))
-            .collect(),
-    ))
+    Ok(source)
+}
+
+/// 标注换成绝对路径后的全文。按文件名找回的音频在这里已经是新位置。
+pub(crate) fn resolved_annotation(source: &Path) -> Result<String, String> {
+    let rows = crate::annot::read_rows(source)?;
+    Ok(rows
+        .iter()
+        .map(|r| format!("{}|{}|{}|{}\n", r.abs, r.speaker, r.lang, r.text))
+        .collect())
+}
+
+fn annotation_snapshot(dataset: &Path) -> Result<Option<String>, String> {
+    annotation_source(dataset)?.map(|source| resolved_annotation(&source)).transpose()
 }
 fn conflict(q: &Queue, req: &TrainReq, except: Option<&str>) -> bool {
     let id = crate::characters::safe_id(req.exp.trim());
