@@ -886,7 +886,12 @@
     "roleErrWeightPair": "The GPT and SoVITS models are incompatible.",
     "roleErrWeightVersionMismatch": "The selected version does not match the model.",
     "roleErrWeightRuntime": "Complete the runtime installation first.",
-    "diagPerf": "Also run a performance test (about one minute)"
+    "diagPerf": "Also run a performance test (about one minute)",
+    "setupBackground": "Continue in background",
+    "setupNextStep": "Next step ready; click to open",
+    "orbDownloadLabel": "View download progress",
+    "communityDownloading": "Community download",
+    "communityDownloadCount": "{v0} tasks active"
   },
   "extras": {
     "engineTitle": "Engine resources",

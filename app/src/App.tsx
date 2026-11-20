@@ -13,6 +13,7 @@ import { NativeDialogHint } from "./components/NativeDialogHint";
 import { openExternal } from "./lib/plaza";
 import { PageHost } from "./components/PageHost";
 import { ProvisionGate } from "./components/ProvisionGate";
+import { CommunityDownloadOrb } from "./components/CommunityDownloadOrb";
 import { LanguageGate } from "./components/LanguageGate";
 import { TitleBar } from "./components/TitleBar";
 import { useEngine } from "./hooks/useEngine";
@@ -244,6 +245,7 @@ export default function App() {
 
   const [coreOnly, setCoreOnly] = useState(false);
   const [showProvision, setShowProvision] = useState(false);
+  const [provisionMinimized, setProvisionMinimized] = useState(false);
   const [provisionDismissed, setProvisionDismissed] = useState(false);
   /** 补全弹窗关掉之后，底部 Nudge 再问一次 —— 那次也关了，这个会话就不再提。 */
   const [runtimeNudgeDismissed, setRuntimeNudgeDismissed] = useState(false);
@@ -453,6 +455,7 @@ export default function App() {
 
   function closeProvision() {
     setShowProvision(false);
+    setProvisionMinimized(false);
     setCoreOnly(false);
     setProvisionDismissed(true);
   }
@@ -691,11 +694,20 @@ export default function App() {
         open={showProvision && !showLangGate}
         initial={engine.provision}
         coreOnly={coreOnly}
+        minimized={provisionMinimized}
+        onMinimizedChange={setProvisionMinimized}
         onDone={() => void finishProvision()}
         onDismiss={() => {
           guideRequested.current = false;
           closeProvision();
         }}
+      />
+
+      <CommunityDownloadOrb
+        activePage={page}
+        orbSlot={showProvision && !showLangGate && provisionMinimized ? 1 : 0}
+        onOpenPlaza={openPlaza}
+        onOpenDownloads={() => openDownloadModels()}
       />
 
       <PageHost page={page}>
@@ -753,6 +765,7 @@ export default function App() {
                   onForceKill={requestForceKill}
                   onOpenProvision={() => {
                     setProvisionDismissed(false);
+                    setProvisionMinimized(false);
                     setShowProvision(true);
                   }}
                   focusCommunityNonce={communityNonce}
@@ -854,6 +867,7 @@ export default function App() {
                 onClick={() => {
                   setRuntimeNudgeDismissed(true);
                   setProvisionDismissed(false);
+                  setProvisionMinimized(false);
                   setShowProvision(true);
                 }}
               >

@@ -886,7 +886,12 @@
     "roleErrWeightPair": "GPT 與 SoVITS 模型不相容。",
     "roleErrWeightVersionMismatch": "所選版本與模型實際版本不一致。",
     "roleErrWeightRuntime": "請先完成執行環境安裝。",
-    "diagPerf": "同時執行一次效能測試（約一分鐘）"
+    "diagPerf": "同時執行一次效能測試（約一分鐘）",
+    "setupBackground": "背景下載",
+    "setupNextStep": "有待確認的步驟，點擊開啟",
+    "orbDownloadLabel": "檢視下載進度",
+    "communityDownloading": "社群背景下載",
+    "communityDownloadCount": "共 {v0} 項任務"
   },
   "extras": {
     "engineTitle": "引擎資源",
