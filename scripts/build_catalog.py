@@ -287,14 +287,32 @@ def build(src: dict, rep: Report) -> dict:
         name = str(app.get("name", "")).strip()
         if not name:
             rep.error("app: 缺 name")
+        ver = str(app.get("version", "")).strip()
+        tag = str(app.get("release_tag") or TAG_SETUP).strip()
+        ota_name = str(app.get("ota_name") or (f"GPT-SoVITS-Fabric-Setup-{ver}.exe" if ver else name)).strip()
+        size = need_size(rep, "app", app)
+        sha = need_sha(rep, "app", app)
+        gui: dict[str, Any] = {
+            "package_type": str(app.get("package_type") or "full_package"),
+            "version": ver,
+            "kind": "exe",
+            "url": asset_url(tag, ota_name),
+            "sha256": sha,
+            "size_bytes": size,
+        }
+        if app.get("min_app_version"):
+            gui["min_app_version"] = str(app["min_app_version"])
+        if app.get("notes"):
+            gui["notes"] = str(app["notes"])
         out["app"] = {
             "name": name,
-            "version": str(app.get("version", "")),
+            "version": ver,
             "channel": "release",
-            "size_bytes": need_size(rep, "app", app),
-            "sha256": need_sha(rep, "app", app),
-            "urls": [asset_url(TAG_SETUP, name)],
+            "size_bytes": size,
+            "sha256": sha,
+            "urls": [asset_url(tag, name)],
             "sha256_urls": [raw_url(f"assets/setup/{name}.sha256")],
+            "gui": gui,
         }
     else:
         rep.warn("没有 app 段：客户端的「检查更新」会永远回答「已是最新」")
