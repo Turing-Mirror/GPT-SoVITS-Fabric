@@ -29,6 +29,9 @@ export function TitleBar({
 
   // locale in deps so labels re-resolve when language changes
   const pages = navPages();
+  const isTauri = typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window &&
+    !(window as Window & { __FABRIC_LAN_WEB__?: boolean }).__FABRIC_LAN_WEB__;
   void locale;
 
   const options = pages.map((p) => ({
@@ -48,26 +51,29 @@ export function TitleBar({
 
   return (
     <header
-      className="flex-none h-[60px] flex items-center pl-[22px] pr-2"
+      className="site-titlebar flex-none flex items-center pl-[22px] pr-2"
       data-tauri-drag-region
     >
-      <img
-        src={logo}
-        alt=""
-        draggable={false}
-        data-tauri-drag-region
-        className="h-8 w-8 mr-2 select-none flex-none"
-      />
-      <span
-        data-tauri-drag-region
-        className="text-[13px] font-medium whitespace-nowrap select-none flex-none"
-      >
-        GPT-SoVITS Fabric
-      </span>
+      <div className="site-brand flex items-center min-w-0" data-tauri-drag-region>
+        <img
+          src={logo}
+          alt=""
+          draggable={false}
+          data-tauri-drag-region
+          className="site-brand-logo h-8 w-8 mr-2 select-none flex-none"
+        />
+        <span
+          data-tauri-drag-region
+          className="site-brand-name text-[13px] font-medium whitespace-nowrap select-none flex-none"
+        >
+          GPT-SoVITS Fabric
+        </span>
+      </div>
 
-      <div className="ml-auto flex items-center min-w-0" data-tauri-drag-region>
-        <div
-          className="min-w-0"
+      <div className="site-nav-wrap ml-auto flex items-center min-w-0" data-tauri-drag-region>
+        <nav
+          className="site-nav min-w-0"
+          aria-label="Fabric navigation"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <SegmentControl
@@ -77,32 +83,34 @@ export function TitleBar({
             onChange={onPage}
             compact={compactNav}
           />
-        </div>
+        </nav>
 
-        <div
-          className="native-window-controls flex text-[var(--meta)] ml-3.5"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <WinBtn
-            label={t("window.minimize")}
-            onClick={() => void win()?.minimize()}
+        {isTauri ? (
+          <div
+            className="native-window-controls flex text-[var(--meta)] ml-3.5"
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            —
-          </WinBtn>
-          <WinBtn
-            label={t("window.maximize")}
-            onClick={() => void win()?.toggleMaximize()}
-          >
-            □
-          </WinBtn>
-          <WinBtn
-            label={t("window.close")}
-            danger
-            onClick={() => void win()?.close()}
-          >
-            ✕
-          </WinBtn>
-        </div>
+            <WinBtn
+              label={t("window.minimize")}
+              onClick={() => void win()?.minimize()}
+            >
+              —
+            </WinBtn>
+            <WinBtn
+              label={t("window.maximize")}
+              onClick={() => void win()?.toggleMaximize()}
+            >
+              □
+            </WinBtn>
+            <WinBtn
+              label={t("window.close")}
+              danger
+              onClick={() => void win()?.close()}
+            >
+              ✕
+            </WinBtn>
+          </div>
+        ) : null}
       </div>
     </header>
   );

@@ -58,6 +58,7 @@ function isTauri(): boolean {
 }
 
 export async function fetchPlaza(): Promise<PlazaFeed> {
+  if (window.__FABRIC_LAN_WEB__) return EMPTY;
   if (!isTauri()) return { ...EMPTY, errors: [t("s.bea562b0a7")] };
   return invoke<PlazaFeed>("plaza_fetch");
 }
@@ -71,8 +72,10 @@ export async function dismissAd(id: string): Promise<void> {
 /** Open a placement's link in the user's own browser. */
 export async function openExternal(url: string): Promise<void> {
   if (!url) return;
-  if (!isTauri()) {
-    window.open(url, "_blank", "noopener,noreferrer");
+  if (!isTauri() || window.__FABRIC_LAN_WEB__ === true) {
+    const target = new URL(url, window.location.href);
+    if (target.protocol !== "https:" && target.protocol !== "http:") return;
+    window.open(target.href, "_blank", "noopener,noreferrer");
     return;
   }
   await invoke("open_external", { url });

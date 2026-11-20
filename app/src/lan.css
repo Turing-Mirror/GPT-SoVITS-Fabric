@@ -1,0 +1,478 @@
+/* ---- LAN Web responsive shell ------------------------------------------------
+   Fabric keeps the desktop visual language, but the browser host must also work
+   inside narrow portrait viewports and safe-area devices. These rules are kept
+   here (rather than in page components) so every page gets the same guarantees. */
+html,
+body,
+#root {
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 100%;
+}
+
+html {
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#root,
+.fabric-app-shell {
+  min-inline-size: 0;
+  min-block-size: 100dvh;
+}
+
+button,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+.fabric-app-shell,
+.product-page-pad,
+.product-page-pad > *,
+.product-page-fill > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.product-page-pad {
+  box-sizing: border-box;
+  overflow-x: clip;
+}
+
+.product-page-pad > .px-\[30px\] {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: clip;
+}
+
+/* The title bar becomes a two-row, touch-scrollable tab bar before the
+   available width becomes too small for the brand and all Fabric pages. */
+.site-titlebar {
+  box-sizing: border-box;
+  min-inline-size: 0;
+  min-block-size: 60px;
+  gap: 10px 16px;
+}
+
+.site-brand {
+  flex: 0 1 auto;
+}
+
+.site-brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-nav-wrap {
+  max-inline-size: 100%;
+}
+
+.site-nav {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.site-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.site-nav .seg {
+  flex: none;
+  max-inline-size: max-content;
+  touch-action: pan-x;
+}
+
+.site-nav .seg button {
+  min-block-size: 40px;
+}
+
+@media (max-width: 1180px) {
+  .site-titlebar {
+    min-block-size: 60px;
+    flex-wrap: wrap;
+    align-content: center;
+    padding-block: 8px;
+  }
+
+  .site-brand {
+    min-inline-size: 0;
+    flex: 1 1 auto;
+  }
+
+  .site-nav-wrap {
+    order: 3;
+    flex: 1 0 100%;
+    inline-size: 100%;
+    margin-inline-start: 0 !important;
+  }
+
+  .site-nav {
+    inline-size: 100%;
+    padding-inline: 2px;
+  }
+}
+
+@media (max-width: 600px) {
+  .site-titlebar {
+    gap: 6px 10px;
+    padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+    padding-block-start: max(8px, env(safe-area-inset-top));
+  }
+
+  .site-brand-logo {
+    inline-size: 30px;
+    block-size: 30px;
+    margin-inline-end: 8px;
+  }
+
+  .site-brand-name {
+    max-inline-size: min(58vw, 230px);
+    font-size: 12.5px;
+  }
+
+  .site-nav {
+    margin-inline: -2px;
+    padding-inline: 2px;
+  }
+
+  .site-nav .seg button > span {
+    display: inline-flex;
+    min-block-size: 40px;
+    align-items: center;
+    padding-inline: 12px;
+  }
+
+  .product-page-pad {
+    padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+  }
+
+  .product-page-pad > .px-\[30px\] {
+    padding-inline: 0;
+  }
+
+  .product-page-fill {
+    padding-bottom: max(26px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Keep the home dashboard scrollable on a short phone instead of clipping its
+   role cards and recent items inside the desktop three-row grid. */
+@media (max-width: 600px) {
+  .home-page {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .home-banner {
+    --home-banner-inset: 16px;
+    padding-top: 18px;
+    padding-bottom: 14px;
+  }
+
+  .home-banner h2 {
+    font-size: 22px;
+  }
+
+  .home-content {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 18px;
+    padding: 14px max(16px, env(safe-area-inset-left)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right));
+  }
+
+  .home-shortcuts {
+    grid-template-columns: 1fr;
+  }
+
+  .home-role-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .home-role img,
+  .home-role-art {
+    block-size: 72px;
+  }
+}
+
+/* Models: use the same card geometry in the catalog and annotation library,
+   but never let the toolbar or action row force the page wider than the phone. */
+.models-block > div:first-child {
+  min-inline-size: 0;
+}
+
+.models-search {
+  min-inline-size: 180px;
+}
+
+.model-card {
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.model-card-cover {
+  min-inline-size: 0;
+}
+
+.model-card-actions {
+  min-inline-size: 0;
+  flex-wrap: wrap;
+}
+
+.model-card-actions > button {
+  min-inline-size: 0;
+}
+
+@media (max-width: 720px) {
+  .models-block > div:first-child {
+    align-items: stretch;
+  }
+
+  .models-search {
+    flex: 1 1 100%;
+    inline-size: 100%;
+    max-inline-size: none;
+    min-block-size: 44px;
+  }
+
+  .models-page .model-grid {
+    gap: 10px;
+  }
+
+  .models-page .model-card {
+    padding: 10px;
+  }
+
+  .model-card-actions > button:first-child,
+  .model-card-actions > button:nth-child(2) {
+    flex: 1 1 calc(50% - 6px);
+    min-block-size: 42px;
+  }
+
+  .model-card-actions > button:last-child {
+    flex: 0 0 42px;
+    min-block-size: 42px;
+  }
+}
+
+/* Synthesis and training are intentionally single-column below the desktop
+   breakpoint. The extra rules make their dense controls comfortable to edit
+   with a finger on a phone or iPad portrait. */
+.synth-role-strip,
+.synth-layout,
+.train-layout {
+  min-inline-size: 0;
+}
+
+.synth-role-strip select,
+.synth-role-strip button {
+  min-block-size: 40px;
+}
+
+.synth-layout > *,
+.train-layout > * {
+  min-inline-size: 0;
+}
+
+@media (max-width: 899px) {
+  .synth-role-strip {
+    align-items: stretch;
+  }
+
+  .synth-role-strip select {
+    flex: 1 1 220px;
+    inline-size: 100%;
+    min-inline-size: 0 !important;
+    min-block-size: 44px;
+  }
+
+  .synth-role-strip > button {
+    flex: 1 1 160px;
+    min-block-size: 44px;
+  }
+
+  .synth-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow: visible;
+  }
+
+  .synth-layout > div,
+  .train-layout > div {
+    min-block-size: auto;
+  }
+
+  .train-layout {
+    gap: 24px;
+  }
+
+  .train-step-nav {
+    min-block-size: 0;
+  }
+
+  .train-step-nav > button {
+    min-block-size: 54px;
+    text-align: start;
+  }
+}
+
+@media (max-width: 600px) {
+  .synth-role-strip > button {
+    flex-basis: calc(50% - 8px);
+  }
+
+  .train-step-nav {
+    grid-template-columns: 1fr !important;
+  }
+
+  .synth-page select,
+  .synth-page input,
+  .synth-page textarea,
+  .train-page select,
+  .train-page input,
+  .train-page textarea {
+    max-inline-size: 100%;
+  }
+
+  .synth-page .trm-input,
+  .train-page .trm-input {
+    min-block-size: 44px;
+  }
+}
+
+/* Annotation keeps the table as a table, but confines its unavoidable wide
+   layout to a local touch scroller rather than widening the entire document. */
+.annot-toolbar {
+  min-inline-size: 0;
+}
+
+.annot-table-wrap {
+  max-inline-size: 100%;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.annot-table-wrap table {
+  min-inline-size: 680px;
+}
+
+@media (max-width: 600px) {
+  .annot-toolbar {
+    align-items: stretch;
+  }
+
+  .annot-toolbar > * {
+    max-inline-size: 100%;
+  }
+
+  .annot-toolbar .trm-search,
+  .annot-toolbar input,
+  .annot-toolbar select {
+    min-block-size: 44px;
+  }
+}
+
+
+/* Settings owns its tab strip outside PagePad so the support action can stay
+   visible without forcing the strip wider than a phone viewport. */
+.settings-tabs {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: clip;
+}
+
+.settings-tabs > .min-w-0 {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.settings-tabs > .min-w-0::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .settings-tabs {
+    padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+    align-items: stretch;
+  }
+
+  .settings-tabs > .min-w-0 {
+    flex: 1 1 100%;
+  }
+
+  .settings-tabs > .min-w-0 .seg {
+    max-inline-size: max-content;
+  }
+
+  .settings-tabs > button {
+    flex: 1 1 100%;
+    margin-inline-start: 0 !important;
+    min-block-size: 44px;
+  }
+}
+
+/* Touch targets and device accessibility preferences. */
+@media (pointer: coarse) {
+  .product-page-pad button,
+  .product-page-pad select,
+  .product-page-pad input,
+  .product-page-pad textarea,
+  .site-nav button {
+    min-block-size: 44px;
+  }
+
+  .product-page-pad input[type="range"] {
+    min-block-size: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .site-titlebar,
+  .seg,
+  .modal-scrim > *,
+  [data-trm-host="embedded"] {
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  button,
+  input,
+  select,
+  textarea {
+    outline-color: var(--ink);
+  }
+
+  .model-card,
+  .annot-table-wrap,
+  .synth-role-strip {
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+}

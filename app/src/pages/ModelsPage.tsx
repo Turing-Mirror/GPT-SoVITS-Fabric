@@ -1,3 +1,4 @@
+import { downloadFile } from "../lib/downloadFile";
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { TextInput, usePageLeave } from "trm-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -62,6 +63,8 @@ export function ModelsPage({
   /** 广场投放到本页的那一条（`plaza::pick_models_banner`，至多一条且必须可关）。 */
   banner?: PlazaItem | null;
 }) {
+  const lan = window.__FABRIC_LAN_WEB__ === true;
+  const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportInstance, setExportInstance] = useState(0);
@@ -130,6 +133,22 @@ export function ModelsPage({
     }
   }
 
+  async function uploadPack(file: File) {
+    setBusy(true);
+    setMsg(t("library.importPending"));
+    try {
+      const response = await fetch(`/api/role-package?name=${encodeURIComponent(file.name)}`, {
+        method: "POST", headers: { "content-type": "application/zip" }, body: file,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.result?.id) throw new Error(data.detail || data.error || t("s.valueFailed"));
+      setQuery("");
+      reload();
+      setMsg(t("library.importDone", { v0: data.result.name }));
+    } catch (error) { setMsg(String(error)); }
+    finally { setBusy(false); }
+  }
+
   const run = async (fn: () => Promise<string | null>) => {
     try {
       const note = await fn();
@@ -188,7 +207,7 @@ export function ModelsPage({
   };
 
   return (
-    <PagePad>
+    <PagePad className="models-page">
       <PageHead
         title={t("library.title")}
         sub={t("library.subtitle")}
@@ -196,21 +215,28 @@ export function ModelsPage({
           <>
             <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
             <Btn onClick={() => goTo("train")}>{t("library.goTrain")}</Btn>
-            {roles.length > 0 && <Btn onClick={() => { setExportInstance((n) => n + 1); setExportOpen(true); }}>{t("publication.exportPacks")}</Btn>}
-            <Btn primary busy={busy} onClick={() => void importPack()}>
+            {!lan && roles.length > 0 && <Btn onClick={() => { setExportInstance((n) => n + 1); setExportOpen(true); }}>{t("publication.exportPacks")}</Btn>}
+            <Btn primary busy={busy} disabled={busy} onClick={() => lan ? fileInput.current?.click() : void importPack()}>
               {t("library.import")}
             </Btn>
           </>
         }
       />
 
+      {/* design-allow: native browser input streams the selected ZIP to Fabric LAN. */}
+      {lan && <input ref={fileInput} type="file" accept=".zip" hidden onChange={(event) => {
+        const file = event.currentTarget.files?.[0];
+        event.currentTarget.value = "";
+        if (file) void uploadPack(file);
+      }} />}
       <ExportCharacterPackages key={exportInstance} open={active && exportOpen} roles={roles} onClose={() => setExportOpen(false)} />
       <AdBanner banner={banner ?? null} />
 
       <Block
+        className="models-block"
         title={t("library.listTitle")}
         note={query ? `${shown.length} / ${roles.length}` : String(roles.length)}
-        extra={roles.length ? <SearchBox value={query} onChange={setQuery} /> : undefined}
+        extra={roles.length ? <SearchBox value={query} onChange={setQuery} full className="models-search" /> : undefined}
         action={
           roles.length > 1 ? (
             <Dropdown<Sort>
@@ -224,6 +250,7 @@ export function ModelsPage({
           ) : undefined
         }
       >
+        {lan ? <p className="text-[12.5px] text-[var(--meta)] mt-0">{t("lan.modelPackages")}</p> : null}
         {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 whitespace-pre-line selectable">{msg}</div> : null}
         {roles.length ? (
           <>
@@ -232,7 +259,7 @@ export function ModelsPage({
                 <FlowList layout="grid" items={paged.slice} keyOf={(r) => r.id}
                   className={MODEL_GRID_CLASS}
                   render={(r) => {
-                    const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}?v=${coverVer}` : "";
+                    const cover = r.cover_exists && r.cover && isTauri() ? `${convertFileSrc(`${r.dir}/${r.cover}`)}${lan ? "&" : "?"}v=${coverVer}` : "";
                     return (
                       <ModelCard id={r.id} name={r.name || r.id} cover={cover}>
                         <div className="text-[11.5px] text-[var(--meta)] mt-1 truncate">
@@ -241,10 +268,11 @@ export function ModelsPage({
                         <div className="mt-1.5">
                           <Tag>{joinClauses([r.version && t("s.metaVersion", { v0: r.version }), t("library.refCount", { v0: String(refCount(r)) })])}</Tag>
                         </div>
-                        <div className="mt-2.5 flex items-center gap-1.5" onClick={event => event.stopPropagation()}>
+                        <div className="model-card-actions mt-2.5 flex items-center gap-1.5" onClick={event => event.stopPropagation()}>
                           <Btn className="flex-1 min-w-0" onClick={() => synthWithRole(r.id)}><span className="block truncate" title={t("nav.synth")}>{t("nav.synth")}</span></Btn>
-                          <Btn className="flex-1 min-w-0" onClick={() => setManaging(r)}><span className="block truncate" title={t("library.manageAssets")}>{t("library.manageAssets")}</span></Btn>
-                          <Btn className="shrink-0 px-2.5" ariaLabel={t("ui.common.more")} onClick={event => menu.open(event.currentTarget, itemsFor(r))}>⋯</Btn>
+                          {lan && <Btn className="flex-1 min-w-0" onClick={() => downloadFile(`/api/role-package/${encodeURIComponent(r.id)}`)}>{t("library.exportPack")}</Btn>}
+                          {!lan && <><Btn className="flex-1 min-w-0" onClick={() => setManaging(r)}><span className="block truncate" title={t("library.manageAssets")}>{t("library.manageAssets")}</span></Btn>
+                          <Btn className="shrink-0 px-2.5" ariaLabel={t("ui.common.more")} onClick={event => menu.open(event.currentTarget, itemsFor(r))}>⋯</Btn></>}
                         </div>
                       </ModelCard>
                     );

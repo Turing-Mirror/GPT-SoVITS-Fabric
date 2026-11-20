@@ -1,3 +1,4 @@
+import { copyText } from "../lib/clipboard";
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Btn } from "./ui";
@@ -70,29 +71,10 @@ export function ErrorNote({
     window.setTimeout(() => setCopied(false), 1600);
   };
   const copy = () => {
-    // 退回 execCommand 是因为「按了没反应」比没有这个按钮还伤 —— 而我们在群里
-    // 要用户复制报错的时候，正是他最不该再碰一次钉子的时候。
-    const fallback = () => {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.setAttribute("readonly", "");
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        done();
-      } catch {
-        /* 真的复制不了就别装作复制成功 */
-      }
-    };
-    try {
-      void navigator.clipboard.writeText(text).then(done).catch(fallback);
-    } catch {
-      fallback();
-    }
+    void copyText(text).then((ok) => {
+      if (ok) done();
+      else setOpen(true);
+    });
   };
 
   return (

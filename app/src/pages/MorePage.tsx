@@ -1,5 +1,6 @@
+import { downloadFile } from "../lib/downloadFile";
 import { useEffect, useRef, useState } from "react";
-import { usePageLeave } from "trm-ui";
+import { TextArea, usePageLeave } from "trm-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { Block, Btn, Group, ListItem, PageHead, PagePad } from "../components/ui";
 import { QrDialog } from "../components/QrDialog";
@@ -16,6 +17,7 @@ import { FindingList, type Finding } from "../components/FindingList";
 import { scrollPaneToId } from "../lib/scrollPane";
 import { Leave } from "../components/Presence";
 import { listText } from "../lib/text";
+import { copyText } from "../lib/clipboard";
 
 /** 「申请专业优化」的开关。服务还没开放，先藏起来；后端命令仍然在。 */
 const SHOW_CONSULT = false;
@@ -41,6 +43,7 @@ export function MorePage({
   onOpenProvision,
   focusCommunityNonce = 0,
 }: Props = {}) {
+  const lan = window.__FABRIC_LAN_WEB__ === true;
   // Where the UI itself is served from. Surfaced so a UI patch that did not
   // take effect is diagnosable instead of invisible (OTA strategy A).
   // 有二维码的社媒条目（QQ 群）点开的是图片，不是外链。
@@ -51,6 +54,20 @@ export function MorePage({
   const [root, setRoot] = useState<string | null>(null);
   const [logFile, setLogFile] = useState("");
   const [cacheMb, setCacheMb] = useState("");
+  const [lanCache, setLanCache] = useState<{ mb: string; files: number } | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [lanCacheMessage, setLanCacheMessage] = useState("");
+  const refreshLanCache = () => invoke<{ mb: string; files: number }>("cache_status").then(setLanCache);
+  const clearLanCache = async () => {
+    if (clearing || !(await askConfirm(t("lan.clearCacheConfirm")))) return;
+    setClearing(true);
+    try {
+      const r = await invoke<{ freed_mb: string; removed_files: number; skipped_files: number }>("cache_clear", { confirm: true });
+      setLanCacheMessage(t("s.cacheClearDone", { v0: r.freed_mb, v1: r.removed_files }) + (r.skipped_files ? " " + t("lan.cacheSkipped", { n: r.skipped_files }) : ""));
+      await refreshLanCache();
+    } catch (e) { setLanCacheMessage(t("s.cacheClearFail", { v0: String(e) })); }
+    finally { setClearing(false); }
+  };
   const [version, setVersion] = useState<string | null>(null);
   // 读取中写「正在读取」，读不到写「读取失败」，不用「—」占位
   const shownValue = (v: string | null) => (v === null ? t("s.valueLoading") : v || t("s.valueFailed"));
@@ -159,7 +176,8 @@ export function MorePage({
     setCheckState("running");
     try {
       const v = await invoke<Finding[]>("diagnostics_self_check");
-      setFindings(Array.isArray(v) ? v : []);
+      if (!Array.isArray(v)) throw new Error(t("s.selfCheckFailed"));
+      setFindings(v);
       setCheckState("done");
     } catch {
       setFindings([]);
@@ -167,18 +185,27 @@ export function MorePage({
     }
   };
 
-  // 群里每一轮问答都从「你什么版本 / 什么显卡 / 什么后端」开始。这三样散在
-  // 四个页面上，用户答不上来不是他的错。凑成一段纯文本，按一下复制。
+  // Fetch ahead so an HTTP fallback can write within the actual click gesture.
   const [sumMsg, setSumMsg] = useState("");
+  const [summary, setSummary] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryRetry, setSummaryRetry] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<unknown>("diagnostics_summary_text")
+      .then((value) => {
+        if (typeof value !== "string" || !value.trim()) throw new Error("No environment summary");
+        if (!cancelled) setSummary(value);
+      })
+      .catch(() => { if (!cancelled) setSummary(""); });
+    return () => { cancelled = true; };
+  }, [summaryRetry]);
+
   const copySummary = async () => {
-    setSumMsg("");
-    try {
-      const text = await invoke<string>("diagnostics_summary_text");
-      await navigator.clipboard.writeText(text);
-      setSumMsg(t("s.sumCopied"));
-    } catch {
-      setSumMsg(t("s.sumCopyFailed"));
-    }
+    if (!summary) return;
+    const copied = await copyText(summary);
+    setSumMsg(copied ? t("s.sumCopied") : t("lan.copyManual"));
+    setShowSummary(!copied);
   };
 
   const runDiagnostics = async (r: DiagReport) => {
@@ -206,6 +233,7 @@ export function MorePage({
   usePageLeave(() => {
     setBusyMsg("");
     setSumMsg("");
+    setShowSummary(false);
     setGpuMsg("");
     setLegacyMsg({});
   });
@@ -243,8 +271,12 @@ export function MorePage({
     invoke<string | null>("log_path")
       .then((v) => alive && setLogFile(v || ""))
       .catch(() => alive && setLogFile(""));
-    invoke<{ mb?: string }>("cache_status")
-      .then((v) => alive && setCacheMb(v?.mb || "0"))
+    invoke<{ mb?: string; files?: number }>("cache_status")
+      .then((v) => {
+        if (!alive) return;
+        if (lan && typeof v?.mb === "string" && typeof v?.files === "number") setLanCache({ mb: v.mb, files: v.files });
+        else setCacheMb(v?.mb || "0");
+      })
       .catch(() => alive && setCacheMb(""));
     invoke<Record<string, unknown>>("config_get")
       .then((c) => alive && setMainGpu(Number(c.main_gpu ?? MAIN_GPU_AUTO)))
@@ -254,7 +286,7 @@ export function MorePage({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [lan]);
 
   // 「往返延迟」那一行随实时链路一起没了：这个产品合成出来的是文件，
   // 没有音频流，也就没有延迟可报。剩下能如实说的只有「现在有没有活在跑」。
@@ -354,14 +386,14 @@ export function MorePage({
                 ? provision.need_provision
                   ? t("s.eb033e6340")
                   : t("s.1148b67ccc")
-                : t("s.63e829016e")
+                : lan ? t("lan.hostRuntime") : t("s.63e829016e")
             }
             right={
               <span className="flex items-center gap-2">
                 <span className="text-[13px] text-[var(--ink-muted)]">
                   {provision?.installed_variant || provision?.recommended_variant || t("s.notDetected")}
                 </span>
-                {onOpenProvision ? (
+                {!lan && onOpenProvision ? (
                   <Btn onClick={onOpenProvision}>
                     {provision?.need_provision ? t("s.d5c27cb2ba") : t("s.69f5974b47")}
                   </Btn>
@@ -379,17 +411,26 @@ export function MorePage({
         <Group>
           <ListItem
             title={t("s.sumCopyTitle")}
-            desc={sumMsg || t("s.sumCopyDesc")}
-            right={<Btn onClick={() => void copySummary()}>{t("s.sumCopyBtn")}</Btn>}
+            desc={sumMsg || (summary === "" ? t("s.valueFailed") : t("s.sumCopyDesc"))}
+            right={summary === "" ? (
+              <Btn onClick={() => { setSummary(null); setSummaryRetry(n => n + 1); }}>{t("lan.retry")}</Btn>
+            ) : (
+              <Btn onClick={() => void copySummary()} busy={summary === null} disabled={summary === null}>{t("s.sumCopyBtn")}</Btn>
+            )}
           />
+          {showSummary && summary ? (
+            <div className="px-4 pb-3">
+              <TextArea aria-label={t("s.sumCopyTitle")} className="selectable w-full" rows={9} readOnly value={summary} onChange={() => {}} onFocus={(e) => e.currentTarget.select()} />
+            </div>
+          ) : null}
           <ListItem
             title={t("s.selfCheckTitle")}
             desc={
               checkState === "failed"
                 ? t("s.selfCheckFailed")
                 : checkState === "done" && findings.length === 0
-                  ? t("s.diagFindingsNone")
-                  : t("s.selfCheckDesc")
+                  ? t(lan ? "lan.checkPassed" : "s.diagFindingsNone")
+                  : t(lan ? "lan.checkScope" : "s.selfCheckDesc")
             }
             right={
               <Btn
@@ -410,6 +451,15 @@ export function MorePage({
               <FindingList findings={findings} />
             </div>
           ) : null}
+          {lan ? <>
+            <ListItem title={t("s.8b720e5330")} desc={t("lan.diagZipNote")}
+              right={<Btn onClick={() => downloadFile("/api/diagnostics.zip")}>{t("lan.diagZipDownload")}</Btn>} />
+            <ListItem title={t("s.cacheClear")}
+              desc={lanCacheMessage || t("lan.clearCacheNote")}
+              meta={lanCache ? t("lan.cacheCount", { size: lanCache.mb, n: lanCache.files }) : undefined}
+              right={<Btn danger busy={clearing} disabled={clearing} onClick={() => void clearLanCache()}>{t("s.cacheClear")}</Btn>} />
+            <ListItem title={t("lan.desktopMaintenance")} desc={t("lan.desktopMaintenanceNote")} />
+          </> : <>
           <ListItem
             title={t("s.8b720e5330")}
             desc={
@@ -501,6 +551,7 @@ export function MorePage({
               >{t("s.76b9880829")}</Btn>
             }
           />
+          </>}
         </Group>
       </Block>
 

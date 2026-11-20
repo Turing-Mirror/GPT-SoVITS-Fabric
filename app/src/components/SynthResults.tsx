@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAudioPreview } from "../hooks/useAudioPreview";
 import { Btn } from "./ui";
 import { Select } from "./controls";
+import { downloadAudio } from "../lib/downloadAudio";
 import { t } from "../i18n/t";
 import { Icon, PromptDialog } from "../trm";
 
@@ -34,6 +35,7 @@ const HISTORY_LIMIT = 200;
 
 function clock(sec: number): string {
   const d = new Date(sec * 1000);
+  if (!Number.isFinite(d.getTime()) || sec <= 0) return t("s.valueUnknown");
   const same = new Date().toDateString() === d.toDateString();
   const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   return same ? hm : `${d.toLocaleDateString([], { month: "numeric", day: "numeric" })} ${hm}`;
@@ -58,6 +60,7 @@ export function SynthResults({
   onReuse: (rec: SynthRecord) => void;
   onError: (msg: string) => void;
 }) {
+  const lan = window.__FABRIC_LAN_WEB__ === true;
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [sel, setSel] = useState("");
   const { playing, play: playAudio, player } = useAudioPreview();
@@ -66,7 +69,10 @@ export function SynthResults({
   const reload = useCallback(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     void invoke<ResultRow[]>("synth_recent", { limit: HISTORY_LIMIT })
-      .then((r) => setRows(r ?? []))
+      .then((r) => {
+        if (!Array.isArray(r)) throw new Error(t("s.valueFailed"));
+        setRows(r);
+      })
       .catch((e) => onError(String(e)));
   }, [onError]);
 
@@ -193,14 +199,20 @@ export function SynthResults({
         </dl>
       ) : null}
       <div className="flex-none flex items-center gap-1.5 mt-2.5 flex-wrap">
-        <Btn disabled={!current} onClick={() => current && void invoke("synth_reveal_file", { path: current.path }).catch(() => {})}>
-          {t("synth.resultReveal")}
+        <Btn disabled={!current} onClick={() => {
+          if (!current) return;
+          if (lan) downloadAudio(current.path, current.name);
+          else void invoke("synth_reveal_file", { path: current.path }).catch((e) => onError(String(e)));
+        }}>
+          {t(lan ? "lan.downloadAudio" : "synth.resultReveal")}
         </Btn>
         <Btn disabled={!current?.record?.params} onClick={() => current?.record && onReuse(current.record)}>
           {t("synth.resultReuse")}
         </Btn>
-        <Btn disabled={!current} onClick={() => setRenaming(true)}>{t("synth.resultRename")}</Btn>
-        <Btn disabled={!current} onClick={remove}>{t("synth.resultDelete")}</Btn>
+        {!lan && <>
+          <Btn disabled={!current} onClick={() => setRenaming(true)}>{t("synth.resultRename")}</Btn>
+          <Btn disabled={!current} onClick={remove}>{t("synth.resultDelete")}</Btn>
+        </>}
       </div>
       <PromptDialog
         open={renaming}

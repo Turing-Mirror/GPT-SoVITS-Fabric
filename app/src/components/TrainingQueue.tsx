@@ -14,6 +14,7 @@ const STAGE_KEYS = { prepare: "train.stagePrepare", format: "train.stageFormat",
 export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
   jobs: TrainJob[]; loaded?: boolean; error: string; onAction: (id: string, action: string) => Promise<void>;
 }) {
+  const lan = window.__FABRIC_LAN_WEB__ === true;
   const paged = usePaged(jobs, 5);
   const [pending, setPending] = useState<string[]>([]);
   const action = async (id: string, kind: string) => {
@@ -29,9 +30,11 @@ export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
     <div className="rounded-[var(--r)] bg-[var(--group)] p-3.5 min-h-0 overflow-y-auto">
       <QueueList scope="training" page={paged.page} items={paged.slice} keyOf={job => job.id}
         className="flex flex-col gap-4"
-        empty={<div className="text-[12.5px] text-[var(--help)]">{loaded ? t("train.queueEmpty") : error ? "" : t("s.valueLoading")}</div>}
+        empty={<div className="text-[12.5px] text-[var(--help)]">{loaded ? t(lan ? "lan.trainQueueEmpty" : "train.queueEmpty") : error ? "" : t("s.valueLoading")}</div>}
         render={job => {
             const running = job.state === "running" || job.state === "cancelling";
+            const cancellable = running || (lan && job.state === "queued");
+            const retryable = lan ? job.state === "failed" || job.state === "cancelled" : terminalJob(job) || job.state === "paused";
             const stage = job.progress?.stage;
             const disabled = pending.includes(job.id);
             return <div key={job.id} className="flex flex-col gap-2">
@@ -52,8 +55,8 @@ export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
               </> : null}
               {job.state === "failed" && job.error ? <ErrorNote text={job.error} code={job.progress?.message_code} /> : null}
               <div className="flex items-center gap-2 flex-wrap">
-                {running ? <Btn disabled={disabled || job.state === "cancelling"} onClick={() => void action(job.id, "cancel")}>{t("train.cancel")}</Btn> : <>
-                  {terminalJob(job) || job.state === "paused" ? <Btn disabled={disabled} onClick={() => void action(job.id, "retry")}>{t(job.state === "paused" ? "train.queueContinue" : "train.queueRetry")}</Btn> : null}
+                {cancellable ? <Btn disabled={disabled || job.state === "cancelling"} onClick={() => void action(job.id, "cancel")}>{t("train.cancel")}</Btn> : <>
+                  {retryable ? <Btn disabled={disabled} onClick={() => void action(job.id, "retry")}>{t(job.state === "paused" ? "train.queueContinue" : "train.queueRetry")}</Btn> : null}
                   <Btn disabled={disabled} onClick={() => void action(job.id, "remove")}>{t("train.queueRemove")}</Btn>
                 </>}
               </div>

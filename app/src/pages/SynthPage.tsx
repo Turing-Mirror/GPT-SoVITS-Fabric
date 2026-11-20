@@ -245,6 +245,7 @@ const keyOf = referenceKey;
 
 export function SynthPage() {
   const c = useConfig();
+  const lan = window.__FABRIC_LAN_WEB__ === true;
   const [roles, setRoles] = useState<Role[] | null>(peekCharacters);
   const [reloadTick, setReloadTick] = useState(0);
   const [roleId, setRoleId] = useState("");
@@ -255,7 +256,7 @@ export function SynthPage() {
   const [advOpen, setAdvOpen] = useState(false);
   const [streaming, setStreaming] = useState(true);
   const [format, setFormat] = useState<OutFormat>("wav");
-  const backend: Backend = c.str("synth_backend") === "vulkan" ? "vulkan" : "cuda";
+  const backend: Backend = !lan && c.str("synth_backend") === "vulkan" ? "vulkan" : "cuda";
   const vulkan = backend === "vulkan";
   const extraJobs = useExtraJobs();
   const [vulkanAssets, setVulkanAssets] = useState<AssetsStatus | null>(null);
@@ -285,6 +286,7 @@ export function SynthPage() {
   const { playing: preview, play: previewAudio, stop: stopPreview, player: previewPlayer } = useAudioPreview();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const startedAt = useRef(0);
+  const activeProgress = useRef<string | null>(null);
   /** 配置只在第一次读到时灌进来一次，之后以界面为准，免得写盘回声把滑块拽回去。 */
   const seeded = useRef(false);
 
@@ -461,15 +463,16 @@ export function SynthPage() {
       void p.then((fn) => (alive ? offs.push(fn) : fn()));
 
     keep(
-      listen<{ seq?: number; sec?: number; owner?: string | null }>("synth-chunk", (ev) => {
-        if (!alive || ev.payload.owner != null) return;
+      listen<{ seq?: number; owner?: string | null; progressId?: string }>("synth-chunk", (ev) => {
+        if (!alive || !ev.payload || ev.payload.owner != null) return;
+        if (lan && (!activeProgress.current || ev.payload.progressId !== activeProgress.current)) return;
         const seq = ev.payload?.seq ?? 0;
         setChunks(seq + 1);
         // 进度里的时间都从点下「开始合成」算起，含首次加载模型，和界面上走的秒数一致。
         if (seq === 0) setTFirst(Math.round(performance.now() - startedAt.current));
       }),
     );
-    keep(
+    if (!lan) keep(
       listen<{ owner?: string | null }>("synth-done", (ev) => {
         if (!alive || ev.payload.owner != null) return;
         setTTotal(Math.round(performance.now() - startedAt.current));
@@ -479,7 +482,7 @@ export function SynthPage() {
       alive = false;
       offs.forEach((fn) => fn());
     };
-  }, []);
+  }, [lan]);
 
   // 「已用 x.x s」：合成期间才走，停了就不再占用一个定时器。
   useEffect(() => {
@@ -536,30 +539,43 @@ export function SynthPage() {
         ...(showSteps && adv.sample_steps ? { sample_steps: Number(adv.sample_steps) } : {}),
         ...(showSuper ? { super_sampling: adv.super_sampling } : {}),
       };
-      const r = await invoke<{ cancelled?: boolean; out?: string }>("synth_start", {
-        roleId: role.id,
-        roleDir: role.dir,
-        version: role.version,
-        text: line,
-        refWav: ref.abs,
-        refText: ref.text,
-        refLang: ref.lang,
-        params: sent,
-        streaming: !useVulkan && streaming,
-        opts: {
-          backend: chosenBackend,
-          format: useVulkan ? "wav" : format,
-          aux_refs: auxRows.map((x) => x.abs),
-          role_name: role.name,
-        },
-      });
-      if (r?.out) {
-        setLatest(r.out);
-        setResultTick((n) => n + 1);
+      // getRandomValues is available on the private HTTP origin too.
+      const progressId = lan ? [...crypto.getRandomValues(new Uint8Array(16))]
+        .map(byte => byte.toString(16).padStart(2, "0")).join("") : null;
+      activeProgress.current = progressId;
+      try {
+        const r = await invoke<{ cancelled?: boolean; out?: string; chunks?: number }>("synth_start", {
+          ...(progressId ? { progressId } : {}),
+          roleId: role.id,
+          roleDir: role.dir,
+          version: role.version,
+          text: line,
+          refWav: ref.abs,
+          refText: ref.text,
+          refLang: ref.lang,
+          params: sent,
+          streaming: !useVulkan && streaming,
+          opts: {
+            backend: chosenBackend,
+            format: useVulkan ? "wav" : format,
+            aux_refs: auxRows.map((x) => x.abs),
+            role_name: role.name,
+          },
+        });
+        if (r?.out) {
+          if (lan) {
+            setChunks(r.chunks ?? 0);
+            setTTotal(Math.round(performance.now() - startedAt.current));
+          }
+          setLatest(r.out);
+          setResultTick((n) => n + 1);
+        }
+        return r?.cancelled ? "stop" : "done";
+      } finally {
+        activeProgress.current = null;
       }
-      return r?.cancelled ? "stop" : "done";
     },
-    [role, ref, adv, params, streaming, format, auxRows, showSteps, showSuper],
+    [role, ref, adv, params, streaming, format, auxRows, showSteps, showSuper, lan],
   );
 
   const ready = Boolean(role && ref) && rp.ready && !busy;
@@ -686,7 +702,9 @@ export function SynthPage() {
           />
         </div>
         <p className="m-0 mt-2 text-[12.5px] text-[var(--help)] tabular-nums leading-relaxed">
-          {chunks === 0
+          {lan && !busy && tTotal != null
+            ? t("lan.synthDone", { s: secs })
+            : chunks === 0
             ? t("synth.progressWait", { s: secs })
             : tFirst != null
               ? t("synth.progressFull", { n: chunks, s: secs, f: (tFirst / 1000).toFixed(1) })
@@ -699,9 +717,9 @@ export function SynthPage() {
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--meta)]">
         {t("synth.backend")}
-        <HelpMark title={t("synth.backendTip")} />
+        {!lan && <HelpMark title={t("synth.backendTip")} />}
       </span>
-      <div role="group" aria-label={t("synth.backend")}>
+      {lan ? <span className="text-[12.5px] text-[var(--help)]">CUDA</span> : <div role="group" aria-label={t("synth.backend")}>
         <SegmentControl<Backend>
           role="group"
           value={backend}
@@ -715,7 +733,7 @@ export function SynthPage() {
             void c.set("synth_backend", next, true);
           }}
         />
-      </div>
+      </div>}
     </div>
     {vulkanReason ? (
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -735,7 +753,7 @@ export function SynthPage() {
         label={t("synth.streaming")}
       />
       <div className="ml-auto flex items-center gap-2">
-        {busy ? (
+        {busy && !window.__FABRIC_LAN_WEB__ ? (
           <Btn onClick={cancelSynth} disabled={cancelling}>
             {cancelling ? t("synth.cancelling") : t("synth.cancel")}
           </Btn>
@@ -760,7 +778,7 @@ export function SynthPage() {
   );
 
   return (
-    <PagePad fill>
+    <PagePad fill className="synth-page">
       <PageHead
         title={t("synth.title")}
         actions={
@@ -778,7 +796,7 @@ export function SynthPage() {
       {err || rp.error || c.error ? <ErrorNote text={err || rp.error || c.error} /> : null}
 
       {/* 角色条：选择在这里，管理去模型页。 */}
-      <div className="flex-none mt-[22px] flex items-center gap-3.5 rounded-[var(--r)] bg-[var(--group)] p-2.5 pr-3.5 flex-wrap">
+      <div className="synth-role-strip flex-none mt-[22px] flex items-center gap-3.5 rounded-[var(--r)] bg-[var(--group)] p-2.5 pr-3.5 flex-wrap">
         {empty || !role ? (
           <span className="flex-1 px-1.5 text-[12.5px] text-[var(--help)]">{t("synth.roleEmpty")}</span>
         ) : (
@@ -815,7 +833,7 @@ export function SynthPage() {
         <Btn onClick={() => goTo("models")}>{t("synth.roleManage")}</Btn>
       </div>
 
-      <div className="mt-[18px] flex-1 min-h-0 grid gap-[18px] grid-cols-1 min-[900px]:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(240px,300px)] min-[900px]:pb-[22px]">
+      <div className="synth-layout mt-[18px] flex-1 min-h-0 grid gap-[18px] grid-cols-1 min-[900px]:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(240px,300px)] min-[900px]:pb-[22px]">
         {/* 左栏：参考音频 */}
         <div className={COL}>
           <ColHead

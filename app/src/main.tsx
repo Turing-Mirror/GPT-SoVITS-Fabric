@@ -14,6 +14,21 @@ import { applyAppearance } from "./lib/appearance";
 import "./index.css";
 import { invoke } from "@tauri-apps/api/core";
 
+// LAN web mode keeps the existing Fabric pages enabled; the Tauri facade is served over HTTP/WebSocket.
+// Keep an explicit marker because the compatibility facade intentionally creates
+// __TAURI_INTERNALS__ below, so feature detection alone cannot distinguish a
+// browser tab from a native Tauri window.
+const lanWeb = import.meta.env.MODE === "lan" && !("__TAURI_INTERNALS__" in window);
+if (lanWeb) {
+  void import("./lan.css");
+  const webWindow = window as unknown as {
+    __TAURI_INTERNALS__: Record<string, unknown>;
+    __FABRIC_LAN_WEB__?: boolean;
+  };
+  webWindow.__FABRIC_LAN_WEB__ = true;
+  webWindow.__TAURI_INTERNALS__ = {};
+}
+
 // 焦点环只在键盘操作时出现（TRM UI）。
 trackInputModality();
 

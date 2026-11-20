@@ -1,3 +1,4 @@
+import { LanListPicker } from "../components/LanListPicker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextInput } from "trm-ui";
 import { PagePad, PageHead, Btn } from "../components/ui";
@@ -84,7 +85,7 @@ type Status = {
   interrupted?: { exp?: string; epoch?: number; total?: number } | null;
 };
 
-type Scan = { files?: number; other_files?: number; total_bytes?: number };
+type Scan = { files?: number; other_files?: number; total_bytes?: number; issue?: string };
 type Inspect = {
   available?: boolean;
   files?: number;
@@ -132,6 +133,11 @@ export function TrainPage() {
   const doneStages = stage ? STAGES.slice(0, STAGES.indexOf(stage)) : [];
   const progress = trainPercent(running);
   const [err, setErr] = useState("");
+  const [datasetError, setDatasetError] = useState("");
+  const lan = window.__FABRIC_LAN_WEB__ === true;
+  const datasetRequest = useRef(0);
+  const lastSuggestedExp = useRef("");
+  const [listPicker, setListPicker] = useState(false);
   const [starting, setStarting] = useState(false);
   /** 中栏显示第几步（0–3）。 */
   const [step, setStep] = useState(0);
@@ -181,18 +187,44 @@ export function TrainPage() {
   }, [refresh, st.busy]);
 
   const applyDataset = useCallback(async (p: string) => {
+    setDatasetError("");
     setDataset(p);
     // 角色包的数据集在 <角色>/dataset 下：实验名取角色目录名，不取「dataset」。
     const parts = p.split(/[\\/]/).filter(Boolean);
     const last = (parts.pop() || "").replace(/\.list$/i, "");
-    setExp((e) => e || (last.toLowerCase() === "dataset" ? parts.pop() || last : last));
-    setScan(await invoke<Scan>("train_scan_dataset", { path: p }).catch(() => null));
-    setInspect(await invoke<Inspect>("train_inspect_dataset", { path: p }).catch(() => null));
+    const suggestion = last.toLowerCase() === "dataset" ? parts.pop() || last : last;
+    const previousSuggestion = lastSuggestedExp.current;
+    lastSuggestedExp.current = suggestion;
+    setExp((e) => !e || e === previousSuggestion ? suggestion : e);
+    setScan(null);
+    setInspect(null);
+    const request = ++datasetRequest.current;
+    if (window.__FABRIC_LAN_WEB__) {
+      try {
+        const data = await invoke<{ scan: Scan; inspect: Inspect }>("train_dataset_stats", { path: p });
+        if (request !== datasetRequest.current) return;
+        if (!data?.scan || !data.inspect) throw new Error(t("s.valueFailed"));
+        setScan(data.scan);
+        setInspect(data.inspect);
+      } catch (error) {
+        if (request === datasetRequest.current) setDatasetError(String(error));
+      }
+      return;
+    }
+    const [nextScan, nextInspect] = await Promise.all([
+      invoke<Scan>("train_scan_dataset", { path: p }).catch(() => null),
+      invoke<Inspect>("train_inspect_dataset", { path: p }).catch(() => null),
+    ]);
+    if (request === datasetRequest.current) {
+      setScan(nextScan);
+      setInspect(nextInspect);
+    }
   }, []);
 
   const pickDataset = useCallback(async () => {
+    if (window.__FABRIC_LAN_WEB__) { setListPicker(true); return; }
     const p = await invoke<string | null>("train_pick_dataset").catch(() => null);
-    if (p) await applyDataset(p);
+    if (typeof p === "string" && p) await applyDataset(p);
   }, [applyDataset]);
 
   // 标注页点了「用于训练」：把那份标注所在的目录设为数据集。
@@ -207,7 +239,8 @@ export function TrainPage() {
 
   const pickOutput = useCallback(async () => {
     const p = await invoke<string | null>("train_pick_output_dir").catch(() => null);
-    if (p) setOutDir(p);
+    if (typeof p === "string" && p) setOutDir(p);
+    else if (p !== null || window.__FABRIC_LAN_WEB__) setDatasetError(t("lan.desktopOnly"));
   }, []);
 
   const versionMissing = info?.base_missing ?? [];
@@ -226,6 +259,8 @@ export function TrainPage() {
             ? t("train.blockNvidia")
             : !dataset
               ? t("train.blockDataset")
+              : lan && (!scan?.files || scan.other_files)
+                ? scan?.issue || t("lan.trainInvalid")
               : !exp.trim()
                 ? t("train.blockExp")
                 : "";
@@ -247,7 +282,7 @@ export function TrainPage() {
           gpt_save_every: gpt.saveEvery,
           learning_rate: lr,
           lora_rank: loraRank,
-          resume,
+          resume: !lan && resume,
           output_dir: outDir,
         },
       });
@@ -258,7 +293,7 @@ export function TrainPage() {
       void refresh();
       void refreshQueue();
     }
-  }, [exp, dataset, version, sovits, gpt, lr, loraRank, resume, outDir, refresh, refreshQueue]);
+  }, [exp, dataset, version, sovits, gpt, lr, loraRank, lan, resume, outDir, refresh, refreshQueue]);
 
   const versions = st.versions ?? [];
   const missing = [...(st.engine_core_missing ?? []), ...versionMissing];
@@ -267,7 +302,7 @@ export function TrainPage() {
 
   const steps: { title: string; sub: string; ok: boolean }[] = [
     { title: t("train.stepVersion"), sub: version || t("train.unset"), ok: baseReady },
-    { title: t("train.datasetTitle"), sub: exp.trim() || t("train.unset"), ok: !!dataset && !!exp.trim() },
+    { title: t("train.datasetTitle"), sub: dataset.split(/[\\/]/).filter(Boolean).pop() || t("train.unset"), ok: !!dataset && (!lan || !!scan?.files && !scan.other_files) },
     {
       title: t("train.hyperTitle"),
       sub: t("train.hyperSummary", { v0: String(sovits.epochs), v1: String(gpt.epochs) }),
@@ -360,7 +395,7 @@ export function TrainPage() {
           <div className="text-[13px] font-medium">{t("train.sepEntry")}</div>
           <div className="text-[12.5px] text-[var(--help)] mt-1 leading-relaxed">{t("train.sepEntryDesc")}</div>
         </div>
-        <Btn onClick={() => openTool("separate")}>{t("train.sepOpen")}</Btn>
+        <Btn onClick={() => window.__FABRIC_LAN_WEB__ ? setDatasetError(t("lan.desktopOnly")) : openTool("separate")}>{t("train.sepOpen")}</Btn>
       </div>
 
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
@@ -382,11 +417,13 @@ export function TrainPage() {
           control={
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[12.5px] text-[var(--help)] break-all">{outDir || t("train.outputDefault")}</span>
-              <Btn onClick={() => void pickOutput()}>{t("train.pickOutput")}</Btn>
+              {!lan && <Btn onClick={() => void pickOutput()}>{t("train.pickOutput")}</Btn>}
             </div>
           }
         />
       </div>
+
+      {datasetError || scan?.issue ? <ErrorNote text={datasetError || scan?.issue || ""} /> : null}
 
       {/* 数字全部来自 train_scan_dataset / train_inspect_dataset。
           没有 ffprobe 时 available=false，那几项就写「—」，不编。 */}
@@ -409,7 +446,7 @@ export function TrainPage() {
     <div key="h" className="flex flex-col gap-[10px]">
       <div className="text-[12.5px] text-[var(--meta)] px-1">{t("train.sovitsTitle")}</div>
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-        <PartFields part={sovits} defaults={sd} minEpochs={1} onChange={setSovits} />
+        <PartFields part={sovits} defaults={sd} minEpochs={1} capSaveAtEpochs={lan} onChange={setSovits} />
         <Field
           label={t("train.lr")}
           control={
@@ -441,13 +478,13 @@ export function TrainPage() {
 
       <div className="text-[12.5px] text-[var(--meta)] px-1 mt-2">{t("train.gptTitle")}</div>
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-        <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
+        <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} capSaveAtEpochs={lan} onChange={setGpt} />
       </div>
 
-      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2">
+      {!lan && <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2">
         {/* Toggle 自带 label/tip，不套 Field —— 套了会出现两个标题。 */}
         <Toggle checked={resume} onChange={setResume} label={t("train.resume")} tip={t("train.resumeTip")} />
-      </div>
+      </div>}
     </div>,
 
     // 4. 开始训练
@@ -482,7 +519,7 @@ export function TrainPage() {
         />
       </div>
       <div className="flex items-center gap-3 mt-3 flex-wrap">
-        <Btn primary busy={starting} disabled={!!blocked} onClick={() => void start()}>
+        <Btn primary busy={starting} disabled={!!blocked || starting || (lan && queue.jobs.some(j => ["queued", "running", "cancelling"].includes(j.state)))} onClick={() => void start()}>
           {t("train.queueAdd")}
         </Btn>
         <span className="text-[12.5px] text-[var(--meta)]">
@@ -499,8 +536,12 @@ export function TrainPage() {
   ];
 
   return (
-    <PagePad fill>
+    <PagePad fill className="train-page">
       <PageHead title={t("train.title")} />
+      {listPicker ? <LanListPicker onClose={() => setListPicker(false)} onPick={(path) => {
+        setListPicker(false);
+        void applyDataset(path);
+      }} /> : null}
 
       {st.interrupted ? (
         <div className="flex-none mt-[18px] rounded-[var(--r)] bg-[var(--accent-soft)] text-[var(--accent-text)] px-4 py-3 text-[12.5px]">
@@ -512,9 +553,9 @@ export function TrainPage() {
         </div>
       ) : null}
 
-      <div className="mt-[22px] flex-1 min-h-0 grid gap-[18px] grid-cols-1 min-[900px]:grid-cols-[minmax(190px,220px)_minmax(0,1fr)_minmax(260px,320px)] min-[900px]:pb-[22px]">
+      <div className="train-layout mt-[22px] flex-1 min-h-0 grid gap-[18px] grid-cols-1 min-[900px]:grid-cols-[minmax(190px,220px)_minmax(0,1fr)_minmax(260px,320px)] min-[900px]:pb-[22px]">
         {/* 左栏：步骤 */}
-        <nav className="min-h-0 flex flex-col gap-1.5 max-[899px]:grid max-[899px]:grid-cols-2">
+        <nav className="train-step-nav min-h-0 flex flex-col gap-1.5 max-[899px]:grid max-[899px]:grid-cols-2">
           {steps.map((s, i) => {
             const on = step === i;
             return (
@@ -610,11 +651,13 @@ function PartFields({
   part,
   defaults,
   minEpochs,
+  capSaveAtEpochs = false,
   onChange,
 }: {
   part: Part;
   defaults?: PartDefaults;
   minEpochs: number;
+  capSaveAtEpochs?: boolean;
   onChange: (p: Part) => void;
 }) {
   const maxEpochs = Math.max(defaults?.max_epochs ?? 50, part.epochs);
@@ -630,7 +673,7 @@ function PartFields({
             max={maxEpochs}
             step={1}
             defaultValue={defaults?.epochs}
-            onChange={(v) => onChange({ ...part, epochs: v })}
+            onChange={(v) => onChange({ ...part, epochs: v, saveEvery: capSaveAtEpochs ? Math.min(v, part.saveEvery) : part.saveEvery })}
           />
         }
       />
@@ -654,9 +697,9 @@ function PartFields({
           <Slider
             value={part.saveEvery}
             min={1}
-            max={maxEpochs}
+            max={capSaveAtEpochs ? part.epochs : maxEpochs}
             step={1}
-            defaultValue={defaults?.save_every}
+            defaultValue={capSaveAtEpochs ? Math.min(part.epochs, defaults?.save_every ?? 1) : defaults?.save_every}
             onChange={(v) => onChange({ ...part, saveEvery: v })}
           />
         }
