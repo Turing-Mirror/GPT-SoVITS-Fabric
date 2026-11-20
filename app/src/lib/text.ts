@@ -20,5 +20,9 @@ export function listText(values: readonly string[]): string {
 }
 
 export function joinClauses(parts: ReadonlyArray<string | false | null | undefined>): string {
-  return parts.filter((p): p is string => !!p).join(t("s.clauseSep"));
+  return parts
+    .filter((p): p is string => !!p)
+    .map((p) => p.trim().replace(/[。，、；,;]+$/u, "").replace(/([^.])\.$/, "$1"))
+    .filter(Boolean)
+    .join(t("s.clauseSep"));
 }
