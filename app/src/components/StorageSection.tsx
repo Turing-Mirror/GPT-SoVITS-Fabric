@@ -8,7 +8,7 @@ import { Ring, Pager, useDir } from "../trm";
 import { listText } from "../lib/text";
 
 type Usage = {
-  items: { name: string; bytes: number }[];
+  items?: { name: string; bytes: number }[];
   total_bytes: number;
   free_bytes: number | null;
   vulkan_cache_bytes?: number;
@@ -34,7 +34,18 @@ const USAGE_LABEL: Record<string, string> = {
   cache: "storage.cache", other: "storage.other",
 };
 
-function human(n: number): string {
+function validBytes(n: unknown): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n >= 0;
+}
+
+function validRows(rows: unknown): rows is Row[] {
+  return Array.isArray(rows) && rows.every((row) => row && typeof row.exp === "string" &&
+    validBytes(row.total_bytes) && row.kinds && typeof row.kinds === "object" && !Array.isArray(row.kinds) &&
+    Object.values(row.kinds).every((kind) => kind && validBytes((kind as { bytes?: unknown }).bytes)));
+}
+
+function human(n: unknown): string {
+  if (!validBytes(n)) return t("s.valueUnknown");
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
@@ -43,9 +54,10 @@ function human(n: number): string {
 
 /** 各实验分别勾选清理类别，由列表底部统一执行。 */
 export function StorageSection() {
+  const readOnly = window.__FABRIC_LAN_WEB__ === true;
   const request = useRef(0);
   const [usage, setUsage] = useState<Usage | null>(null);
-  const vulkanCacheBytes = usage?.vulkan_cache_bytes ?? 0;
+  const vulkanCacheBytes = validBytes(usage?.vulkan_cache_bytes) ? usage.vulkan_cache_bytes : 0;
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -78,16 +90,20 @@ export function StorageSection() {
       invoke<Usage>("storage_usage"), invoke<Row[]>("train_cleanup_scan"),
     ]);
     if (current !== request.current) return "";
-    if (u.status === "fulfilled") setUsage(u.value);
-    if (r.status === "fulfilled") {
-      setRows(Array.isArray(r.value) ? r.value : []);
+    const usageOk = u.status === "fulfilled" && validBytes(u.value?.total_bytes);
+    const rowsOk = r.status === "fulfilled" && validRows(r.value);
+    setUsage(usageOk ? u.value : null);
+    setRows(rowsOk ? r.value : null);
+    if (rowsOk) {
       if (resetSelection) setPicked({});
       setPage(1);
     }
     const failure = [u, r].find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") setMsg(String(failure.reason));
+    const error = failure?.status === "rejected" ? String(failure.reason) :
+      !usageOk || !rowsOk ? t("s.valueFailed") : "";
+    if (error) setMsg(error);
     setBusy(false);
-    return failure?.status === "rejected" ? String(failure.reason) : "";
+    return error;
   };
 
   useEffect(() => {
@@ -116,7 +132,7 @@ export function StorageSection() {
     (sum, kind) => sum + (rows?.find(item => item.exp === row.exp)?.kinds[kind]?.bytes ?? 0), 0), 0);
 
   const apply = async () => {
-    if (!selected.length || busy) return;
+    if (readOnly || !selected.length || busy) return;
     setBusy(true);
     const names = selected.map(row => row.exp + "（" + listText(row.kinds.map(kind => t(KINDS.find(item => item.id === kind)!.labelKey))) + "）");
     try {
@@ -140,7 +156,7 @@ export function StorageSection() {
   };
 
   const clearVulkanCache = async () => {
-    if (busy || vulkanCacheBytes <= 0) return;
+    if (readOnly || busy || vulkanCacheBytes <= 0) return;
     setBusy(true);
     let result = "";
     try {
@@ -148,7 +164,9 @@ export function StorageSection() {
       setMsg("");
       const { freed_bytes } = await invoke<{ freed_bytes: number }>("gsv_cpp_clear_cache");
       result = t("s.cleanupDone", { v0: human(freed_bytes) });
-      setUsage(await invoke<Usage>("storage_usage"));
+      const next = await invoke<Usage>("storage_usage");
+      if (!validBytes(next?.total_bytes)) throw new Error(t("s.valueFailed"));
+      setUsage(next);
       setMsg(result);
     } catch (e) {
       setMsg([result, String(e)].filter(Boolean).join("\n"));
@@ -166,17 +184,19 @@ export function StorageSection() {
         {usage ? (
           <div className="px-4 py-4">
             <Ring center={human(usage.total_bytes)}
-              segments={usage.items.map((item, index) => ({
+              segments={(Array.isArray(usage.items) ? usage.items : [])
+                .filter((item) => item && typeof item.name === "string" && validBytes(item.bytes) && item.bytes > 0)
+                .map((item, index) => ({
                 id: item.name, label: t(USAGE_LABEL[item.name] ?? "storage.other"),
                 value: item.bytes, note: human(item.bytes),
                 color: `var(--storage-${index + 1}, var(--accent))`,
-              })).filter((item) => item.value > 0)} />
+              }))} />
             <p className="m-0 mt-3 text-[12.5px] text-[var(--meta)]">
               {t("storage.free", { size: usage.free_bytes == null ? t("s.valueUnknown") : human(usage.free_bytes) })}
             </p>
           </div>
-        ) : <p className="m-0 px-4 py-3 text-[12.5px] text-[var(--help)]">{busy ? t("s.valueLoading") : t("s.cleanupDesc")}</p>}
-        {vulkanCacheBytes > 0 ? (
+        ) : <p className="m-0 px-4 py-3 text-[12.5px] text-[var(--help)]">{busy ? t("s.valueLoading") : t("s.valueUnknown")}</p>}
+        {!readOnly && vulkanCacheBytes > 0 ? (
           <ListItem
             title={t("storage.vulkanCache")}
             desc={t("storage.vulkanCacheNote")}
@@ -185,20 +205,20 @@ export function StorageSection() {
           />
         ) : null}
         {rows && rows.length === 0 ? (
-          <ListItem title={t("s.cleanupTitle")} desc={t("s.cleanupNothing")} />
+          <ListItem title={t(readOnly ? "lan.trainingLeftovers" : "s.cleanupTitle")} desc={t("s.cleanupNothing")} />
         ) : null}
         {rows && rows.length ? (
           <div className="px-4 py-3">
             <div className="flex items-baseline justify-between gap-3 mb-2">
               <p className="m-0 text-[12.5px] text-[var(--ink-muted)]">
-                {t("s.cleanupTitle")}
+                {t(readOnly ? "lan.trainingLeftovers" : "s.cleanupTitle")}
               </p>
               <span className="font-mono text-[11.5px] text-[var(--meta)] tabular-nums">
                 {t("s.pageOf", { cur: pageClamped, total: totalPages })}
               </span>
             </div>
             <p className="m-0 mb-3 text-[12.5px] text-[var(--meta)] leading-relaxed">
-              {t("s.cleanupDesc")}
+              {t(readOnly ? "lan.cleanupReadOnly" : "s.cleanupDesc")}
             </p>
             <CatalogTransition scope="storage" page={pageClamped} dir={pageDir || 1}>
             <ul className="m-0 list-none p-0">
@@ -220,6 +240,12 @@ export function StorageSection() {
                     {KINDS.map((k) => {
                       const info = row.kinds[k.id];
                       const empty = !info || info.bytes === 0;
+                      if (readOnly) return empty ? null : (
+                        <div key={k.id} className="flex items-center gap-2 text-[12.5px]">
+                          <span>{t(k.labelKey)}</span>
+                          <span className="font-mono text-[11.5px] text-[var(--meta)] tabular-nums">{human(info.bytes)}</span>
+                        </div>
+                      );
                       return (
                         <label
                           key={k.id}
@@ -254,7 +280,7 @@ export function StorageSection() {
             </ul>
             </CatalogTransition>
             <Pager page={pageClamped} pages={totalPages} onChange={setPage} />
-            <div className="mt-3 pt-3 flex flex-wrap items-center gap-3 shadow-[0_-1px_0_var(--hairline)]">
+            {!readOnly && <div className="mt-3 pt-3 flex flex-wrap items-center gap-3 shadow-[0_-1px_0_var(--hairline)]">
               <span className="text-[12.5px] text-[var(--meta)]" role="status">
                 {pickedCount ? t("s.cleanPicked", { n: pickedCount, size: human(pickedBytes) }) : t("s.cleanNonePicked")}
               </span>
@@ -263,7 +289,7 @@ export function StorageSection() {
                   {t("s.cleanupApply")}
                 </Btn>
               </span>
-            </div>
+            </div>}
           </div>
         ) : null}
       </Group>

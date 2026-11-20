@@ -22,7 +22,7 @@ async function pickWallpaper(
   set: (key: string, value: unknown, defer?: boolean) => void,
 ) {
   const p = await invoke<string | null>("pick_wallpaper");
-  if (p) set("wallpaper_path", p);
+  if (typeof p === "string" && p) set("wallpaper_path", p);
 }
 
 async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
@@ -64,6 +64,8 @@ function SettingsPageImpl({
   onOpenCommunity,
 }: Props = {}) {
   const { t, locale, setLocale } = useI18n();
+  const lan = window.__FABRIC_LAN_WEB__ === true;
+  const [wallpaperError, setWallpaperError] = useState("");
   // Must re-resolve on locale change — module-level t() freezes zh-CN at import.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- tips() 读全局语言，locale 是重算信号
   const TIPS = useMemo(() => tips(), [locale]);
@@ -90,13 +92,13 @@ function SettingsPageImpl({
     : undefined;
   useEffect(() => {
     let alive = true;
-    void safeInvoke<{ enabled: boolean }>("autostart_get").then((s) => {
-      if (alive && s) setAutoStart(s.enabled);
+    if (!lan) void safeInvoke<{ enabled: boolean }>("autostart_get").then((s) => {
+      if (alive && typeof s?.enabled === "boolean") setAutoStart(s.enabled);
     });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [lan]);
   // 「在线更新」里那行当前版本。和「其他」页读的是同一个命令，也就是同一个
   // APP_VERSION —— 两处显示不一致的话，一定是有人又手写了版本号。
   const [appVersion, setAppVersion] = useState("");
@@ -112,10 +114,10 @@ function SettingsPageImpl({
 
 
   return (
-    <div>
+    <div className="settings-page">
       {/* 「联系社区」跟标签栏同一行，卡住的人不会先想到
           去翻「其他」页，得让求助的路在他正卡着的那一页上就看得见。 */}
-      <div className="px-[30px] pt-4 max-[1020px]:px-[22px] max-[720px]:px-4 flex items-center gap-3 flex-wrap">
+      <div className="settings-tabs px-[30px] pt-4 max-[1020px]:px-[22px] max-[720px]:px-4 flex items-center gap-3 flex-wrap">
         <div className="min-w-0">
           <SegmentControl
             options={TAB_KEYS.map((k) => ({ id: k, label: tabLabels[k] }))}
@@ -203,7 +205,10 @@ function SettingsPageImpl({
                 desc={t("s.3451ca742f")}
                 control={
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <Btn onClick={() => void pickWallpaper(c.set)}>{t("s.18104edf89")}</Btn>
+                    {lan ? <span className="text-[12.5px] text-[var(--meta)]">{t("lan.desktopOnly")}</span> : (
+                      <Btn onClick={() => void pickWallpaper(c.set).catch((error) => setWallpaperError(String(error)))}>{t("s.18104edf89")}</Btn>
+                    )}
+                    {wallpaperError ? <span role="alert">{wallpaperError}</span> : null}
                     {c.str("wallpaper_path") ? (
                       <>
                         <span className="text-[12.5px] text-[var(--meta)] max-w-[280px] truncate">
@@ -327,7 +332,7 @@ function SettingsPageImpl({
                   />
                 }
               />
-              <Field
+              {!lan && <Field
                 label={t("settings.autoStart")}
                 control={
                   <Toggle
@@ -354,7 +359,7 @@ function SettingsPageImpl({
                     }}
                   />
                 }
-              />
+              />}
               <Field
                 label={t("settings.compatRender")}
                 tip={t("settings.compatRenderTip")}

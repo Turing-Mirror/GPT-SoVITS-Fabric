@@ -72,3 +72,39 @@ it("clears only successful selections if another experiment fails", async () => 
   expect(host.textContent).toContain(t("s.cleanupDone", { v0: "1.0 KB" }));
   expect(apply()[0].disabled).toBe(false);
 });
+
+function rescan() {
+  const btn = [...host.querySelectorAll("button")].find(button => button.textContent === t("s.storageScan"));
+  return act(async () => btn!.click());
+}
+
+it("does not turn missing LAN payloads into an empty successful scan", async () => {
+  bridge.invoke.mockResolvedValue({});
+  await rescan();
+  expect(host.textContent).toContain(t("s.valueFailed"));
+  expect(host.textContent).not.toContain(t("s.cleanupNothing"));
+  expect(host.textContent).not.toContain("NaN");
+  expect(apply()).toHaveLength(0);
+});
+
+it("keeps real zero-byte usage while treating invalid free space as unknown", async () => {
+  bridge.invoke.mockImplementation(async cmd => cmd === "storage_usage"
+    ? { total_bytes: 0, free_bytes: "garbage", items: {} } : []);
+  await rescan();
+  expect(host.textContent).toContain(t("storage.free", { size: t("s.valueUnknown") }));
+  expect(host.textContent).toContain(t("s.cleanupNothing"));
+  expect(host.textContent).not.toContain(t("s.valueFailed"));
+});
+
+it("shows the scanned training leftovers as read-only in a LAN browser", async () => {
+  window.__FABRIC_LAN_WEB__ = true;
+  try {
+    await act(async () => root.render(<StorageSection />));
+    expect(host.textContent).toContain(t("lan.cleanupReadOnly"));
+    expect(host.textContent).toContain("voice0");
+    expect(apply()).toHaveLength(0);
+    expect(host.querySelectorAll("input")).toHaveLength(0);
+  } finally {
+    delete window.__FABRIC_LAN_WEB__;
+  }
+});

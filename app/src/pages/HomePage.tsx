@@ -1,3 +1,4 @@
+import { downloadAudio } from "../lib/downloadAudio";
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
@@ -66,6 +67,7 @@ function useBannerConfig() {
 const STAGE_BG = "color-mix(in srgb, var(--stage) calc(var(--banner-opacity, 1) * 100%), transparent)";
 
 function fmtAgo(mtime: number): string {
+  if (!Number.isFinite(mtime) || mtime <= 0) return t("s.valueUnknown");
   const diff = Date.now() / 1000 - mtime;
   if (diff < 60) return t("home.justNow");
   if (diff < 3600) return t("home.mAgo", { v0: String(Math.floor(diff / 60)) });
@@ -75,6 +77,7 @@ function fmtAgo(mtime: number): string {
 
 export function HomePage({ onNavigate, active = true }: Props) {
   const { locale } = useI18n();
+  const lan = window.__FABRIC_LAN_WEB__ === true;
   void locale;
   const [roles, setRoles] = useState<Role[] | null>(() => isTauri() ? peekCharacters() ?? homeSnapshot.roles : DEMO_ROLES);
   const [recent, setRecent] = useState<Recent[] | null>(() => isTauri() ? homeSnapshot.recent : []);
@@ -150,12 +153,15 @@ export function HomePage({ onNavigate, active = true }: Props) {
         <section className="home-section home-recent">
           <div className="home-section-head">
             <h3>{t("home.recentTitle")}</h3>
-            <span className="text-[11.5px] text-[var(--meta)]">{t("home.recentNote")}</span>
+            <span className="text-[11.5px] text-[var(--meta)]">{t(lan ? "lan.recentNote" : "home.recentNote")}</span>
           </div>
           {recent === null ? null : recent.length === 0 ? <div className="home-empty">{t("home.recentEmpty")}</div> : (
             <FittedItems className="home-recent-list" items={recent.map((r) => (
               <button key={r.path} type="button" title={r.name}
-                onClick={() => void invoke("synth_reveal_file", { path: r.path }).catch(() => {})}
+                onClick={() => {
+                  if (lan) downloadAudio(r.path, r.name);
+                  else void invoke("synth_reveal_file", { path: r.path }).catch(() => {});
+                }}
                 className="home-recent-item">
                 <span className="truncate min-w-0">{r.name}</span>
                 <span className="text-[11.5px] text-[var(--meta)] shrink-0 tabular-nums">{fmtAgo(r.mtime)}</span>

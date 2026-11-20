@@ -1,3 +1,4 @@
+import { LanListPicker } from "../components/LanListPicker";
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useMemo, useState, memo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -52,6 +53,7 @@ type Row = {
 
 type Loaded = {
   path: string;
+  revision?: string;
   dir: string;
   rows: Row[];
   total: number;
@@ -106,6 +108,9 @@ function AnnotPageImpl() {
   const { locale } = useI18n();
   void locale;
 
+  const lan = window.__FABRIC_LAN_WEB__ === true;
+  const [picker, setPicker] = useState(false);
+  const [revision, setRevision] = useState<string>();
   const [path, setPath] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [speakers, setSpeakers] = useState<string[]>([]);
@@ -134,8 +139,10 @@ function AnnotPageImpl() {
   }, [msg]);
 
   const apply = useCallback((r: Loaded) => {
+    if (!r || typeof r.path !== "string" || !Array.isArray(r.rows)) throw new Error(t("s.valueFailed"));
     stopAudio();
     setPath(r.path);
+    setRevision(r.revision);
     setRows(r.rows || []);
     setSpeakers(r.speakers || []);
     setDirty(false);
@@ -165,12 +172,13 @@ function AnnotPageImpl() {
   }, [apply, dirty, noteRelocated]);
 
   const open = useCallback(async () => {
+    if (window.__FABRIC_LAN_WEB__) { setPicker(true); return; }
     const p = await pickPath<string | null>(
       "annot_pick",
       undefined,
       t("s.annot.pickHint"),
     ).catch(() => null);
-    if (p) await openPath(p);
+    if (typeof p === "string" && p) await openPath(p);
   }, [openPath]);
 
   // 模型页、合成页点了「编辑标注」：打开那一份。
@@ -231,6 +239,7 @@ function AnnotPageImpl() {
       const r = await invoke<{ written: number; backup: boolean }>("annot_save", {
         path,
         rows,
+        ...(lan ? { revision } : {}),
       });
       // 存完立刻重读：文件在不在、有没有重复，都可能因为这次保存变了。
       apply(await invoke<Loaded>("annot_load", { path }));
@@ -245,7 +254,7 @@ function AnnotPageImpl() {
     } finally {
       setBusy(false);
     }
-  }, [apply, busy, path, rows, loadRoleLists]);
+  }, [apply, busy, lan, path, revision, rows, loadRoleLists]);
 
   /** 改一行的某一格。行号是主键 —— 过滤/翻页之后下标早就不是行号了。 */
   const edit = useCallback((line: number, patch: Partial<Row>) => {
@@ -355,7 +364,7 @@ function AnnotPageImpl() {
     "[field-sizing:content] px-2 py-1 rounded-[var(--rs)] text-[12.5px] text-[var(--ink)] bg-transparent shadow-[inset_0_0_0_1px_var(--line)] outline-none focus:shadow-[inset_0_0_0_1px_var(--accent)]";
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="annot-page h-full overflow-y-auto">
       <PagePad>
         <PageHead
           title={t("s.annot.title")}
@@ -363,7 +372,7 @@ function AnnotPageImpl() {
           back={path ? () => void close() : undefined}
           actions={
             <>
-              {isTauri() && !inToolWindow() ? (
+              {isTauri() && !window.__FABRIC_LAN_WEB__ && !inToolWindow() ? (
                 <Btn onClick={() => openTool("annot")}>
                   {t("s.annot.openWindow")}
                 </Btn>
@@ -384,12 +393,12 @@ function AnnotPageImpl() {
                   <Btn onClick={() => void reload()} disabled={busy}>
                     {t("s.annot.reload")}
                   </Btn>
-                  <Btn
+                  {!lan && <Btn
                     onClick={() => void invoke("annot_reveal", { path }).catch(() => {})}
                   >
                     {t("s.annot.reveal")}
-                  </Btn>
-                  <Btn onClick={() => trainWith(dirOf(path))} disabled={dirty}>
+                  </Btn>}
+                  <Btn onClick={() => trainWith(lan ? path : dirOf(path))} disabled={dirty}>
                     {t("s.annot.toTrain")}
                   </Btn>
                   <Btn primary onClick={() => void save()} busy={busy} disabled={!dirty}>
@@ -401,6 +410,7 @@ function AnnotPageImpl() {
           }
         />
 
+        {picker ? <LanListPicker onClose={() => setPicker(false)} onPick={(p) => { setPicker(false); void openPath(p); }} /> : null}
         {err || config.error ? <ErrorNote text={err || config.error} /> : null}
         {msg ? (
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
@@ -438,7 +448,7 @@ function AnnotPageImpl() {
                 </span>
               }
             >
-              <div className="flex items-center gap-3 flex-wrap mb-4">
+              <div className="annot-toolbar flex items-center gap-3 flex-wrap mb-4">
                 <SearchBox value={query} onChange={setQuery} />
                 <SegmentControl<"all" | "bad">
                   value={only}
@@ -463,9 +473,9 @@ function AnnotPageImpl() {
                     ]}
                     onChange={bulkLang}
                   />
-                  <Btn onClick={() => void findAudio()} disabled={!missing || busy}>
+                  {!lan && <Btn onClick={() => void findAudio()} disabled={!missing || busy}>
                     {t("s.annot.findAudio")}
-                  </Btn>
+                  </Btn>}
                   <Btn onClick={() => void dropMissing()} disabled={!missing}>
                     {t("s.annot.dropMissing", { v0: missing })}
                   </Btn>
@@ -473,7 +483,7 @@ function AnnotPageImpl() {
               </div>
 
               <CatalogTransition scope={`${path}|${only}|${query}`} page={paged.page} dir={filterDir || pageDir || 1}>
-              <div className="overflow-x-auto bg-[var(--group)] rounded-[var(--r)]">
+              <div className="annot-table-wrap overflow-x-auto bg-[var(--group)] rounded-[var(--r)]">
                 <table className="w-full border-collapse text-[12.5px]">
                   <thead>
                     <tr className="text-[var(--meta)] text-left">

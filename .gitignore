@@ -46,3 +46,6 @@ app/src-tauri/engine-payload/GPT_SoVITS/text/ja_userdic/userdict.md5
 
 # Local API jobs and generated audio
 /User_Data/api/
+
+# Optional LAN frontend build
+/app/frontend-lan/

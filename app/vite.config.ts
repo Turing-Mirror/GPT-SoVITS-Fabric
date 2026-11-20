@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import type { Plugin } from "vite";
+import { fileURLToPath } from "node:url";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -24,39 +25,49 @@ function stripCrossorigin(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
-  plugins: [trmHostAdapter(), react(), tailwindcss(), stripCrossorigin()],
+export default defineConfig(({ mode }) => {
+  const lan = mode === "lan";
+  const adapter = (name: string) => fileURLToPath(new URL(`./src/web/tauri-${name}.ts`, import.meta.url));
+  return {
+    plugins: [...(lan ? [] : [trmHostAdapter()]), react(), tailwindcss(), stripCrossorigin()],
+    resolve: lan ? { alias: {
+      "@tauri-apps/api/core": adapter("core"),
+      "@tauri-apps/api/event": adapter("event"),
+      "@tauri-apps/api/window": adapter("window"),
+      "@tauri-apps/plugin-opener": adapter("opener"),
+    } } : undefined,
 
-  // Relative asset URLs so custom-protocol pages resolve next to index.html.
-  base: "./",
+    // Relative asset URLs so custom-protocol pages resolve next to index.html.
+    base: "./",
 
-  // Ship UI as a replaceable `frontend/` pack (see tauri.conf frontendDist).
-  build: {
-    // 不发 sourcemap。以前是发的，理由是「用户机器上的崩溃栈没有 map 就是
-    // 一堆压缩后的字母」—— 那个理由本身没错，但 1.4 MB 的 .map 会跟着界面
-    // 补丁一起推给每个用户，而补丁本体才 290 KB。
-    //
-    // 要重新拿回可读的崩溃栈，别直接改回 true：把 map 留在本地构建产物里、
-    // 只在 pack_gui_patch 的打包清单里排除 *.map，两头都能要。
-    sourcemap: false,
-    outDir: "frontend",
-    emptyOutDir: true,
-  },
-
-  clearScreen: false,
-  server: {
-    port: 1430,
-    strictPort: true,
-    host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1431,
-        }
-      : undefined,
-    watch: {
-      ignored: ["**/src-tauri/**"],
+    // Ship UI as a replaceable `frontend/` pack (see tauri.conf frontendDist).
+    build: {
+      // 不发 sourcemap。以前是发的，理由是「用户机器上的崩溃栈没有 map 就是
+      // 一堆压缩后的字母」—— 那个理由本身没错，但 1.4 MB 的 .map 会跟着界面
+      // 补丁一起推给每个用户，而补丁本体才 290 KB。
+      //
+      // 要重新拿回可读的崩溃栈，别直接改回 true：把 map 留在本地构建产物里、
+      // 只在 pack_gui_patch 的打包清单里排除 *.map，两头都能要。
+      sourcemap: false,
+      outDir: lan ? "frontend-lan" : "frontend",
+      emptyOutDir: true,
     },
-  },
-}));
+
+    clearScreen: false,
+    server: {
+      port: 1430,
+      strictPort: true,
+      host: host || false,
+      hmr: host
+        ? {
+            protocol: "ws",
+            host,
+            port: 1431,
+          }
+        : undefined,
+      watch: {
+        ignored: ["**/src-tauri/**"],
+      },
+    },
+  };
+});

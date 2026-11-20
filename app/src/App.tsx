@@ -1,3 +1,4 @@
+import { LanCommunityPage } from "./pages/LanCommunityPage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePill, SetupGuide, type GuideStep } from "./components/SetupGuide";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
@@ -672,7 +673,7 @@ export default function App() {
   return (
     // 根容器不铺底色：底色在 html 上，壁纸层夹在中间。这里再铺一层不透明的
     // --bg 会把壁纸盖死 —— 这正是「背景图设了没反应」的另一半原因。
-    <div className="h-full flex flex-col text-[var(--ink)] overflow-hidden relative">
+    <div className="fabric-app-shell h-full flex flex-col text-[var(--ink)] overflow-hidden relative">
       <TitleBar
         page={page}
         onPage={(id) => {
@@ -718,6 +719,7 @@ export default function App() {
                 <HomePage onNavigate={setPage} active={page === "home"} />
               );
             case "plaza":
+              if (window.__FABRIC_LAN_WEB__) return <LanCommunityPage />;
               return (
                 <PlazaPage
                   feed={plaza.feed}

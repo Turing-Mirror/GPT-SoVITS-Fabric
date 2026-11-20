@@ -98,6 +98,8 @@ Copy-Item -Path ../frontend/* -Destination target/debug/frontend -Recurse -Force
 - **打包基础底模**：`python scripts/build_engine_core.py --pretrained <pretrained_models> --g2pw <G2PWModel>`
 - **编译在线清单**：`python scripts/build_catalog.py --sources <发布仓>/catalog/sources.json --out <发布仓>/index.json --bundle app/src-tauri/engine-payload/configs/online_catalog.json`
 
+> 可选：[局域网网页版预览](./lan_web/README.md)，独立构建，默认仅绑定本机。
+
 ## 开源许可与声音授权
 
 - 本项目源码采用 [MIT License](./app/src-tauri/engine-payload/LICENSE) 许可协议开源。

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState, type CSSProperties } from "react";
 import { colsForWidth } from "../lib/voices";
 
-export const MODEL_GRID_CLASS = "grid grid-cols-[repeat(var(--model-columns),minmax(0,1fr))] gap-3";
+export const MODEL_GRID_CLASS = "model-grid grid grid-cols-[repeat(var(--model-columns),minmax(0,1fr))] gap-3";
 
 /** Use the same five-column maximum and responsive breakpoints as RVC Fabric. */
 export function useModelGrid(rowsPerPage = 3) {
