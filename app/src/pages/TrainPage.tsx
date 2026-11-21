@@ -195,7 +195,7 @@ export function TrainPage() {
     if (p) await applyDataset(p);
   }, [applyDataset]);
 
-  // 标注页点了「用于训练」：把那份标注所在的目录设为数据集。
+  // 标注页点了「用于训练」：直接使用当前打开的标注文件。
   useEffect(() => {
     const apply = () => {
       const p = take("trainDataset");

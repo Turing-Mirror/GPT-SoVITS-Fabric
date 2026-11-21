@@ -1,6 +1,7 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useMemo, useState, memo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Block, Btn, PageHead, PagePad } from "../components/ui";
 import { Select, Slider } from "../components/controls";
 import { SegmentControl } from "../components/SegmentControl";
@@ -16,7 +17,7 @@ import { useI18n } from "../i18n";
 import { ModelCard } from "../components/ModelCard";
 import { useAudioPreview } from "../hooks/useAudioPreview";
 import { registerLeaveGuard } from "../lib/navigationGuard";
-import { usePageActive, usePageLeave } from "trm-ui";
+import { Modal, usePageActive, usePageLeave } from "trm-ui";
 import { useConfig } from "../hooks/useConfig";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
@@ -80,12 +81,6 @@ function listsOf(roles: NonNullable<ReturnType<typeof peekCharacters>>): RoleLis
 
 type RoleList = { key: string; roleId: string; role: string; cover?: string; file: string; path: string; rows: number };
 
-/** 文件所在的目录。 */
-function dirOf(path: string): string {
-  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return i > 0 ? path.slice(0, i) : path;
-}
-
 function issueText(id: string): string {
   return t(`s.annot.issue.${id}`);
 }
@@ -113,6 +108,9 @@ function AnnotPageImpl() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [source, setSource] = useState("");
+  const [progress, setProgress] = useState("");
   usePageLeave(() => setMsg(""));
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState<"all" | "bad">("all");
@@ -122,9 +120,9 @@ function AnnotPageImpl() {
   const { playing, play: playAudio, stop: stopAudio, player } = useAudioPreview(volume / 100);
   const active = usePageActive();
   useEffect(() => {
-    if (!dirty || !active) return;
+    if ((!dirty && !(creating && busy)) || !active) return;
     return registerLeaveGuard(() => busy ? Promise.resolve(false) : askConfirm(t("s.annot.dropChanges")));
-  }, [dirty, busy, active]);
+  }, [dirty, busy, creating, active]);
 
   // 页面消息自己消失。不消失的话下一条会盖掉上一条，用户更容易漏看。
   useEffect(() => {
@@ -172,6 +170,51 @@ function AnnotPageImpl() {
     ).catch(() => null);
     if (p) await openPath(p);
   }, [openPath]);
+
+  const pickSource = async () => {
+    setErr("");
+    try {
+      const folder = await pickPath<string | null>(
+        "annot_pick_source", undefined, t("s.annot.audioDirHint"),
+      );
+      if (folder) setSource(folder);
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  const generate = async () => {
+    if (!source || busy) return;
+    setErr("");
+    setBusy(true);
+    setProgress(t("s.annot.generating"));
+    let unlisten: UnlistenFn | undefined;
+    try {
+      unlisten = await listen<string>("annot-progress", event => setProgress(event.payload));
+      apply(await invoke<Loaded>("annot_generate", { source }));
+      setCreating(false);
+      setSource("");
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      unlisten?.();
+      setBusy(false);
+    }
+  };
+
+  const closeCreate = () => {
+    if (busy) return;
+    setCreating(false);
+    setErr("");
+  };
+
+  const useForTraining = () => {
+    if (inToolWindow()) {
+      void invoke("tools_open_train", { path }).catch(e => setErr(String(e)));
+    } else {
+      trainWith(path);
+    }
+  };
 
   // 模型页、合成页点了「编辑标注」：打开那一份。
   useEffect(() => {
@@ -368,9 +411,15 @@ function AnnotPageImpl() {
                   {t("s.annot.openWindow")}
                 </Btn>
               ) : null}
-              {!path ? <Btn primary onClick={() => void open()} busy={busy}>
-                {t("s.annot.open")}
-              </Btn> : null}
+              {!path ? (
+                <>
+                  <Btn onClick={() => void open()} disabled={busy}>{t("s.annot.open")}</Btn>
+                  <Btn primary disabled={busy} onClick={() => {
+                    setErr("");
+                    setCreating(true);
+                  }}>{t("s.annot.create")}</Btn>
+                </>
+              ) : null}
               {path ? (
                 <>
                   <div className="flex items-center gap-2" role="group" aria-label={t("s.annot.volume")}>
@@ -389,7 +438,7 @@ function AnnotPageImpl() {
                   >
                     {t("s.annot.reveal")}
                   </Btn>
-                  <Btn onClick={() => trainWith(dirOf(path))} disabled={dirty}>
+                  <Btn onClick={useForTraining} disabled={dirty || busy}>
                     {t("s.annot.toTrain")}
                   </Btn>
                   <Btn primary onClick={() => void save()} busy={busy} disabled={!dirty}>
@@ -401,7 +450,30 @@ function AnnotPageImpl() {
           }
         />
 
-        {err || config.error ? <ErrorNote text={err || config.error} /> : null}
+        {(!creating && err) || config.error ? <ErrorNote text={(!creating && err) || config.error} /> : null}
+        <Modal open={creating} onClose={closeCreate} label={t("s.annot.create")}>
+          <div className="space-y-4 p-6" aria-busy={busy}>
+            <h2 className="m-0 text-xl font-semibold">{t("s.annot.create")}</h2>
+            <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.annot.createHint")}</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Btn disabled={!isTauri() || busy} onClick={() => void pickSource()}>
+                {t("s.annot.chooseSource")}
+              </Btn>
+              {source ? <span className="min-w-0 break-all text-[12.5px]">{source}</span> : null}
+            </div>
+            {!isTauri() ? (
+              <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.annot.createPreview")}</p>
+            ) : null}
+            {busy ? <p role="status" className="m-0 text-[12.5px]">{progress}</p> : null}
+            {err ? <ErrorNote text={err} /> : null}
+            <div className="flex justify-end gap-2">
+              <Btn disabled={busy} onClick={closeCreate}>{t("ui.common.cancel")}</Btn>
+              <Btn primary disabled={!source} busy={busy} onClick={() => void generate()}>
+                {t("s.annot.generate")}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
         {msg ? (
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
         ) : null}

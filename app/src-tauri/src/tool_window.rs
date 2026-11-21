@@ -153,6 +153,16 @@ pub fn focus_main_help(app: &AppHandle, section: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn focus_main_train(app: &AppHandle, path: &str) -> Result<(), String> {
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| crate::i18n::t("s.toolMainWindowGone"))?;
+    let _ = main.unminimize();
+    let _ = main.show();
+    let _ = main.set_focus();
+    main.emit("open-train-dataset", path).map_err(|e| e.to_string())
+}
+
 pub fn open(app: &AppHandle, kind: &str) -> Result<(), String> {
     let sp = spec_for(kind).ok_or_else(|| crate::i18n::te("s.22a95f37e3", &(kind)))?;
     let label = label_for(kind);

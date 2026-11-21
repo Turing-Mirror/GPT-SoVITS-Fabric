@@ -200,7 +200,7 @@ fn cancel_flag() -> Arc<AtomicBool> {
         .clone()
 }
 
-fn worker_script(root: &Path) -> PathBuf {
+pub(crate) fn worker_script(root: &Path) -> PathBuf {
     root.join("tools").join("train_worker.py")
 }
 
@@ -843,7 +843,7 @@ fn count_dir(p: &Path) -> u64 {
 
 /// N 卡才谈得上训练。CPU 变体跑 `train.py` 不是「慢一点」，是几百小时。
 /// 必须在界面上拦住，而不是让用户跑一晚上才发现。
-fn is_nvidia(root: &Path) -> bool {
+pub(crate) fn is_nvidia(root: &Path) -> bool {
     match crate::provision::read_package_meta_variant(root).as_deref() {
         // nvidia* 一并盖住旧的 50 系专用 meta：那也是 CUDA 包，变体收敛后不再单列。
         Some(v) if v.starts_with("nvidia") => true,

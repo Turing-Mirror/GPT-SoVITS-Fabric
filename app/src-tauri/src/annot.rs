@@ -1,4 +1,4 @@
-//! `.list` 标注文件的读、校、写。
+//! `.list` 标注文件的生成、读取、校对和保存。
 //!
 //! GPT-SoVITS 的一行标注长这样：
 //!
@@ -10,8 +10,7 @@
 //! 约定见 docs/DECISIONS.md 的 D4），所以这里所有的绝对路径都是当场拼出来
 //! 给界面播放用的，不写回文件。
 //!
-//! 这个模块只做三件事，而且刻意都做成同步的纯函数：解析一行、给一行挑毛病、
-//! 把一批行写回去。挑毛病的部分是这里唯一有判断的地方 —— 标注坏掉的方式就
+//! 标注校验会指出可修复的问题。标注坏掉的方式就
 //! 那么几种（文件不在、字段数不对、文本空、同一个音频出现两次、语种写错），
 //! 每一种都直接对应用户接下来要做的一个动作，所以按种类分开报，而不是笼统
 //! 地说一句「第 47 行有问题」。
@@ -21,11 +20,16 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use serde_json::{json, Value};
+
+static GENERATING: Mutex<()> = Mutex::new(());
 
 /// 上游认得的语种记号。大小写不敏感 —— 素材库里 `ZH` 和 `zh` 都见过。
 ///
@@ -310,6 +314,69 @@ pub fn pick_audio_dir(win: Option<&tauri::WebviewWindow>) -> Option<String> {
         crate::asset_scope::grant_dir(win.app_handle(), Path::new(p));
     }
     picked
+}
+
+pub fn generate(root: &Path, source: &Path, window: &tauri::WebviewWindow) -> Result<Value, String> {
+    let _generation = GENERATING.try_lock()
+        .map_err(|_| crate::i18n::t("s.annot.alreadyGenerating"))?;
+    let python = crate::paths::runtime_python(root)
+        .ok_or_else(|| crate::i18n::t("s.47e57cab60"))?;
+    let log = crate::logging::begin_run(root, crate::logging::CH_TRAIN, &json!({
+        "task": "annotation", "source": source,
+    }));
+    let stderr = fs::OpenOptions::new().append(true).open(&log)
+        .map_err(|e| e.to_string())?;
+    let device = if crate::train::is_nvidia(root) { "cuda" } else { "cpu" };
+    let mut command = Command::new(python);
+    command
+        .arg(crate::train::worker_script(root))
+        .arg("--prepare")
+        .arg(source)
+        .arg(crate::paths::user_data(root).join("datasets"))
+        .arg(device)
+        .current_dir(root)
+        .envs(crate::worker::env_for_runtime(root))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(stderr));
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command.spawn().map_err(|e| e.to_string())?;
+    let _pid = crate::worker::ToolPidGuard::new(child.id());
+    let mut result = None;
+    let mut read_error = None;
+    for line in BufReader::new(child.stdout.take().expect("piped stdout")).lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(error) => { read_error = Some(error.to_string()); break; }
+        };
+        let Ok(message) = serde_json::from_str::<Value>(&line) else { continue; };
+        match message["phase"].as_str() {
+            Some("stage") => {
+                let _ = window.emit_to(window.label(), "annot-progress", crate::i18n::t_worker_msg(&message));
+            }
+            Some("done" | "error") => result = Some(message),
+            _ => {}
+        }
+    }
+    let status = child.wait().map_err(|e| e.to_string())?;
+    if status.success() && read_error.is_none() {
+        if let Some(path) = result.as_ref().and_then(|line| line["path"].as_str()) {
+            crate::logging::finish_run(&log, true, "ok");
+            return load(path);
+        }
+    }
+
+    let error = result
+        .as_ref()
+        .map(crate::i18n::t_worker_msg)
+        .unwrap_or_else(|| read_error.unwrap_or_else(|| crate::i18n::t("s.annot.generateFailed")));
+    let detail = crate::logging::tail_lines(&log, 12, 8192);
+    crate::logging::finish_run(&log, true, "error");
+    Err(format!("{error}\n{detail}"))
 }
 
 /// 编辑器里选了音频目录：在那个目录下找回仍然缺失的音频。`rows` 是编辑器

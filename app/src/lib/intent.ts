@@ -56,5 +56,5 @@ export function onHandoff(fn: () => void): () => void {
 export const synthWithRole = (roleId: string) => hand("synthRole", roleId);
 /** 到标注页并打开这份 .list。 */
 export const openInAnnot = (listPath: string) => hand("annotList", listPath);
-/** 到训练页并把这个目录设为数据集。 */
-export const trainWith = (datasetDir: string) => hand("trainDataset", datasetDir);
+/** 到训练页并选中这份标注。 */
+export const trainWith = (listPath: string) => hand("trainDataset", listPath);

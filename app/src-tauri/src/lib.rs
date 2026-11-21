@@ -839,6 +839,11 @@ fn tools_open_help(app: AppHandle, section: Option<String>) -> Result<(), String
     tool_window::focus_main_help(&app, section.as_deref().unwrap_or("train"))
 }
 
+#[tauri::command]
+fn tools_open_train(app: AppHandle, path: String) -> Result<(), String> {
+    tool_window::focus_main_train(&app, &path)
+}
+
 // --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
 
 #[tauri::command]
@@ -948,6 +953,23 @@ fn synth_reveal_file(path: String) -> Result<(), String> {
 #[tauri::command]
 fn annot_pick(window: tauri::WebviewWindow) -> Option<String> {
     annot::pick(Some(&window))
+}
+
+#[tauri::command]
+fn annot_pick_source(window: tauri::WebviewWindow) -> Option<String> {
+    annot::pick_audio_dir(Some(&window))
+}
+
+#[tauri::command]
+async fn annot_generate(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+    source: String,
+) -> Result<Value, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || annot::generate(&root, std::path::Path::new(&source), &window))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1512,6 +1534,7 @@ pub fn run() {
             wallpaper_data_url,
             tools_open,
             tools_open_help,
+            tools_open_train,
             shell_version,
             ui_ready,
             ui_log,
@@ -1611,6 +1634,8 @@ pub fn run() {
             train_output_dir,
             train_cancel,
             annot_pick,
+            annot_pick_source,
+            annot_generate,
             annot_load,
             annot_save,
             annot_relocate,

@@ -35,7 +35,7 @@ import { getAssetsStatus, registerDownloadModelsOpener } from "./lib/downloadMod
 import { registerHelpOpener } from "./lib/helpNav";
 import { usePageNavigation } from "./hooks/usePageNavigation";
 import { mayCloseApp } from "./lib/windowLeave";
-import { registerNavigator } from "./lib/intent";
+import { registerNavigator, trainWith } from "./lib/intent";
 import { useI18n } from "./i18n";
 import { t } from "./i18n/t";
 
@@ -629,6 +629,12 @@ export default function App() {
     registerNavigator(setPage);
     return () => registerNavigator(null);
   }, [setPage]);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    const ready = listen<string>("open-train-dataset", ({ payload }) => trainWith(payload));
+    return () => { void ready.then(unlisten => unlisten()); };
+  }, []);
 
   useEffect(() => {
     let un: (() => void) | undefined;

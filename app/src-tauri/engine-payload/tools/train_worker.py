@@ -59,6 +59,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -305,6 +306,7 @@ def run_step(argv: list[str], env: dict, *, stage: str, label: str,
                 say(stage, "epoch", f"epoch {n} / {total_epoch}",
                     done=min(n, total_epoch), total=total_epoch, epoch=str(n))
     code = proc.wait()
+    proc.stdout.close()
     if code != 0:
         joined = "\n".join(tail[-8:])
         if _looks_like_oom(joined):
@@ -384,7 +386,10 @@ def stage_prepare(req: dict, opt_dir: Path) -> Path:
         say("prepare", "skip_prepare", "using the existing annotation file",
             done=1, total=1, name=existing.name, count=str(len(rows)))
         return existing
+    return transcribe_audio(dataset, opt_dir, req["exp"], req)
 
+
+def transcribe_audio(dataset: Path, opt_dir: Path, name: str, req: dict) -> Path:
     files = audio_files(dataset)
     if not files:
         raise Fail("dataset_missing", f"no audio under {dataset}", path=str(dataset))
@@ -397,14 +402,28 @@ def stage_prepare(req: dict, opt_dir: Path) -> Path:
     sliced.mkdir(parents=True, exist_ok=True)
     say("prepare", "slicing", "slicing the source audio", done=0, total=len(files))
     env = base_env(req)
-    for i, f in enumerate(files):
-        run_step(
-            [sys.executable, str(slicer), str(f), str(sliced),
-             "-34", "4000", "300", "10", "500", "0.9", "0.25", "0", "1"],
-            env, stage="prepare", label="slice_audio",
-        )
-        say("prepare", "slicing", "slicing the source audio",
-            done=i + 1, total=len(files))
+    if req["device"] == "cpu":
+        env["CUDA_VISIBLE_DEVICES"] = ""
+    used_names = set()
+    with tempfile.TemporaryDirectory(dir=opt_dir) as work:
+        work_dir = Path(work)
+        for index, source in enumerate(files, start=1):
+            run_step(
+                [sys.executable, str(slicer), str(source), work,
+                 "-34", "4000", "300", "10", "500", "0.9", "0.25", "0", "1"],
+                env, stage="prepare", label="slice_audio",
+            )
+            # Recordings in different subfolders can share the same file name.
+            for clip in work_dir.glob("*.wav"):
+                filename = clip.name
+                while filename.casefold() in used_names:
+                    filename = f"{index}_{filename}"
+                used_names.add(filename.casefold())
+                clip.replace(sliced / filename)
+            say("prepare", "slicing", "slicing the source audio",
+                done=index, total=len(files))
+    if not any(sliced.glob("*.wav")):
+        raise Fail("no_transcript", "no audio slices were produced")
 
     asr = _pick_asr()
     if asr is None:
@@ -416,18 +435,43 @@ def stage_prepare(req: dict, opt_dir: Path) -> Path:
             path=str(sliced),
         )
     say("prepare", "transcribing", "transcribing the slices")
-    out_list = opt_dir / f"{req['exp']}.list"
+    out_list = opt_dir / f"{name}.list"
+    produced = opt_dir / f"{sliced.name}.list"
+    produced.unlink(missing_ok=True)
     run_step(
         [sys.executable, str(asr), "-i", str(sliced), "-o", str(opt_dir),
          "-s", "large-v3", "-l", "auto", "-p", "float16" if req["is_half"] else "float32"],
         env, stage="prepare", label="asr",
     )
-    produced = find_list(opt_dir)
-    if produced is None:
+    if not produced.is_file() or not parse_list(produced):
         raise Fail("no_transcript", "the ASR step produced no .list file")
     if produced != out_list:
         shutil.move(str(produced), str(out_list))
     return out_list
+
+
+def create_annotation(dataset: Path, datasets_dir: Path, device: str) -> Path:
+    """Create an editable dataset without starting a training job."""
+    name = dataset.name[:64] or "dataset"
+    datasets_dir.mkdir(parents=True, exist_ok=True)
+    output = Path(tempfile.mkdtemp(prefix="dataset-", dir=datasets_dir))
+    try:
+        annotation = transcribe_audio(dataset, output, name, {
+            "device": device, "is_half": device == "cuda",
+        })
+        transcripts = {row["abs"]: row for row in parse_list(annotation)}
+        rows = []
+        for clip in sorted((output / "sliced").glob("*.wav")):
+            row = transcripts.get(str(clip.resolve()), {})
+            relative = clip.relative_to(output).as_posix()
+            rows.append(f"{relative}|{name}|{row.get('lang', 'auto')}|{row.get('text', '')}")
+        if not any(row["text"] for row in transcripts.values()):
+            raise Fail("no_transcript", "no speech was transcribed")
+        annotation.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        return annotation
+    except Exception:
+        shutil.rmtree(output, ignore_errors=True)
+        raise
 
 
 def _pick_asr() -> Path | None:
@@ -808,6 +852,18 @@ def collect(req: dict, weights_dir: Path, list_path: Path | None) -> dict:
 
 def main() -> int:
     _ensure_stdio_utf8()
+    if len(sys.argv) == 5 and sys.argv[1] == "--prepare":
+        _, _, dataset, datasets_dir, device = sys.argv
+        try:
+            path = create_annotation(Path(dataset), Path(datasets_dir), device)
+        except Fail as f:
+            emit(phase="error", message_code=f.code, message=f.fallback, message_params=f.params)
+            return 1
+        except Exception as exc:
+            emit(phase="error", message=str(exc))
+            return 1
+        emit(phase="done", path=str(path))
+        return 0
     if len(sys.argv) < 2:
         emit(phase="error", message_code="train.usage",
              message="usage: train_worker.py <request.json>")
