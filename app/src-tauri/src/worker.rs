@@ -97,7 +97,7 @@ fn pid_image_path(_pid: u32) -> String {
 }
 
 #[cfg(windows)]
-fn kill_tree(pid: u32) {
+pub(crate) fn kill_tree(pid: u32) {
     if pid == 0 {
         return;
     }
@@ -112,7 +112,7 @@ fn kill_tree(pid: u32) {
 }
 
 #[cfg(not(windows))]
-fn kill_tree(pid: u32) {
+pub(crate) fn kill_tree(pid: u32) {
     if pid == 0 {
         return;
     }

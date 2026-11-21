@@ -969,6 +969,7 @@ export default function App() {
         onNavigate={setPage}
         onOpenProvision={() => {
           setProvisionDismissed(false);
+          setProvisionMinimized(false);
           setShowProvision(true);
         }}
       />

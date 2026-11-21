@@ -42,6 +42,7 @@ export function protectToolClose() {
   const win = getCurrentWindow();
   let disposed = false;
   let approved = false;
+  let asking = false;
   const offs: (() => void)[] = [];
   const add = (promise: Promise<() => void>) => {
     void promise.then(off => { if (disposed) off(); else offs.push(off); });
@@ -49,7 +50,16 @@ export function protectToolClose() {
   add(win.onCloseRequested(async event => {
     if (approved) return;
     event.preventDefault();
-    if (await mayLeave()) { approved = true; await win.close(); }
+    if (asking) return;
+    asking = true;
+    try {
+      if (await mayLeave()) {
+        approved = true;
+        await win.destroy();
+      }
+    } finally {
+      asking = false;
+    }
   }));
   add(listen<{ id: string }>(REQUEST, async e => {
     await emitTo("main", RESPONSE, { id: e.payload.id, allowed: null });

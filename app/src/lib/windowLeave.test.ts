@@ -4,7 +4,7 @@ const native = vi.hoisted(() => ({
   getAllWindows: vi.fn(), emitTo: vi.fn(), mayLeave: vi.fn(),
   handlers: new Map<string, (event: { payload: unknown }) => unknown>(),
   closeHandler: null as null | ((event: { preventDefault: () => void }) => Promise<void>),
-  win: { show: vi.fn(), setFocus: vi.fn(), close: vi.fn() },
+  win: { show: vi.fn(), setFocus: vi.fn(), close: vi.fn(), destroy: vi.fn() },
 }));
 vi.mock("./navigationGuard", () => ({ mayLeave: native.mayLeave }));
 vi.mock("@tauri-apps/api/window", () => ({
@@ -23,7 +23,7 @@ beforeEach(() => {
   native.mayLeave.mockResolvedValue(true);
   native.getAllWindows.mockResolvedValue([{ label: "main" }, { label: "tool-annot" }]);
   native.emitTo.mockResolvedValue(undefined);
-  native.win.show.mockResolvedValue(undefined); native.win.setFocus.mockResolvedValue(undefined); native.win.close.mockResolvedValue(undefined);
+  native.win.show.mockResolvedValue(undefined); native.win.setFocus.mockResolvedValue(undefined); native.win.close.mockResolvedValue(undefined); native.win.destroy.mockResolvedValue(undefined);
 });
 afterEach(() => vi.useRealTimers());
 it("respects an unsaved main editor cancellation before checking other windows", async () => {
@@ -57,9 +57,9 @@ it("keeps a dirty standalone editor open when its close confirmation is cancelle
   const cleanup = protectToolClose(); await Promise.resolve();
   const preventDefault = vi.fn(); native.mayLeave.mockResolvedValue(false);
   await native.closeHandler!({ preventDefault });
-  expect(preventDefault).toHaveBeenCalledOnce(); expect(native.win.close).not.toHaveBeenCalled();
+  expect(preventDefault).toHaveBeenCalledOnce(); expect(native.win.destroy).not.toHaveBeenCalled();
   native.mayLeave.mockResolvedValue(true);
-  await native.closeHandler!({ preventDefault }); expect(native.win.close).toHaveBeenCalledOnce();
+  await native.closeHandler!({ preventDefault }); expect(native.win.destroy).toHaveBeenCalledOnce();
   cleanup();
 });
 it("returns a cancellation if a standalone window cannot present its confirmation", async () => {

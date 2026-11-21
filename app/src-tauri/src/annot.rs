@@ -23,6 +23,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,23 @@ use tauri::{Emitter, Manager};
 use serde_json::{json, Value};
 
 static GENERATING: Mutex<()> = Mutex::new(());
+static GEN_PID: AtomicU32 = AtomicU32::new(0);
+static GEN_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+struct GenPidGuard;
+impl Drop for GenPidGuard {
+    fn drop(&mut self) {
+        GEN_PID.store(0, Ordering::SeqCst);
+    }
+}
+
+pub fn cancel_generate() {
+    GEN_CANCELLED.store(true, Ordering::SeqCst);
+    let pid = GEN_PID.load(Ordering::SeqCst);
+    if pid != 0 {
+        crate::worker::kill_tree(pid);
+    }
+}
 
 /// 上游认得的语种记号。大小写不敏感 —— 素材库里 `ZH` 和 `zh` 都见过。
 ///
@@ -316,13 +334,34 @@ pub fn pick_audio_dir(win: Option<&tauri::WebviewWindow>) -> Option<String> {
     picked
 }
 
-pub fn generate(root: &Path, source: &Path, window: &tauri::WebviewWindow) -> Result<Value, String> {
+pub fn generate(
+    root: &Path,
+    source: &Path,
+    speaker: Option<&str>,
+    lang: Option<&str>,
+    window: &tauri::WebviewWindow,
+) -> Result<Value, String> {
     let _generation = GENERATING.try_lock()
         .map_err(|_| crate::i18n::t("s.annot.alreadyGenerating"))?;
+    GEN_CANCELLED.store(false, Ordering::SeqCst);
     let python = crate::paths::runtime_python(root)
         .ok_or_else(|| crate::i18n::t("s.47e57cab60"))?;
+    let clean_speaker = speaker
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            source
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("dataset")
+                .to_string()
+        });
+    let clean_lang = match lang.map(|s| s.trim()).unwrap_or("auto") {
+        v @ ("auto" | "zh" | "ja" | "en" | "ko" | "yue") => v,
+        _ => "auto",
+    };
     let log = crate::logging::begin_run(root, crate::logging::CH_TRAIN, &json!({
-        "task": "annotation", "source": source,
+        "task": "annotation", "source": source, "speaker": clean_speaker, "lang": clean_lang,
     }));
     let stderr = fs::OpenOptions::new().append(true).open(&log)
         .map_err(|e| e.to_string())?;
@@ -334,6 +373,8 @@ pub fn generate(root: &Path, source: &Path, window: &tauri::WebviewWindow) -> Re
         .arg(source)
         .arg(crate::paths::user_data(root).join("datasets"))
         .arg(device)
+        .arg(&clean_speaker)
+        .arg(clean_lang)
         .current_dir(root)
         .envs(crate::worker::env_for_runtime(root))
         .stdin(Stdio::null())
@@ -345,6 +386,8 @@ pub fn generate(root: &Path, source: &Path, window: &tauri::WebviewWindow) -> Re
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
     let mut child = command.spawn().map_err(|e| e.to_string())?;
+    GEN_PID.store(child.id(), Ordering::SeqCst);
+    let _gen_pid = GenPidGuard;
     let _pid = crate::worker::ToolPidGuard::new(child.id());
     let mut result = None;
     let mut read_error = None;
@@ -363,20 +406,40 @@ pub fn generate(root: &Path, source: &Path, window: &tauri::WebviewWindow) -> Re
         }
     }
     let status = child.wait().map_err(|e| e.to_string())?;
+    if GEN_CANCELLED.load(Ordering::SeqCst) {
+        crate::logging::finish_run(&log, true, "cancelled");
+        return Err(crate::i18n::t("s.annot.cancelled"));
+    }
     if status.success() && read_error.is_none() {
         if let Some(path) = result.as_ref().and_then(|line| line["path"].as_str()) {
+            if let Some(parent) = Path::new(path).parent() {
+                crate::asset_scope::grant_dir(window.app_handle(), parent);
+            }
             crate::logging::finish_run(&log, true, "ok");
             return load(path);
         }
     }
 
-    let error = result
+    let known_msg = result
         .as_ref()
-        .map(crate::i18n::t_worker_msg)
-        .unwrap_or_else(|| read_error.unwrap_or_else(|| crate::i18n::t("s.annot.generateFailed")));
-    let detail = crate::logging::tail_lines(&log, 12, 8192);
+        .filter(|v| v.get("message_code").and_then(|c| c.as_str()).is_some())
+        .map(crate::i18n::t_worker_msg);
+    let error = known_msg.clone().unwrap_or_else(|| {
+        result
+            .as_ref()
+            .map(crate::i18n::t_worker_msg)
+            .unwrap_or_else(|| read_error.unwrap_or_else(|| crate::i18n::t("s.annot.generateFailed")))
+    });
     crate::logging::finish_run(&log, true, "error");
-    Err(format!("{error}\n{detail}"))
+    if known_msg.is_some() {
+        return Err(error);
+    }
+    let detail = crate::logging::tail_lines(&log, 8, 2048);
+    if detail.is_empty() {
+        Err(error)
+    } else {
+        Err(format!("{error}\n{detail}"))
+    }
 }
 
 /// 编辑器里选了音频目录：在那个目录下找回仍然缺失的音频。`rows` 是编辑器

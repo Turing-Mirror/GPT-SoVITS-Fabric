@@ -438,9 +438,10 @@ def transcribe_audio(dataset: Path, opt_dir: Path, name: str, req: dict) -> Path
     out_list = opt_dir / f"{name}.list"
     produced = opt_dir / f"{sliced.name}.list"
     produced.unlink(missing_ok=True)
+    lang = req.get("lang") or "auto"
     run_step(
         [sys.executable, str(asr), "-i", str(sliced), "-o", str(opt_dir),
-         "-s", "large-v3", "-l", "auto", "-p", "float16" if req["is_half"] else "float32"],
+         "-s", "large-v3", "-l", lang, "-p", "float16" if req["is_half"] else "float32"],
         env, stage="prepare", label="asr",
     )
     if not produced.is_file() or not parse_list(produced):
@@ -450,21 +451,31 @@ def transcribe_audio(dataset: Path, opt_dir: Path, name: str, req: dict) -> Path
     return out_list
 
 
-def create_annotation(dataset: Path, datasets_dir: Path, device: str) -> Path:
+def create_annotation(
+    dataset: Path,
+    datasets_dir: Path,
+    device: str,
+    speaker: str | None = None,
+    lang: str = "auto",
+) -> Path:
     """Create an editable dataset without starting a training job."""
-    name = dataset.name[:64] or "dataset"
+    clean_speaker = (speaker or "").strip().replace("|", "｜").replace("\r", " ").replace("\n", " ")[:64]
+    name = clean_speaker or dataset.name[:64] or "dataset"
+    clean_lang = (lang or "auto").strip() or "auto"
     datasets_dir.mkdir(parents=True, exist_ok=True)
     output = Path(tempfile.mkdtemp(prefix="dataset-", dir=datasets_dir))
     try:
         annotation = transcribe_audio(dataset, output, name, {
-            "device": device, "is_half": device == "cuda",
+            "device": device, "is_half": device == "cuda", "lang": clean_lang,
         })
         transcripts = {row["abs"]: row for row in parse_list(annotation)}
         rows = []
+        default_lang = "auto" if clean_lang == "auto" else clean_lang.upper()
         for clip in sorted((output / "sliced").glob("*.wav")):
             row = transcripts.get(str(clip.resolve()), {})
             relative = clip.relative_to(output).as_posix()
-            rows.append(f"{relative}|{name}|{row.get('lang', 'auto')}|{row.get('text', '')}")
+            row_lang = default_lang if clean_lang != "auto" else (row.get("lang") or "auto")
+            rows.append(f"{relative}|{name}|{row_lang}|{row.get('text', '')}")
         if not any(row["text"] for row in transcripts.values()):
             raise Fail("no_transcript", "no speech was transcribed")
         annotation.write_text("\n".join(rows) + "\n", encoding="utf-8")
@@ -852,10 +863,12 @@ def collect(req: dict, weights_dir: Path, list_path: Path | None) -> dict:
 
 def main() -> int:
     _ensure_stdio_utf8()
-    if len(sys.argv) == 5 and sys.argv[1] == "--prepare":
-        _, _, dataset, datasets_dir, device = sys.argv
+    if len(sys.argv) in (5, 7) and sys.argv[1] == "--prepare":
+        _, _, dataset, datasets_dir, device = sys.argv[:5]
+        speaker = sys.argv[5] if len(sys.argv) == 7 else None
+        lang = sys.argv[6] if len(sys.argv) == 7 else "auto"
         try:
-            path = create_annotation(Path(dataset), Path(datasets_dir), device)
+            path = create_annotation(Path(dataset), Path(datasets_dir), device, speaker=speaker, lang=lang)
         except Fail as f:
             emit(phase="error", message_code=f.code, message=f.fallback, message_params=f.params)
             return 1

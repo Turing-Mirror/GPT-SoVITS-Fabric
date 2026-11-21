@@ -965,11 +965,26 @@ async fn annot_generate(
     window: tauri::WebviewWindow,
     state: State<'_, Mutex<AppState>>,
     source: String,
+    speaker: Option<String>,
+    lang: Option<String>,
 ) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || annot::generate(&root, std::path::Path::new(&source), &window))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        annot::generate(
+            &root,
+            std::path::Path::new(&source),
+            speaker.as_deref(),
+            lang.as_deref(),
+            &window,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn annot_generate_cancel() {
+    annot::cancel_generate();
 }
 
 #[tauri::command]
@@ -1636,6 +1651,7 @@ pub fn run() {
             annot_pick,
             annot_pick_source,
             annot_generate,
+            annot_generate_cancel,
             annot_load,
             annot_save,
             annot_relocate,

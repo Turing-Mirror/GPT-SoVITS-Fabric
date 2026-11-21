@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn(), pick: vi.fn(), train: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn(), pick: vi.fn(), train: vi.fn(), confirm: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mocks.invoke,
   convertFileSrc: (value: string) => value,
@@ -11,9 +11,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
 vi.mock("trm-ui/fabric", async importOriginal => ({
   ...await importOriginal<typeof import("trm-ui/fabric")>(),
-  pickPath: mocks.pick, askConfirm: vi.fn().mockResolvedValue(true), askPrompt: vi.fn(),
+  pickPath: mocks.pick, askConfirm: mocks.confirm, askPrompt: vi.fn(),
 }));
-vi.mock("../lib/intent", () => ({ take: () => null, onHandoff: () => () => {}, trainWith: mocks.train }));
+vi.mock("../lib/intent", () => ({ take: () => null, onHandoff: () => () => {}, trainWith: mocks.train, goTo: vi.fn() }));
 vi.mock("../hooks/useConfig", () => ({ useConfig: () => ({ num: () => 100, set: vi.fn(), error: "" }) }));
 
 import { AnnotPage } from "./AnnotPage";
@@ -49,6 +49,7 @@ beforeEach(() => {
   mocks.pick.mockReset().mockResolvedValue("C:/Recordings");
   mocks.listen.mockReset().mockResolvedValue(() => {});
   mocks.train.mockReset();
+  mocks.confirm.mockReset().mockResolvedValue(true);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -72,15 +73,40 @@ it("creates annotations, opens the editor, and sends the exact generated file to
   await startCreation();
   await act(async () => button(t("s.annot.generate")).click());
   const request = mocks.invoke.mock.calls.find(([command]) => command === "annot_generate")![1];
-  expect(request.source).toBe("C:/Recordings");
+  expect(request).toEqual({ source: "C:/Recordings", speaker: "Recordings", lang: "auto" });
   const onProgress = mocks.listen.mock.calls.find(([event]) => event === "annot-progress")![1];
   await act(async () => onProgress({ payload: "Transcribing recordings" }));
-  expect(document.querySelector('[role="status"]')?.textContent).toBe("Transcribing recordings");
-  expect(button(t("ui.common.cancel")).disabled).toBe(true);
+  expect(document.body.textContent).toContain("Transcribing recordings");
+  expect(button(t("s.annot.cancelGenerate")).disabled).toBe(false);
+  expect(button(t("s.annot.background")).disabled).toBe(false);
   await act(async () => complete(annotation));
   expect(container.querySelector("textarea")?.value).toBe("Hello");
   await act(async () => button(t("s.annot.toTrain")).click());
   expect(mocks.train).toHaveBeenCalledExactlyOnceWith(annotation.path);
+});
+
+it("lets user customize speaker, minimize generation to orb, and cancel running generation", async () => {
+  let rejectGen!: (error: Error) => void;
+  mocks.invoke.mockImplementation(async command => {
+    if (command === "annot_generate") return new Promise((_, reject) => { rejectGen = reject; });
+    if (command === "annot_generate_cancel") {
+      rejectGen(new Error(t("s.annot.cancelled")));
+      return {};
+    }
+    return { roles: [] };
+  });
+  await act(async () => root.render(<I18nProvider><AnnotPage /></I18nProvider>));
+  await startCreation();
+  const speakerInput = document.body.querySelector(`input[placeholder="${t("s.annot.speakerPh")}"]`) as HTMLInputElement;
+  expect(speakerInput?.value).toBe("Recordings");
+  await act(async () => button(t("s.annot.generate")).click());
+  await act(async () => button(t("s.annot.background")).click());
+  const orb = document.body.querySelector(`button[aria-label="${t("s.orbDownloadLabel")}"]`) as HTMLButtonElement | null;
+  expect(orb).not.toBeNull();
+  await act(async () => orb!.click());
+  await act(async () => button(t("s.annot.cancelGenerate")).click());
+  expect(mocks.invoke).toHaveBeenCalledWith("annot_generate_cancel");
+  expect(document.body.textContent).toContain(t("s.annot.cancelled"));
 });
 
 it("allows retry after generation fails", async () => {

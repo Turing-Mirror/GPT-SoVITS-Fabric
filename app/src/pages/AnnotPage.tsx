@@ -1,15 +1,16 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
-import { useCallback, useEffect, useMemo, useState, memo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Block, Btn, PageHead, PagePad } from "../components/ui";
-import { Select, Slider } from "../components/controls";
+import { Field, Select, Slider } from "../components/controls";
 import { SegmentControl } from "../components/SegmentControl";
 import { ErrorNote } from "../components/ErrorNote";
 import { openTool } from "../components/ToolWindow";
 import { pickPath } from "trm-ui/fabric";
 import { askConfirm, askPrompt } from "trm-ui/fabric";
-import { onHandoff, take, trainWith } from "../lib/intent";
+import { goTo, onHandoff, take, trainWith } from "../lib/intent";
+import { joinClauses } from "../lib/text";
 import { Pager, SearchBox, useDir, usePaged } from "../trm";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { t } from "../i18n/t";
@@ -17,7 +18,7 @@ import { useI18n } from "../i18n";
 import { ModelCard } from "../components/ModelCard";
 import { useAudioPreview } from "../hooks/useAudioPreview";
 import { registerLeaveGuard } from "../lib/navigationGuard";
-import { Modal, usePageActive, usePageLeave } from "trm-ui";
+import { DockableModal, TextInput, TransferProgress, usePageActive, usePageLeave } from "trm-ui";
 import { useConfig } from "../hooks/useConfig";
 import { MODEL_GRID_CLASS, useModelGrid } from "../hooks/useModelGrid";
 
@@ -85,6 +86,12 @@ function issueText(id: string): string {
   return t(`s.annot.issue.${id}`);
 }
 
+const CREATE_LANGS = ["auto", "zh", "ja", "en", "ko", "yue"] as const;
+
+function folderBaseName(dir: string): string {
+  return dir.split(/[\\/]/).filter(Boolean).pop()?.slice(0, 64) || "";
+}
+
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -109,8 +116,15 @@ function AnnotPageImpl() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [creating, setCreating] = useState(false);
+  const [createMin, setCreateMin] = useState(false);
+  const [genReady, setGenReady] = useState(false);
   const [source, setSource] = useState("");
+  const [speaker, setSpeaker] = useState("");
+  const [createLang, setCreateLang] = useState<string>("auto");
   const [progress, setProgress] = useState("");
+  const autoSpeakerRef = useRef("");
+  const minRef = useRef(false);
+  useEffect(() => { minRef.current = createMin; }, [createMin]);
   usePageLeave(() => setMsg(""));
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState<"all" | "bad">("all");
@@ -119,9 +133,21 @@ function AnnotPageImpl() {
   const volume = Number.isFinite(savedVolume) ? Math.max(0, Math.min(100, savedVolume)) : 100;
   const { playing, play: playAudio, stop: stopAudio, player } = useAudioPreview(volume / 100);
   const active = usePageActive();
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => {
-    if ((!dirty && !(creating && busy)) || !active) return;
-    return registerLeaveGuard(() => busy ? Promise.resolve(false) : askConfirm(t("s.annot.dropChanges")));
+    if ((!dirty && !(creating && busy)) || (!active && !inToolWindow())) return;
+    return registerLeaveGuard(async () => {
+      if (creating && busy) {
+        if (!(await askConfirm(t("s.annot.cancelGenerateAsk")))) return false;
+        await invoke("annot_generate_cancel").catch(() => {});
+        setBusy(false);
+        setCreating(false);
+        setCreateMin(false);
+        return true;
+      }
+      return askConfirm(t("s.annot.dropChanges"));
+    });
   }, [dirty, busy, creating, active]);
 
   // 页面消息自己消失。不消失的话下一条会盖掉上一条，用户更容易漏看。
@@ -171,29 +197,54 @@ function AnnotPageImpl() {
     if (p) await openPath(p);
   }, [openPath]);
 
+  const openCreate = useCallback(() => {
+    setErr("");
+    setGenReady(false);
+    setCreateMin(false);
+    setCreating(true);
+  }, []);
+
   const pickSource = async () => {
     setErr("");
     try {
       const folder = await pickPath<string | null>(
         "annot_pick_source", undefined, t("s.annot.audioDirHint"),
       );
-      if (folder) setSource(folder);
+      if (folder) {
+        setSource(folder);
+        const inferred = folderBaseName(folder);
+        setSpeaker(prev => (!prev || prev === autoSpeakerRef.current ? inferred : prev));
+        autoSpeakerRef.current = inferred;
+      }
     } catch (e) {
       setErr(String(e));
     }
   };
 
   const generate = async () => {
-    if (!source || busy) return;
+    const spk = speaker.trim();
+    if (!source || !spk || busy) return;
     setErr("");
+    setGenReady(false);
     setBusy(true);
     setProgress(t("s.annot.generating"));
     let unlisten: UnlistenFn | undefined;
     try {
       unlisten = await listen<string>("annot-progress", event => setProgress(event.payload));
-      apply(await invoke<Loaded>("annot_generate", { source }));
-      setCreating(false);
+      apply(await invoke<Loaded>("annot_generate", {
+        source,
+        speaker: spk,
+        lang: createLang,
+      }));
       setSource("");
+      setSpeaker("");
+      autoSpeakerRef.current = "";
+      if (minRef.current && !activeRef.current && !inToolWindow()) {
+        setGenReady(true);
+      } else {
+        setCreating(false);
+        setCreateMin(false);
+      }
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -202,9 +253,15 @@ function AnnotPageImpl() {
     }
   };
 
+  const cancelGenerate = () => {
+    void invoke("annot_generate_cancel").catch(() => {});
+  };
+
   const closeCreate = () => {
     if (busy) return;
     setCreating(false);
+    setCreateMin(false);
+    setGenReady(false);
     setErr("");
   };
 
@@ -216,15 +273,16 @@ function AnnotPageImpl() {
     }
   };
 
-  // 模型页、合成页点了「编辑标注」：打开那一份。
+  // 模型页、合成页点了「编辑标注」，或训练页点了「创建 .list」：按需打开或弹出。
   useEffect(() => {
     const run = () => {
       const p = take("annotList");
       if (p) void openPath(p);
+      if (take("annotCreate")) openCreate();
     };
     run();
     return onHandoff(run);
-  }, [openPath]);
+  }, [openPath, openCreate]);
 
   // 各角色自带的标注文件，未打开文件时列出来，点一下即可打开。
   const [roleLists, setRoleLists] = useState<RoleList[]>(() => listsOf(peekCharacters() ?? []));
@@ -414,10 +472,7 @@ function AnnotPageImpl() {
               {!path ? (
                 <>
                   <Btn onClick={() => void open()} disabled={busy}>{t("s.annot.open")}</Btn>
-                  <Btn primary disabled={busy} onClick={() => {
-                    setErr("");
-                    setCreating(true);
-                  }}>{t("s.annot.create")}</Btn>
+                  <Btn primary disabled={busy} onClick={openCreate}>{t("s.annot.create")}</Btn>
                 </>
               ) : null}
               {path ? (
@@ -451,29 +506,94 @@ function AnnotPageImpl() {
         />
 
         {(!creating && err) || config.error ? <ErrorNote text={(!creating && err) || config.error} /> : null}
-        <Modal open={creating} onClose={closeCreate} label={t("s.annot.create")}>
+        <DockableModal
+          open={creating}
+          minimized={createMin}
+          onMinimizedChange={(next) => {
+            if (!next && genReady) {
+              setGenReady(false);
+              setCreating(false);
+              setCreateMin(false);
+              if (!inToolWindow()) goTo("annot");
+              return;
+            }
+            setCreateMin(next);
+          }}
+          canMinimize={busy || createMin || genReady}
+          onClose={busy ? undefined : closeCreate}
+          contained={false}
+          maxWidth={500}
+          z={60}
+          label={t("s.annot.create")}
+          orbLabel={t("s.orbDownloadLabel")}
+          attention={err ? "error" : genReady ? "ready" : "idle"}
+          tooltip={joinClauses([
+            t("s.annot.create"),
+            err || (genReady ? t("s.annot.readyOrb") : progress || t("s.annot.generating")),
+          ])}
+        >
           <div className="space-y-4 p-6" aria-busy={busy}>
             <h2 className="m-0 text-xl font-semibold">{t("s.annot.create")}</h2>
-            <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.annot.createHint")}</p>
-            <div className="flex items-center gap-3 flex-wrap">
-              <Btn disabled={!isTauri() || busy} onClick={() => void pickSource()}>
-                {t("s.annot.chooseSource")}
-              </Btn>
-              {source ? <span className="min-w-0 break-all text-[12.5px]">{source}</span> : null}
-            </div>
+            {!busy ? (
+              <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.annot.createHint")}</p>
+            ) : null}
+            {!busy ? (
+              <>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Btn disabled={!isTauri()} onClick={() => void pickSource()}>
+                    {t("s.annot.chooseSource")}
+                  </Btn>
+                  {source ? <span className="min-w-0 break-all text-[12.5px] text-[var(--ink-muted)]">{source}</span> : null}
+                </div>
+                <Field
+                  label={t("s.annot.speaker")}
+                  control={
+                    <TextInput
+                      value={speaker}
+                      onChange={setSpeaker}
+                      placeholder={t("s.annot.speakerPh")}
+                      className="min-w-[200px]"
+                    />
+                  }
+                />
+                <Field
+                  label={t("s.annot.lang")}
+                  control={
+                    <Select
+                      value={createLang}
+                      onChange={setCreateLang}
+                      options={[
+                        { id: "auto", label: t("s.annot.langAuto") },
+                        ...CREATE_LANGS.filter((l) => l !== "auto").map((l) => ({ id: l, label: l.toUpperCase() })),
+                      ]}
+                    />
+                  }
+                />
+              </>
+            ) : (
+              <TransferProgress message={progress || t("s.annot.generating")} />
+            )}
             {!isTauri() ? (
               <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.annot.createPreview")}</p>
             ) : null}
-            {busy ? <p role="status" className="m-0 text-[12.5px]">{progress}</p> : null}
             {err ? <ErrorNote text={err} /> : null}
             <div className="flex justify-end gap-2">
-              <Btn disabled={busy} onClick={closeCreate}>{t("ui.common.cancel")}</Btn>
-              <Btn primary disabled={!source} busy={busy} onClick={() => void generate()}>
-                {t("s.annot.generate")}
-              </Btn>
+              {busy ? (
+                <>
+                  <Btn danger onClick={cancelGenerate}>{t("s.annot.cancelGenerate")}</Btn>
+                  <Btn onClick={() => setCreateMin(true)}>{t("s.annot.background")}</Btn>
+                </>
+              ) : (
+                <>
+                  <Btn onClick={closeCreate}>{t("ui.common.cancel")}</Btn>
+                  <Btn primary disabled={!source || !speaker.trim()} onClick={() => void generate()}>
+                    {t("s.annot.generate")}
+                  </Btn>
+                </>
+              )}
             </div>
           </div>
-        </Modal>
+        </DockableModal>
         {msg ? (
           <div className="mt-3 text-[12.5px] text-[var(--help)]">{msg}</div>
         ) : null}
@@ -497,6 +617,17 @@ function AnnotPageImpl() {
             </div>
             <Pager page={rolePaged.page} pages={rolePaged.pages} onChange={rolePaged.setPage} />
           </Block>
+        ) : !path ? (
+          <div className="mt-4 rounded-[var(--r)] bg-[var(--group)] p-6 flex items-center justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-[15px] font-semibold">{t("s.annot.emptyTitle")}</div>
+              <p className="m-0 mt-1 text-[12.5px] text-[var(--help)]">{t("s.annot.emptyDesc")}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Btn onClick={() => void open()} disabled={busy}>{t("s.annot.open")}</Btn>
+              <Btn primary disabled={busy} onClick={openCreate}>{t("s.annot.create")}</Btn>
+            </div>
+          </div>
         ) : null}
 
         {path ? (

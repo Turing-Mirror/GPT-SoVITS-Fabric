@@ -7,7 +7,7 @@ import type { PageId } from "./nav";
  * 取走即清空，同一件事不会被处理两次。
  */
 
-type Kind = "synthRole" | "annotList" | "trainDataset";
+type Kind = "synthRole" | "annotList" | "annotCreate" | "trainDataset";
 
 let navigate: ((page: PageId) => void | Promise<boolean>) | null = null;
 const pending: Partial<Record<Kind, string>> = {};
@@ -16,6 +16,7 @@ const listeners = new Set<() => void>();
 const TARGET: Record<Kind, PageId> = {
   synthRole: "synth",
   annotList: "annot",
+  annotCreate: "annot",
   trainDataset: "train",
 };
 
@@ -56,5 +57,7 @@ export function onHandoff(fn: () => void): () => void {
 export const synthWithRole = (roleId: string) => hand("synthRole", roleId);
 /** 到标注页并打开这份 .list。 */
 export const openInAnnot = (listPath: string) => hand("annotList", listPath);
+/** 到标注页并弹出创建 .list。 */
+export const createAnnot = () => hand("annotCreate", "1");
 /** 到训练页并选中这份标注。 */
 export const trainWith = (listPath: string) => hand("trainDataset", listPath);

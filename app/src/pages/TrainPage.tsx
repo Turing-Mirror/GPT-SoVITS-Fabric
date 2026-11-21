@@ -10,7 +10,7 @@ import { TrainingQueue } from "../components/TrainingQueue";
 import { openTool } from "../components/ToolWindow";
 import { ErrorNote } from "../components/ErrorNote";
 import { t } from "../i18n/t";
-import { goTo, onHandoff, take } from "../lib/intent";
+import { goTo, createAnnot, onHandoff, take } from "../lib/intent";
 
 /**
  * 训练台 —— 数据集准备与微调的统一入口。
@@ -180,12 +180,15 @@ export function TrainPage() {
     return () => window.clearInterval(id);
   }, [refresh, st.busy]);
 
+  const autoExp = useRef("");
   const applyDataset = useCallback(async (p: string) => {
     setDataset(p);
     // 角色包的数据集在 <角色>/dataset 下：实验名取角色目录名，不取「dataset」。
     const parts = p.split(/[\\/]/).filter(Boolean);
     const last = (parts.pop() || "").replace(/\.list$/i, "");
-    setExp((e) => e || (last.toLowerCase() === "dataset" ? parts.pop() || last : last));
+    const inferred = last.toLowerCase() === "dataset" ? parts.pop() || last : last;
+    setExp((e) => (!e || e === autoExp.current ? inferred : e));
+    autoExp.current = inferred;
     setScan(await invoke<Scan>("train_scan_dataset", { path: p }).catch(() => null));
     setInspect(await invoke<Inspect>("train_inspect_dataset", { path: p }).catch(() => null));
   }, []);
@@ -195,11 +198,13 @@ export function TrainPage() {
     if (p) await applyDataset(p);
   }, [applyDataset]);
 
-  // 标注页点了「用于训练」：直接使用当前打开的标注文件。
+  // 标注页点了「用于训练」：切到第 2 步并直接使用当前标注文件。
   useEffect(() => {
     const apply = () => {
       const p = take("trainDataset");
-      if (p) void applyDataset(p);
+      if (!p) return;
+      setStep(1);
+      void applyDataset(p);
     };
     apply();
     return onHandoff(apply);
@@ -349,7 +354,10 @@ export function TrainPage() {
           <div className="text-[13px] font-medium">{t("train.listFile")}</div>
           <div className="text-[12.5px] text-[var(--help)] mt-1 break-all">{dataset || t("train.listDesc")}</div>
         </div>
-        <Btn onClick={() => void pickDataset()}>{t("train.importList")}</Btn>
+        <div className="flex items-center gap-2 shrink-0">
+          <Btn onClick={() => createAnnot()}>{t("train.createList")}</Btn>
+          <Btn onClick={() => void pickDataset()}>{t("train.importList")}</Btn>
+        </div>
       </div>
 
       {/* 流水线第一步的入口。素材里带伴奏就直接拿去训，出来的音色会把

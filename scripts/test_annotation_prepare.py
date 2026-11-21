@@ -102,6 +102,13 @@ class AnnotationPreparationTests(unittest.TestCase):
             worker.create_annotation(self.source, self.datasets, "cpu")
         self.assertEqual(list(self.datasets.iterdir()), [])
 
+    def test_custom_speaker_and_lang(self):
+        self.recording("voice.wav", "你好")
+        annotation = worker.create_annotation(self.source, self.datasets, "cpu", speaker="Alice", lang="zh")
+        rows = worker.parse_list(annotation)
+        self.assertEqual(rows[0]["speaker"], "Alice")
+        self.assertEqual(rows[0]["lang"], "ZH")
+
 
 if __name__ == "__main__":
     unittest.main()
