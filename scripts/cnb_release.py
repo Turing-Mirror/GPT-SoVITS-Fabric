@@ -53,10 +53,18 @@ def write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+
+def command_env(args):
+    """CNB_TOKEN only carries release upload rights; git keeps its own sign-in to push."""
+    env = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "PYTHONUTF8": "1"}
+    if str(args[0]) == "git":
+        env.pop("CNB_TOKEN", None)
+    return env
+
 def run(*args, cwd=None, capture=False):
     result = subprocess.run([str(a) for a in args], cwd=cwd, check=True, text=True, encoding="utf-8",
                             stdout=subprocess.PIPE if capture else None,
-                            env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "PYTHONUTF8": "1"})
+                            env=command_env(args))
     return result.stdout.strip() if capture else None
 
 
@@ -177,7 +185,8 @@ def main() -> None:
     parser.add_argument("--version", default=read_json(ROOT / "app/package.json")["version"])
     args = parser.parse_args()
     notes = release_notes(args.version)
-    with tempfile.TemporaryDirectory(prefix="gsv-release-") as temp:
+    # Antivirus may still hold the downloaded Setup when the folder is removed.
+    with tempfile.TemporaryDirectory(prefix="gsv-release-", ignore_cleanup_errors=True) as temp:
         scratch = Path(temp)
         signed = verify_release(args.version, scratch)
         repo = scratch / "catalog"
