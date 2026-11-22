@@ -15,7 +15,9 @@ function sources(dir: string): string[] {
   });
 }
 
-const KEY = /\bt\(\s*["']((?:s|nav|window|dialog|store|settings|locale|tray|engine|home|glossary|msg|extras|onboarding|social|synth|train|help|more|meta)\.[\w.-]+)["']/g;
+const zh = JSON.parse(readFileSync(join(LOCALES, "zh-CN.json"), "utf8"));
+const PREFIXES = Object.keys(zh).map(key => key.replace(/\./g, "\\.")).join("|");
+const KEY = new RegExp(`\\b(?:t|tStatic)\\(\\s*["']((?:${PREFIXES})\\.[\\w.-]+)["']`, "g");
 
 const keys = [...new Set(sources(SRC).flatMap(file => [...readFileSync(file, "utf8").matchAll(KEY)].map(m => m[1])))];
 
