@@ -33,6 +33,34 @@ pub fn grant_file(app: &AppHandle, path: &str) {
     let _ = scope(app).allow_file(p);
 }
 
+/// 放行标注行里实际存在的音频所在的目录（不递归）。
+///
+/// .list 和音频常常不在同一个目录（GPT-SoVITS 的 `asr_opt/x.list` 指向
+/// `slicer_opt/*.wav`），只放行 .list 所在目录时这些音频能读到、却播不出来。
+/// 重启后放行清单清空，所以每次把行交给界面时都要放行一次。
+pub fn grant_row_dirs(app: &AppHandle, value: &serde_json::Value) {
+    let mut dirs = std::collections::HashSet::new();
+    let mut visit = |rows: &serde_json::Value| {
+        for row in rows.as_array().into_iter().flatten() {
+            if row["exists"].as_bool() != Some(true) {
+                continue;
+            }
+            if let Some(dir) = row["abs"].as_str().and_then(|p| Path::new(p).parent()) {
+                dirs.insert(dir.to_path_buf());
+            }
+        }
+    };
+    visit(&value["rows"]);
+    for role in value["roles"].as_array().into_iter().flatten() {
+        for list in role["lists"].as_array().into_iter().flatten() {
+            visit(&list["rows"]);
+        }
+    }
+    for dir in dirs {
+        let _ = scope(app).allow_directory(&dir, false);
+    }
+}
+
 /// 选择框结果按语义放行：目录递归，文件单放。
 pub fn grant_picked(app: &AppHandle, path: &str, is_dir: bool) {
     if is_dir {

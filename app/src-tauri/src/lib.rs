@@ -847,11 +847,13 @@ fn tools_open_train(app: AppHandle, path: String) -> Result<(), String> {
 // --- 合成台（GPT-SoVITS 的核心功能）------------------------------------------
 
 #[tauri::command]
-async fn synth_characters(state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
+async fn synth_characters(window: tauri::WebviewWindow, state: State<'_, Mutex<AppState>>) -> Result<Value, String> {
     let root = root_clone(&state)?;
-    tauri::async_runtime::spawn_blocking(move || synth::list_characters(&root))
+    let value = tauri::async_runtime::spawn_blocking(move || synth::list_characters(&root))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    asset_scope::grant_row_dirs(window.app_handle(), &value);
+    Ok(value)
 }
 
 #[tauri::command]
@@ -988,19 +990,23 @@ fn annot_generate_cancel() {
 }
 
 #[tauri::command]
-async fn annot_load(path: String) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || annot::load(&path))
+async fn annot_load(window: tauri::WebviewWindow, path: String) -> Result<Value, String> {
+    let value = tauri::async_runtime::spawn_blocking(move || annot::load(&path))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())??;
+    asset_scope::grant_row_dirs(window.app_handle(), &value);
+    Ok(value)
 }
 
 /// 选一个音频目录，在里面按文件名找回标注里缺失的音频。取消选择时返回 None。
 #[tauri::command]
 async fn annot_relocate(window: tauri::WebviewWindow, path: String, rows: Vec<annot::Row>) -> Result<Option<Value>, String> {
     let Some(dir) = annot::pick_audio_dir(Some(&window)) else { return Ok(None) };
-    tauri::async_runtime::spawn_blocking(move || annot::relocate_in(&path, rows, &dir).map(Some))
+    let value = tauri::async_runtime::spawn_blocking(move || annot::relocate_in(&path, rows, &dir))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())??;
+    asset_scope::grant_row_dirs(window.app_handle(), &value);
+    Ok(Some(value))
 }
 
 #[tauri::command]
