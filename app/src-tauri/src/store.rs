@@ -786,8 +786,7 @@ pub fn install_voice_entry(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
     let pack_url = if entry.get("community_file_id").and_then(Value::as_str).is_some() {
-        crate::community_catalog::download_url(&root, &entry)
-            .map_err(|_| crate::i18n::t("community.refreshBeforeDownload"))?
+        crate::community_catalog::download_url(&root, &entry)?
     } else {
         entry.get("pack_url").and_then(Value::as_str).unwrap_or("").to_owned()
     };

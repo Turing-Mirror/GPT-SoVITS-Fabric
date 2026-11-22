@@ -281,15 +281,28 @@ pub fn catalog(root: &Path, prefer_remote: bool) -> Option<Value> {
     )
 }
 
+/// Errors are shown to the user: the service's own message when it gives one.
 pub fn download_url(root: &Path, entry: &Value) -> Result<String, String> {
-    let api = public_url(&api_setting(root))?;
-    let response = request(
-        &client()?,
-        endpoint(
-            &api,
-            &["files", field(entry, "community_file_id"), "download"],
-        ),
-    )?;
+    let refresh = |error: String| {
+        crate::logging::shell_log!(format!("community download: {error}"));
+        crate::i18n::t("community.refreshBeforeDownload")
+    };
+    let api = public_url(&api_setting(root)).map_err(refresh)?;
+    let url = endpoint(&api, &["files", field(entry, "community_file_id"), "download"]);
+    let reply = client()
+        .and_then(|client| client.get(url).send().map_err(|e| e.to_string()))
+        .map_err(refresh)?;
+    let status = reply.status();
+    let response: Value = serde_json::from_str(&reply.text().unwrap_or_default()).unwrap_or_default();
+    if !status.is_success() {
+        let message = field(&response["error"], "message");
+        crate::logging::shell_log!(format!("community download: HTTP {status} {message}"));
+        return Err(if message.is_empty() {
+            crate::i18n::t("community.refreshBeforeDownload")
+        } else {
+            message.to_owned()
+        });
+    }
     if response["origin"]["assetId"] != entry["id"]
         || response["origin"]["versionId"] != entry["community_version_id"]
         || response["sha256"] != entry["sha256"]
