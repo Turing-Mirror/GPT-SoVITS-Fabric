@@ -281,6 +281,18 @@ pub fn catalog(root: &Path, prefer_remote: bool) -> Option<Value> {
     )
 }
 
+/// Tells the service a download failed, so it rechecks the source within the hour.
+/// Runs in the background and never affects the install result.
+pub fn report_failure(root: &Path, entry: &Value) {
+    let Ok(api) = public_url(&api_setting(root)) else { return };
+    let url = endpoint(&api, &["files", field(entry, "community_file_id"), "report"]);
+    std::thread::spawn(move || {
+        if let Ok(client) = client() {
+            let _ = client.post(url).send();
+        }
+    });
+}
+
 /// Errors are shown to the user: the service's own message when it gives one.
 pub fn download_url(root: &Path, entry: &Value) -> Result<String, String> {
     let refresh = |error: String| {

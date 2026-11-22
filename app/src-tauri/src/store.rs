@@ -785,8 +785,10 @@ pub fn install_voice_entry(
         .get("official")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
-    let pack_url = if entry.get("community_file_id").and_then(Value::as_str).is_some() {
-        crate::community_catalog::download_url(&root, &entry)?
+    let community = entry.get("community_file_id").and_then(Value::as_str).is_some();
+    let pack_url = if community {
+        crate::community_catalog::download_url(&root, &entry)
+            .inspect_err(|_| crate::community_catalog::report_failure(&root, &entry))?
     } else {
         entry.get("pack_url").and_then(Value::as_str).unwrap_or("").to_owned()
     };
@@ -866,6 +868,9 @@ pub fn install_voice_entry(
             Some(progress),
         );
         drop_cancel_flag(&id);
+        if community && res.is_err() && !cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            crate::community_catalog::report_failure(&root, &entry);
+        }
         res?;
         if stage_only {
             emit("staged", 1, 1, &crate::i18n::t("s.1245a7db42"));
