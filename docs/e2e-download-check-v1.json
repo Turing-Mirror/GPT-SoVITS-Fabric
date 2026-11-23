@@ -1,0 +1,208 @@
+{
+  "date": "2026-11-24",
+  "timezone": "Asia/Taipei",
+  "release_checks": [
+    {
+      "item": "rvc-fabric/updater",
+      "pass": true,
+      "version": "1.8.2",
+      "source": "https://www.turingmirror.com/releases/rvc-fabric/updater.json",
+      "size": 25122935,
+      "sha256": "6a20f255d11c56d1882e9c74931ac52e51fe2cbc6282688f4b65056fda675c16"
+    },
+    {
+      "item": "gpt-sovits-fabric/updater",
+      "pass": true,
+      "version": "1.0.4",
+      "source": "https://www.turingmirror.com/releases/gpt-sovits-fabric/updater.json",
+      "size": 26196311,
+      "sha256": "771f164d3db31009b4f86908629f74ffc389366eb24b73bb1ee74d8908b06e43"
+    },
+    {
+      "item": "gpt-sovits-fabric/installer",
+      "pass": true,
+      "url": "https://cdn.turingmirror.com/f/gpt-sovits-fabric/GPT-SoVITS-Fabric-Setup-1.0.4.exe",
+      "final_url": "https://cdn.turingmirror.com/f/gpt-sovits-fabric/GPT-SoVITS-Fabric-Setup-1.0.4.exe",
+      "redirects": [],
+      "sha256": "771f164d3db31009b4f86908629f74ffc389366eb24b73bb1ee74d8908b06e43",
+      "size": 26196311,
+      "initial_get_status": 206,
+      "initial_range": "bytes 0-0/26196311",
+      "signature_verifier_output": "Updater signature and installer SHA-256 verified."
+    },
+    {
+      "item": "rvc-fabric/installer",
+      "pass": true,
+      "url": "https://cdn.turingmirror.com/f/rvc-fabric/RVC-Fabric-Setup-1.8.2.exe",
+      "final_url": "https://cdn.turingmirror.com/f/rvc-fabric/RVC-Fabric-Setup-1.8.2.exe",
+      "redirects": [],
+      "sha256": "6a20f255d11c56d1882e9c74931ac52e51fe2cbc6282688f4b65056fda675c16",
+      "size": 25122935,
+      "initial_get_status": 206,
+      "initial_range": "bytes 0-0/25122935",
+      "signature_verifier_output": "{\"size_bytes\":25122935,\"sha256\":\"6a20f255d11c56d1882e9c74931ac52e51fe2cbc6282688f4b65056fda675c16\",\"signature\":\"dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRc0RWbTU5UHd6MVZ6Q2h2K2dPWWpsNTJCamE5azRMVFhWMlpMa3JpVXFyc0xXU3RWZHlseExIZ0I0UVNHT0ZSTDNKamdOZTVnb1FheEJnaGttTklpUzJjSXc4MWp4OUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NDU1NzQxCWZpbGU6UlZDLUZhYnJpYy1TZXR1cC0xLjguMi5leGUKdkxxZWFUamx6eERIM0xMNVd2NGdLdDNSRFIyVmI0Mm8xTmZSbk96MW8zTk9sS1o5bzRKc0hxUnB4ZHJ3L3RIQ0VUN0NKaEozNFpVNXU0TUFOamNIQnc9PQo=\",\"pub_date\":\"2026-11-23T17:42:21Z\",\"signature_verified\":true}"
+    },
+    {
+      "item": "gpt-sovits-fabric/shortlink",
+      "pass": true,
+      "url": "https://cdn.turingmirror.com/d/gpt-sovits-fabric-setup",
+      "final_url": "https://cdn.turingmirror.com/f/gpt-sovits-fabric/GPT-SoVITS-Fabric-Setup.exe",
+      "redirects": [
+        {
+          "status": 302,
+          "from": "https://cdn.turingmirror.com/d/gpt-sovits-fabric-setup",
+          "to": "https://cdn.turingmirror.com/f/gpt-sovits-fabric/GPT-SoVITS-Fabric-Setup.exe"
+        }
+      ],
+      "sha256": "771f164d3db31009b4f86908629f74ffc389366eb24b73bb1ee74d8908b06e43",
+      "size": 26196311,
+      "initial_get_status": 206,
+      "initial_range": "bytes 0-0/26196311"
+    },
+    {
+      "item": "rvc-fabric/shortlink",
+      "pass": true,
+      "url": "https://cdn.turingmirror.com/d/rvc-fabric-setup",
+      "final_url": "https://cdn.turingmirror.com/f/rvc-fabric/RVC_Fabric_Setup.exe",
+      "redirects": [
+        {
+          "status": 302,
+          "from": "https://cdn.turingmirror.com/d/rvc-fabric-setup",
+          "to": "https://cdn.turingmirror.com/f/rvc-fabric/RVC_Fabric_Setup.exe"
+        }
+      ],
+      "sha256": "6a20f255d11c56d1882e9c74931ac52e51fe2cbc6282688f4b65056fda675c16",
+      "size": 25122935,
+      "initial_get_status": 206,
+      "initial_range": "bytes 0-0/25122935"
+    },
+    {
+      "item": "gpt-sovits-fabric/button:下载 Windows x64",
+      "pass": false,
+      "url": "https://cdn.turingmirror.com/f/gpt-sovits-fabric/GPT-SoVITS-Fabric-Setup-1.0.3.exe",
+      "error": "<HTTPError 404: 'Not Found'>"
+    },
+    {
+      "item": "gpt-sovits-fabric/button:setup.exe",
+      "pass": false,
+      "url": "https://www.turingmirror.com/releases/gpt-sovits-fabric/setup.exe",
+      "error": "<HTTPError 404: 'Not Found'>"
+    },
+    {
+      "item": "rvc-fabric/button:下载 Windows 版 .exe",
+      "pass": true,
+      "url": "https://cdn.turingmirror.com/d/rvc-fabric-setup",
+      "final_url": "https://cdn.turingmirror.com/f/rvc-fabric/RVC_Fabric_Setup.exe",
+      "status": 206,
+      "range": "bytes 0-1023/25122935",
+      "redirects": [
+        {
+          "status": 302,
+          "from": "https://cdn.turingmirror.com/d/rvc-fabric-setup",
+          "to": "https://cdn.turingmirror.com/f/rvc-fabric/RVC_Fabric_Setup.exe"
+        }
+      ],
+      "bytes": 1024
+    },
+    {
+      "item": "gpt-sovits-fabric/legacy_update",
+      "pass": true,
+      "previous": "1.0.3",
+      "endpoint": "https://www.turingmirror.com/releases/gpt-sovits-fabric/updater.json",
+      "offered": "1.0.4",
+      "old_config_ref": "v1.0.3"
+    },
+    {
+      "item": "rvc-fabric/button:setup.exe",
+      "pass": true,
+      "url": "https://www.turingmirror.com/releases/rvc-fabric/setup.exe",
+      "final_url": "https://cdn.turingmirror.com/f/rvc-fabric/RVC_Fabric_Setup.exe",
+      "status": 206,
+      "range": "bytes 0-1023/25122935",
+      "redirects": [
+        {
+          "status": 302,
+          "from": "https://www.turingmirror.com/releases/rvc-fabric/setup.exe",
+          "to": "https://cdn.turingmirror.com/d/rvc-fabric-setup"
+        },
+        {
+          "status": 302,
+          "from": "https://cdn.turingmirror.com/d/rvc-fabric-setup",
+          "to": "https://cdn.turingmirror.com/f/rvc-fabric/RVC_Fabric_Setup.exe"
+        }
+      ],
+      "bytes": 1024
+    },
+    {
+      "item": "rvc-fabric/legacy_update",
+      "pass": true,
+      "previous": "1.8.1",
+      "endpoint": "https://www.turingmirror.com/releases/rvc-fabric/updater.json",
+      "offered": "1.8.2",
+      "old_config_ref": "v1.8.1"
+    }
+  ],
+  "gsv_client_checks": [
+    {
+      "item": "cpu",
+      "pass": true,
+      "seconds": 112.4129931,
+      "sha256": "30910118ba208dc6ef599dca060d99bea44f55fc32665b0ed9f53ac816cc989f",
+      "size": 594573268,
+      "url": "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/ba30c8ae2d8a533926d664f1691e3b757a6c3902/fabric/runtime/runtime-cpu-2026.10.31.tar.gz"
+    },
+    {
+      "item": "smallest_core",
+      "pass": true,
+      "seconds": 21.9491689,
+      "sha256": "a0fe2fbfb0decf18bd03b599e6ed3fb59060a2eca9fe2225d482cf768f164543",
+      "size": 131266386,
+      "url": "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/ba30c8ae2d8a533926d664f1691e3b757a6c3902/fabric/engine-core/base-langdetect.zip"
+    },
+    {
+      "item": "vocoder",
+      "pass": true,
+      "seconds": 19.7326976,
+      "sha256": "b7543c83222aa2105bb4efb56845086bc5f2eeba61243d723ffa062052b3221f",
+      "size": 57761163,
+      "url": "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/ba30c8ae2d8a533926d664f1691e3b757a6c3902/fabric/extras/gsv-v5/vocoder.pth"
+    },
+    {
+      "bytes": 5487367,
+      "complete_archive_verified": false,
+      "item": "fallback",
+      "pass": true,
+      "prefix_sha256": "ced260f4d669a0119fa630408477b914949c6c76489a0dbac622e07819febee9",
+      "url": "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/ba30c8ae2d8a533926d664f1691e3b757a6c3902/fabric/runtime/runtime-cpu-2026.10.31.tar.gz"
+    }
+  ],
+  "rvc_range_checks": [
+    {
+      "bytes": 1024,
+      "final_url": "https://asset.cnb.cool/assets/t/8zMXu0eNh180bm2ebg36MZfvaZU",
+      "pass": true,
+      "range": "bytes 0-1023/6077133824",
+      "status": 206,
+      "url": "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/RVC-runtime/runtime-nvidia-2026.07.21.tar",
+      "variant": "nvidia"
+    },
+    {
+      "bytes": 1024,
+      "final_url": "https://asset.cnb.cool/assets/t/7fNYQIel1063cKNyfGPMI3po8uI",
+      "pass": true,
+      "range": "bytes 0-1023/6698774016",
+      "status": 206,
+      "url": "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/RVC-runtime/runtime-nvidia50-2026.07.21.tar",
+      "variant": "nvidia50"
+    },
+    {
+      "bytes": 1024,
+      "final_url": "https://asset.cnb.cool/assets/t/cr84t2lfYlslA1bdfoq0HygPmTG",
+      "pass": true,
+      "range": "bytes 0-1023/1801268224",
+      "status": 206,
+      "url": "https://cnb.cool/Turing-Mirror/RVC-Fabric-Releases/-/releases/download/RVC-runtime/runtime-amd-2026.07.21.tar",
+      "variant": "amd"
+    }
+  ]
+}

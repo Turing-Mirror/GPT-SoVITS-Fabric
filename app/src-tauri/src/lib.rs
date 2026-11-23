@@ -39,6 +39,9 @@ mod synth;
 mod telemetry;
 #[cfg(test)]
 mod testutil;
+#[cfg(test)]
+#[path = "../tests/support/e2e_download.rs"]
+mod e2e_download;
 mod tool_window;
 mod train;
 mod train_queue;
