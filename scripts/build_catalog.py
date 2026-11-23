@@ -55,6 +55,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from release_storage import installer_url
+
 REPO = Path(__file__).resolve().parents[1]
 
 CNB_BASE = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases"
@@ -308,7 +311,6 @@ def build(src: dict, rep: Report, modelscope: dict[str, str] | None = None) -> d
         if not name:
             rep.error("app: 缺 name")
         ver = str(app.get("version", "")).strip()
-        tag = str(app.get("release_tag") or TAG_SETUP).strip()
         ota_name = str(app.get("ota_name") or (f"GPT-SoVITS-Fabric-Setup-{ver}.exe" if ver else name)).strip()
         size = need_size(rep, "app", app)
         sha = need_sha(rep, "app", app)
@@ -316,7 +318,7 @@ def build(src: dict, rep: Report, modelscope: dict[str, str] | None = None) -> d
             "package_type": str(app.get("package_type") or "full_package"),
             "version": ver,
             "kind": "exe",
-            "url": asset_url(tag, ota_name),
+            "url": installer_url("gpt-sovits-fabric", ota_name),
             "sha256": sha,
             "size_bytes": size,
         }
@@ -330,8 +332,7 @@ def build(src: dict, rep: Report, modelscope: dict[str, str] | None = None) -> d
             "channel": "release",
             "size_bytes": size,
             "sha256": sha,
-            "urls": [asset_url(tag, name)],
-            "sha256_urls": [raw_url(f"assets/setup/{name}.sha256")],
+            "urls": [installer_url("gpt-sovits-fabric", ota_name)],
             "gui": gui,
         }
     else:
@@ -391,10 +392,9 @@ def build(src: dict, rep: Report, modelscope: dict[str, str] | None = None) -> d
                 "release_tag": TAG_GSV_CPP,
                 "urls": [asset_url(TAG_GSV_CPP, name)],
             }
-    apply_modelscope(out, modelscope or {})
-    # 自动更新的安装包由浏览器打开；保持单 URL 契约并使用同一制品的镜像。
-    if app and (mirror := (modelscope or {}).get(out["app"]["sha256"])):
-        out["app"]["gui"]["url"] = mirror
+    for section, value in out.items():
+        if section != "app":
+            apply_modelscope(value, modelscope or {})
     return out
 
 

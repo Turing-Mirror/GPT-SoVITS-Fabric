@@ -37,7 +37,7 @@ class CatalogMirrorTests(unittest.TestCase):
         result = bc.build(sources(), rep, mirrors)
         self.assertEqual(rep.errors, [])
         paths = [
-            ("app",), ("runtimes", "nvidia", "parts", 0),
+            ("runtimes", "nvidia", "parts", 0),
             ("engine_core", "base"), ("extras", "extra", "files", 0),
             ("gsv-cpp", "engine"), ("gsv-cpp", "shared"),
         ]
@@ -50,7 +50,11 @@ class CatalogMirrorTests(unittest.TestCase):
             self.assertEqual(actual["size_bytes"], old["size_bytes"])
         self.assertEqual(result["runtimes"]["cpu"], baseline["runtimes"]["cpu"])
         self.assertEqual(result["roles"], baseline["roles"])
-        self.assertEqual(result["app"]["gui"]["url"], mirrors["a" * 64])
+        self.assertEqual(result["app"], baseline["app"])
+        target = "https://cdn.turingmirror.com/f/gpt-sovits-fabric/GPT-SoVITS-Fabric-Setup-1.0.0.exe"
+        self.assertEqual(result["app"]["urls"], [target])
+        self.assertEqual(result["app"]["gui"]["url"], target)
+        self.assertNotIn("cnb.cool", json.dumps(result["app"]))
         self.assertEqual(result["manifest_urls"], [
             "https://www.turingmirror.com/releases/gpt-sovits-fabric/index.json",
             f"{bc.CNB_BASE}/-/git/raw/main/index.json",
