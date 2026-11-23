@@ -234,15 +234,18 @@ pub fn parse_spec(key: &str, blob: &Value) -> Option<ExtraSpec> {
                     .collect()
             })
             .unwrap_or_default();
-        if urls.is_empty() {
+        if channel == "lfs" || !tag.trim().is_empty() || urls.is_empty() {
             let base = name.rsplit('/').next().unwrap_or(&name);
-            urls.push(if channel == "lfs" {
+            let fallback = if channel == "lfs" {
                 lfs_url(&sha)
             } else if tag.trim().is_empty() {
                 return None;
             } else {
                 release_url(&tag, base)
-            });
+            };
+            if !urls.contains(&fallback) {
+                urls.push(fallback);
+            }
         }
         files.push(ExtraFile {
             name,
@@ -569,7 +572,19 @@ fn download_inner(app: &AppHandle, root: &Path, key: &str) -> Result<Value, Stri
         // 先落到临时名，校验通过再改名：中断留下的半截文件如果就叫最终名，
         // 下次开界面会被 file_ok 当成已装好（大小刚好撞上就更糟）。
         let tmp = dir.join(format!("{}.part", f.name));
-        download::download_file(&f.urls, &tmp, &f.sha256, cancel_flag(), Some(cb))
+        download::download_request(
+            download::DownloadRequest {
+                urls: f.urls.clone(),
+                root: Some(root.to_path_buf()),
+                dest: tmp.clone(),
+                expected_sha256: f.sha256.clone(),
+                size_hint: f.size_bytes,
+                connections: None,
+                kind: download::DownloadKind::Dependency,
+            },
+            cancel_flag(),
+            Some(cb),
+        )
             .map_err(|e| crate::i18n::t2("s.0df1f31a67", &f.name, &e))?;
         if dest.exists() {
             let _ = std::fs::remove_file(&dest);
@@ -589,6 +604,18 @@ fn download_inner(app: &AppHandle, root: &Path, key: &str) -> Result<Value, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extra_mirrors_keep_catalog_order_and_append_release_fallback() {
+        let mirror = "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/commit/model.pth";
+        let blob = json!({"dest": "models", "release_tag": "models", "files": [{
+            "name": "model.pth", "sha256": "a".repeat(64), "size_bytes": 12, "urls": [mirror]
+        }]});
+        let spec = parse_spec("model", &blob).unwrap();
+        assert_eq!(spec.files[0].urls, vec![mirror.to_string(), release_url("models", "model.pth")]);
+        assert_eq!(spec.files[0].sha256, "a".repeat(64));
+        assert_eq!(spec.files[0].size_bytes, 12);
+    }
 
     #[test]
     fn a_hostile_dest_cannot_escape_the_install() {

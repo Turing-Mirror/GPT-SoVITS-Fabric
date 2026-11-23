@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
-use crate::{download, extract, paths};
+use crate::{catalog, download, extract, paths};
 
 pub(crate) const CNB_REPO: &str = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases";
 
@@ -87,32 +87,53 @@ fn pack_lock() -> std::sync::MutexGuard<'static, ()> {
     PACK_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 内置清单里登记的包大小（字节）。拿不到就 0 —— 下载器按无提示处理，
-/// 行为和从前一样。
-///
-/// 这个数喂给 `auto_connections` 和进度条分母：恒传 0 的话大包只开一条连接
-/// 慢慢爬，慢网络下雪上加霜。
-fn catalog_size_for(root: &Path, cache_name: &str) -> u64 {
-    let data: Value = std::fs::read_to_string(root.join("configs").join("online_catalog.json"))
+fn local_catalog(root: &Path) -> Value {
+    std::fs::read_to_string(root.join("configs").join("online_catalog.json"))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| json!({}));
-    for section in ["engine_core", "extras"] {
-        let Some(v) = data.get(section) else { continue };
-        // 段本身就是条目（engine_core 在清单里是单对象）。
-        if v.get("name").and_then(|x| x.as_str()) == Some(cache_name) {
-            return v.get("size_bytes").and_then(|x| x.as_u64()).unwrap_or(0);
-        }
-        // 或者是「名字 → 条目」的映射（extras 预留这种形状）。
-        if let Value::Object(m) = v {
-            for e in m.values() {
-                if e.get("name").and_then(|x| x.as_str()) == Some(cache_name) {
-                    return e.get("size_bytes").and_then(|x| x.as_u64()).unwrap_or(0);
-                }
-            }
-        }
+        .unwrap_or_else(|| json!({}))
+}
+
+fn artifact_entry<'a>(node: &'a Value, name: &str) -> Option<&'a Value> {
+    if node.get("name").and_then(Value::as_str) == Some(name) {
+        return Some(node);
     }
-    0
+    match node {
+        Value::Object(entries) => entries.values().find_map(|entry| artifact_entry(entry, name)),
+        Value::Array(entries) => entries.iter().find_map(|entry| artifact_entry(entry, name)),
+        _ => None,
+    }
+}
+
+fn catalog_size_for(root: &Path, cache_name: &str) -> u64 {
+    artifact_entry(&local_catalog(root), cache_name)
+        .and_then(|entry| entry["size_bytes"].as_u64())
+        .unwrap_or(0)
+}
+
+/// Match the pinned artifact before using its catalog URLs or size.
+fn pack_download_spec(
+    remote: &Value,
+    local: &Value,
+    name: &str,
+    sha: &str,
+    fallback: Vec<String>,
+) -> (Vec<String>, u64) {
+    let entry = [remote, local].into_iter().find_map(|data| {
+        artifact_entry(data, name).filter(|entry| {
+            entry["sha256"].as_str().is_some_and(|value| value.eq_ignore_ascii_case(sha))
+        })
+    });
+    let entry = entry.unwrap_or(&Value::Null);
+    (
+        catalog::download_urls(entry, fallback),
+        entry["size_bytes"].as_u64().unwrap_or(0),
+    )
+}
+
+fn download_spec(root: &Path, name: &str, sha: &str, fallback: Vec<String>) -> (Vec<String>, u64) {
+    let remote = catalog::fetch_remote_catalog_cached(12).unwrap_or(Value::Null);
+    pack_download_spec(&remote, &local_catalog(root), name, sha, fallback)
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +299,7 @@ fn lfs_urls(root: &Path, sha: &str) -> Vec<String> {
         .collect()
 }
 
-/// 同 `fetch_pack`，但在按 sha 寻址之后再挂几条备用地址。
+/// Use catalog URLs first, then the built-in release and legacy LFS fallbacks.
 pub fn fetch_pack_with_fallback(
     cache_name: &str,
     sha: &str,
@@ -293,15 +314,16 @@ pub fn fetch_pack_with_fallback(
     let archive = cache.join(cache_name);
     let cached_ok = archive.is_file() && download::verify_sha256(&archive, sha).is_ok();
     if !cached_ok {
-        let mut urls = lfs_urls(root, sha);
-        urls.extend(extra);
+        let mut fallback = extra;
+        fallback.extend(lfs_urls(root, sha));
+        let (urls, size) = download_spec(root, cache_name, sha, fallback);
         download::download_request(
             download::DownloadRequest {
                 urls,
                 root: Some(root.to_path_buf()),
                 dest: archive.clone(),
                 expected_sha256: sha.to_string(),
-                size_hint: catalog_size_for(root, cache_name),
+                size_hint: size,
                 connections: None,
                 kind: download::DownloadKind::Dependency,
             },
@@ -317,9 +339,7 @@ pub fn fetch_pack_with_fallback(
 
 /// 下载并解开一个底模包到安装根。
 ///
-/// 只走按标签直连的地址（底模组制品不进 LFS 命名空间）。sha 为空串期间
-/// 无法校验缓存也无法校验成品 —— 缓存复用直接放弃（每次重下），完整性
-/// 校验交给下载器对空 sha 的现状行为（跳过）；回填之后两条都自动生效。
+/// Use the catalog mirrors for the pinned checksum, then release URLs as fallback.
 fn fetch_base_pack(
     file: &str,
     sha: &str,
@@ -335,15 +355,16 @@ fn fetch_base_pack(
     let cached_ok =
         !sha.is_empty() && archive.is_file() && download::verify_sha256(&archive, sha).is_ok();
     if !cached_ok {
+        let (urls, size) = download_spec(root, file, sha, release_urls(root, BASE_MODELS_TAG, file));
         // Passing progress through is what keeps the first-run gate honest:
         // without it the bar sits still while the NIC is busy for minutes.
         download::download_request(
             download::DownloadRequest {
-                urls: release_urls(root, BASE_MODELS_TAG, file),
+                urls,
                 root: Some(root.to_path_buf()),
                 dest: archive.clone(),
                 expected_sha256: sha.to_string(),
-                size_hint: catalog_size_for(root, file),
+                size_hint: size,
                 connections: None,
                 kind: download::DownloadKind::Dependency,
             },
@@ -439,6 +460,25 @@ pub fn assets_status(root: &Path) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn core_and_vcredist_use_verified_catalog_mirrors_before_cnb() {
+        let sha = "a".repeat(64);
+        let mirror = "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/commit/pack.zip";
+        let cnb = format!("{CNB_REPO}/-/releases/download/GSV-engine-core/pack.zip");
+        for section in ["engine_core", "vcredist", "extras"] {
+            let remote = json!({section: {"files": [{
+                "name": "pack.zip", "sha256": sha, "size_bytes": 12, "urls": [mirror, cnb]
+            }]}});
+            let spec = pack_download_spec(&remote, &Value::Null, "pack.zip", &sha, vec![cnb.clone()]);
+            assert_eq!(spec, (vec![mirror.to_string(), cnb.clone()], 12));
+            assert_eq!(pack_download_spec(&Value::Null, &remote, "pack.zip", &sha, vec![cnb.clone()]), spec);
+            assert_eq!(
+                pack_download_spec(&remote, &Value::Null, "pack.zip", &"b".repeat(64), vec![cnb.clone()]),
+                (vec![cnb.clone()], 0)
+            );
+        }
+    }
 
     /// 测试用的完整长度假 sha（lfs 寻址形态只看字符串本身）。
     const TEST_SHA: &str = "ecb3231c7d26ad553e902ac24d40daf3d3fbe5786a7d8e78af8038fc389cab47";

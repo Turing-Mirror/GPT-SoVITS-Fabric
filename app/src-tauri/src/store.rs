@@ -47,9 +47,10 @@ fn voice_download_urls(root: &Path, url: &str, sha: &str) -> Vec<String> {
         .filter(|c| c.is_ascii_hexdigit())
         .collect::<String>()
         .to_ascii_lowercase();
-    if sha.len() == 64
-        && (url.contains("cnb.cool") || url.contains("/-/releases/download/"))
-    {
+    let is_cnb = reqwest::Url::parse(url).ok().is_some_and(|url| {
+        url.host_str().is_some_and(|host| host == "cnb.cool" || host.ends_with(".cnb.cool"))
+    });
+    if sha.len() == 64 && is_cnb {
         for base in crate::mirrors::lfs_bases(root) {
             let lfs = format!("{base}/-/lfs/{sha}");
             if !urls.iter().any(|u| u == &lfs) {
@@ -124,11 +125,14 @@ fn parse_voice_entry(d: &Value, force_official: Option<bool>) -> Option<Value> {
             cover.replace('\\', "/").trim_start_matches('/')
         );
     }
+    let urls = crate::catalog::download_urls(d, Vec::new());
     let pack_url = d
         .get("pack_url")
         .or_else(|| d.get("zip_url"))
         .or_else(|| d.get("pack"))
         .and_then(|v| v.as_str())
+        .filter(|url| !url.is_empty())
+        .or_else(|| urls.first().map(String::as_str))
         .unwrap_or("")
         .to_string();
     let pth_url = d
@@ -212,6 +216,7 @@ fn parse_voice_entry(d: &Value, force_official: Option<bool>) -> Option<Value> {
         "version": d.get("version").and_then(|v| v.as_str()).unwrap_or("1"),
         "package_type": d.get("package_type").or_else(|| d.get("type")).and_then(|v| v.as_str()).unwrap_or(""),
         "pack_url": pack_url,
+        "urls": urls,
         "pth_url": pth_url,
         "index_url": d.get("index_url").and_then(|v| v.as_str()).unwrap_or(""),
         "index_sha256": d.get("index_sha256").and_then(|v| v.as_str()).unwrap_or(""),
@@ -790,7 +795,10 @@ pub fn install_voice_entry(
         crate::community_catalog::download_url(&root, &entry)
             .inspect_err(|_| crate::community_catalog::report_failure(&root, &entry))?
     } else {
-        entry.get("pack_url").and_then(Value::as_str).unwrap_or("").to_owned()
+        entry.get("pack_url").and_then(Value::as_str).filter(|url| !url.is_empty())
+            .map(str::to_owned)
+            .or_else(|| crate::catalog::download_urls(&entry, Vec::new()).into_iter().next())
+            .unwrap_or_default()
     };
     let sha = entry
         .get("sha256")
@@ -853,7 +861,12 @@ pub fn install_voice_entry(
             );
         });
 
-        let urls = voice_download_urls(&root, &pack_url, &sha);
+        let fallback = voice_download_urls(&root, &pack_url, &sha);
+        let urls = if community {
+            fallback
+        } else {
+            crate::catalog::download_urls(&entry, fallback)
+        };
         let res = download::download_request(
             DownloadRequest {
                 urls,
@@ -1032,6 +1045,20 @@ pub fn cancel_store_download(id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modelscope_pack_keeps_its_url_without_cnb_rewriting() {
+        let root = crate::testutil::scratch("modelscope-voice");
+        let url = "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/commit/voice.zip";
+        assert_eq!(voice_download_urls(&root, url, &"a".repeat(64)), vec![url]);
+        let fallback = "https://cnb.cool/Turing-Mirror/GPT-SoVITS-Fabric-Releases/-/releases/download/GSV-roles/voice.zip";
+        let entry = parse_voice_entry(&json!({"id": "mirror-role", "urls": [url, fallback]}), None).unwrap();
+        assert_eq!(entry["pack_url"], url);
+        assert_eq!(entry["urls"], json!([url, fallback]));
+        let urls = crate::catalog::download_urls(&entry, voice_download_urls(&root, fallback, &"a".repeat(64)));
+        assert_eq!(&urls[..2], &[url, fallback]);
+        assert_eq!(urls.len(), 3);
+    }
 
     /// 清单条目里的多语言字段必须一路走到本地 `config.json`。
     ///

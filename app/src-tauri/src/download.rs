@@ -53,12 +53,9 @@ const MAX_TRANSIENT_ATTEMPTS: u32 = 5;
 ///
 /// 40s 而不是 20s：拥塞线路上 TLS 握手加排队首字节超过 20 秒很常见
 /// （diag 26.8.22/1 一晚上几十次恰好卡在 20s 整），每次掐断都把慢启动攒的
-/// 窗口打回原点。选源阶段有 8 秒的探测兜底，这里放宽不影响死链切换。
+/// 窗口打回原点。超时后按清单顺序切换下一个源。
 const FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(40);
 const FIRST_BYTE_TIMEOUT_ERR: &str = "timed out waiting for first byte";
-/// 选源阶段给每个候选的时间。这里只发一个 `Range: bytes=0-0`，回不回得来
-/// 是秒级的事；等满 8 秒还没动静的源，让它排到后面去。
-const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 /// 续传流多久没有新字节算卡死。比 FIRST_BYTE_TIMEOUT 短：这时候连接已经建
 /// 起来过了，再哑 15 秒就是真断了。
 const RESUME_STALL: Duration = Duration::from_secs(15);
@@ -270,29 +267,7 @@ fn resumable_from(recorded: &str, urls: &[String], part_len: u64) -> Option<Stri
     Some(r.to_string())
 }
 
-/// 把已经攒了半截的源钉到候选列表最前。
-///
-/// 「轮流换源」对两个都不稳的网络是灾难：不同源的字节接不到一起，换一次源
-/// 就得把旧半截整个丢掉，两边互相归零，谁也攒不齐（diag 26.8.22/1：754MB
-/// 的引擎资源在 lfs 和 release 两条地址间来回横跳，一晚上续传点在 10MB 和
-/// 69MB 之间打转，一次都没落地）。所以只要手上有合法半截，就一路续它到底；
-/// `stalls` 记连续几轮没长进 —— 连着两轮颗粒无收说明这个源真不行，放开钉，
-/// 让备用源顶上（那一次丢字节是值得的）。
-fn pin_resume_first(mut urls: Vec<String>, resume_url: &str, stalls: u32) -> Vec<String> {
-    if resume_url.is_empty() || stalls >= 2 {
-        return urls;
-    }
-    if let Some(pos) = urls.iter().position(|u| u == resume_url) {
-        let picked = urls.remove(pos);
-        urls.insert(0, picked);
-    }
-    urls
-}
-
-/// 第 n 次重试用多少连接。
-///
-/// 有些镜像不是「挂了」，是被 32 路并发打到限流才回 429/503。同样的并发重试
-/// 五轮，五轮都会被同样地拒掉 —— 退一步反而下得来。
+/// Reduce concurrency after transient failures.
 pub fn connections_for_attempt(base: usize, attempt: u32) -> usize {
     match attempt {
         0 | 1 => base,
@@ -301,81 +276,7 @@ pub fn connections_for_attempt(base: usize, attempt: u32) -> usize {
     }
 }
 
-/// 把候选源按「谁先回应」重排，第一个能用的排最前。
-///
-/// 以前是串行的：第一个源卡住就等满 20 秒，三个源全卡要等一分钟才轮到第一次
-/// 重试。这里同时给每个源发一个 `Range: bytes=0-0`，谁先回 200/206 就用谁 ——
-/// 一个字节的往返，是秒级的事。
-///
-/// 只重排、不淘汰：探测失败的源仍然留在后面。探测用的连接和真正下载的连接
-/// 走的可能不是同一条路（CDN 节点、连接池），凭一次探测就把源判死太武断。
-fn probe_order(urls: &[String], cancel: &Arc<AtomicBool>) -> Vec<String> {
-    if urls.len() < 2 {
-        return urls.to_vec();
-    }
-    let (tx, rx) = std::sync::mpsc::channel::<usize>();
-    for (i, u) in urls.iter().enumerate().take(6) {
-        let url = u.clone();
-        let tx = tx.clone();
-        // detach：探测线程最多活 PROBE_TIMEOUT，不 join，免得一个卡死的源
-        // 把选源阶段拖成它自己的超时。
-        std::thread::spawn(move || {
-            let ok = reqwest::blocking::Client::builder()
-                .timeout(PROBE_TIMEOUT)
-                .user_agent(UA)
-                .build()
-                .ok()
-                .and_then(|c| c.get(&url).header("Range", "bytes=0-0").send().ok())
-                .map(|r| {
-                    let s = r.status();
-                    s.is_success() || s == reqwest::StatusCode::PARTIAL_CONTENT
-                })
-                .unwrap_or(false);
-            if ok {
-                let _ = tx.send(i);
-            }
-        });
-    }
-    drop(tx);
-
-    let deadline = std::time::Instant::now() + PROBE_TIMEOUT;
-    let winner = loop {
-        if cancel.load(Ordering::SeqCst) {
-            return urls.to_vec();
-        }
-        let left = deadline.saturating_duration_since(std::time::Instant::now());
-        if left.is_zero() {
-            break None;
-        }
-        match rx.recv_timeout(left.min(Duration::from_millis(250))) {
-            Ok(i) => break Some(i),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-            // 所有探测线程都结束了还没人成功
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break None,
-        }
-    };
-
-    let Some(w) = winner else {
-        return urls.to_vec();
-    };
-    let mut out = Vec::with_capacity(urls.len());
-    out.push(urls[w].clone());
-    for (i, u) in urls.iter().enumerate() {
-        if i != w {
-            out.push(u.clone());
-        }
-    }
-    out
-}
-
-/// 单流续传：把 `part` 已有的字节数当起点，`Range: bytes=N-` 接着下。
-///
-/// **为什么不是全程都用它**：ripget 那条是多连接并行的，健康网络上快得多，
-/// 但它会 `prepare_file` 把目标预分配成完整长度，再往各个 offset 写 —— 一个
-/// 半截的 `.part` 大小就是完整大小，中间哪些块是真的没法知道，续不了。
-///
-/// 所以分工是：第一次走 ripget（快），重试走这条（能攒）。网络烂的时候重试
-/// 才是常态，而那正是续传值钱的地方 —— 一个 500MB 的包不会每次都从零开始。
+/// Resume a verified prefix using HTTP Range; follow the server's redirects.
 async fn resume_one_url(
     url: &str,
     part: &Path,
@@ -391,6 +292,7 @@ async fn resume_one_url(
         .user_agent(UA)
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(FIRST_BYTE_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("client: {e}"))?;
 
@@ -535,6 +437,16 @@ pub(crate) fn file_sha256(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+fn verify_download(path: &Path, sha256: &str, expected_size: u64) -> Result<(), String> {
+    if expected_size > 0 {
+        let size = path.metadata().map_err(|e| e.to_string())?.len();
+        if size != expected_size {
+            return Err(format!("download: size mismatch (expected {expected_size}, got {size})"));
+        }
+    }
+    verify_sha256(path, sha256)
+}
+
 /// Options for a single product download (Runtime / voice / patch).
 #[derive(Clone)]
 pub struct DownloadRequest {
@@ -661,13 +573,14 @@ pub fn download_request(
     if req.urls.is_empty() {
         return Err(crate::i18n::t("s.d08e45e275").into());
     }
+    let expected_size = req.size_hint;
     if let Some(parent) = req.dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
     // Already complete + verified
     if req.dest.is_file() && !req.expected_sha256.is_empty() {
-        if verify_sha256(&req.dest, &req.expected_sha256).is_ok() {
+        if verify_download(&req.dest, &req.expected_sha256, expected_size).is_ok() {
             if let Some(ref cb) = progress {
                 let len = req.dest.metadata().map(|m| m.len()).unwrap_or(0);
                 cb(len, len, "download");
@@ -716,24 +629,16 @@ pub fn download_request(
 
     let rt = shared_runtime();
 
-    // 选源：并发探一轮，谁先回应谁排第一。串行等超时的老做法在三个源都卡的
-    // 时候要一分钟才轮到第一次重试。
-    let urls = probe_order(&req.urls, &cancel);
+    // Catalog mirrors are ordered; a faster fallback must not bypass the first URL.
+    let urls = req.urls.clone();
 
     let mut last_err = String::new();
     let mut unavailable = Vec::new();
     let mut attempt = 0u32;
-    // 有合法半截时把那个源钉在最前；连着两轮没长进就放开（见 pin_resume_first）。
-    let mut pinned_stalls: u32 = 0;
     loop {
         attempt += 1;
         let mut saw_transient = false;
-        // 本轮开跑时的半截长度：判断钉住的源这轮有没有长进用。
-        let len_at_round_start = std::fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
-        // 钉住的源得在这里快照下来 —— resume_url 会随尝试被改写，循环里比不了。
-        let pinned_this_round = resume_url.clone();
-        let round_urls = pin_resume_first(urls.clone(), &pinned_this_round, pinned_stalls);
-        for url in &round_urls {
+        for url in &urls {
             if unavailable.contains(url) {
                 continue;
             }
@@ -783,7 +688,7 @@ pub fn download_request(
                 let first = resume();
                 if offset > 0 && first.as_ref().is_err_and(|e| e == "resume: status 416") {
                     if !req.expected_sha256.is_empty()
-                        && verify_sha256(&part_path, &req.expected_sha256).is_ok()
+                        && verify_download(&part_path, &req.expected_sha256, expected_size).is_ok()
                     {
                         Ok(())
                     } else {
@@ -820,7 +725,7 @@ pub fn download_request(
                             let len = part_path.metadata().map(|m| m.len()).unwrap_or(0);
                             cb(len, len.max(1), "verify");
                         }
-                        if let Err(e) = verify_sha256(&part_path, &req.expected_sha256) {
+                        if let Err(e) = verify_download(&part_path, &req.expected_sha256, expected_size) {
                             // 拿到的东西不对，续传更没意义 —— 整个丢掉换下一个源。
                             let _ = std::fs::remove_file(&part_path);
                             let _ = std::fs::remove_file(&tag_path);
@@ -873,21 +778,7 @@ pub fn download_request(
                     {
                         unavailable.push(url.clone());
                     }
-                    let now_len = part_path.metadata().map(|m| m.len()).unwrap_or(0);
-                    let made_progress = use_resume && now_len > len_at_round_start;
-                    if made_progress {
-                        pinned_stalls = 0;
-                    } else if pinned_this_round == *url {
-                        pinned_stalls += 1;
-                    }
-                    // Give a working stream the next retry before trying a slower mirror.
                     last_err = e;
-                    if transient
-                        && (made_progress
-                            || (offset > 0 && pinned_this_round == *url && pinned_stalls < 2))
-                    {
-                        break;
-                    }
                 }
             }
         }
@@ -1018,6 +909,144 @@ async fn wait_first_byte_or_timeout(
 mod tests {
     use super::*;
 
+    fn mirror_fixture(
+        responses: Vec<(&'static str, String, Duration)>,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::{Ipv4Addr, TcpListener};
+
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let base = format!("http://{address}");
+        let thread = std::thread::spawn(move || {
+            for (path, response, delay) in responses {
+                let start = std::time::Instant::now();
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+                            && start.elapsed() < Duration::from_secs(5) => {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) => panic!("missing request {path}: {error}"),
+                    }
+                };
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut reader = BufReader::new(&stream);
+                let mut first = String::new();
+                reader.read_line(&mut first).unwrap();
+                assert_eq!(first.split_whitespace().nth(1), Some(path));
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() { break; }
+                    let lower = line.to_ascii_lowercase();
+                    assert!(!["authorization:", "cookie:", "proxy-authorization:"]
+                        .iter().any(|header| lower.starts_with(header)));
+                }
+                std::thread::sleep(delay);
+                let response = response.replace("{cdn}", &format!("http://localhost:{}/cdn", address.port()));
+                // A deliberately timed-out request may already have closed its socket.
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (base, thread)
+    }
+
+    fn mirror_request(base: &str, paths: &[&str], tag: &str) -> DownloadRequest {
+        DownloadRequest {
+            urls: paths.iter().map(|path| format!("{base}{path}")).collect(),
+            root: None,
+            dest: crate::testutil::scratch(tag).join("runtime.tar"),
+            expected_sha256: format!("{:x}", Sha256::digest(b"hello fabric")),
+            size_hint: 12,
+            connections: Some(1),
+            kind: DownloadKind::Runtime,
+        }
+    }
+
+    #[test]
+    fn mirrors_follow_catalog_order_through_http_errors_hash_errors_and_redirects() {
+        let empty = Duration::ZERO;
+        let (base, server) = mirror_fixture(vec![
+            ("/403", "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(), empty),
+            ("/404", "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(), empty),
+            ("/503", "HTTP/1.1 503 Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(), empty),
+            ("/bad-hash", "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nwrong fabric".into(), empty),
+            ("/bad-size", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nshort".into(), empty),
+            ("/redirect", "HTTP/1.1 302 Found\r\nLocation: {cdn}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(), empty),
+            ("/cdn", "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nhello fabric".into(), empty),
+        ]);
+        let req = mirror_request(&base, &["/403", "/404", "/503", "/bad-hash", "/bad-size", "/redirect", "/unused"], "mirror-order");
+        let dest = req.dest.clone();
+        let result = download_request(req, Arc::new(AtomicBool::new(false)), None);
+        server.join().unwrap();
+        result.unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello fabric");
+        std::fs::remove_dir_all(dest.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn first_byte_timeout_tries_the_next_catalog_url() {
+        let (base, server) = mirror_fixture(vec![
+            ("/timeout", String::new(), FIRST_BYTE_TIMEOUT + Duration::from_millis(100)),
+            ("/next", "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nhello fabric".into(), Duration::ZERO),
+        ]);
+        let req = mirror_request(&base, &["/timeout", "/next"], "mirror-timeout");
+        let dest = req.dest.clone();
+        let result = download_request(req, Arc::new(AtomicBool::new(false)), None);
+        server.join().unwrap();
+        result.unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello fabric");
+        std::fs::remove_dir_all(dest.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn resumed_fallback_does_not_override_catalog_priority() {
+        let (base, server) = mirror_fixture(vec![
+            ("/first", "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(), Duration::ZERO),
+            ("/resume", "HTTP/1.1 206 Partial Content\r\nContent-Length: 7\r\nContent-Range: bytes 5-11/12\r\nConnection: close\r\n\r\n fabric".into(), Duration::ZERO),
+        ]);
+        let req = mirror_request(&base, &["/first", "/resume"], "mirror-priority");
+        let dest = req.dest.clone();
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::write(suffixed(&dest, ".part"), b"hello").unwrap();
+        std::fs::write(suffixed(&dest, ".part.src"), &req.urls[1]).unwrap();
+        let result = download_request(req, Arc::new(AtomicBool::new(false)), None);
+        server.join().unwrap();
+        result.unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello fabric");
+        std::fs::remove_dir_all(dest.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn interrupted_stream_switches_mirror_and_keeps_verified_prefix() {
+        let (base, server) = mirror_fixture(vec![
+            ("/drop", "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nhello".into(), Duration::ZERO),
+            ("/next", "HTTP/1.1 206 Partial Content\r\nContent-Length: 7\r\nContent-Range: bytes 5-11/12\r\nConnection: close\r\n\r\n fabric".into(), Duration::ZERO),
+        ]);
+        let req = mirror_request(&base, &["/drop", "/next"], "mirror-partial");
+        let dest = req.dest.clone();
+        let result = download_request(req, Arc::new(AtomicBool::new(false)), None);
+        server.join().unwrap();
+        result.unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello fabric");
+        std::fs::remove_dir_all(dest.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn catalog_size_is_checked_even_with_a_valid_checksum() {
+        let path = crate::testutil::scratch("download-size");
+        std::fs::write(&path, b"hello fabric").unwrap();
+        let sha = format!("{:x}", Sha256::digest(b"hello fabric"));
+        assert!(verify_download(&path, &sha, 13).unwrap_err().contains("size mismatch"));
+        assert!(verify_download(&path, &sha, 12).is_ok());
+        assert!(verify_download(&path, &"0".repeat(64), 12).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
+
     #[test]
     fn setup_download_resumes_after_the_first_connection_drops() {
         use std::io::{BufRead, BufReader, Write};
@@ -1086,34 +1115,6 @@ mod tests {
     }
 
     #[test]
-    fn a_resumable_source_is_pinned_to_the_front() {
-        let urls = vec![
-            "https://a.cn/p.zip".to_string(),
-            "https://b.cn/p.zip".to_string(),
-        ];
-        // 有半截的源排最前，探测选出来的顺序让位。
-        assert_eq!(
-            pin_resume_first(urls.clone(), "https://b.cn/p.zip", 0),
-            vec![
-                "https://b.cn/p.zip".to_string(),
-                "https://a.cn/p.zip".to_string()
-            ]
-        );
-        // 没有半截就维持原序。
-        assert_eq!(pin_resume_first(urls.clone(), "", 0), urls);
-        // 半截指向不在候选里的源：不动。
-        assert_eq!(
-            pin_resume_first(urls.clone(), "https://c.cn/p.zip", 0),
-            urls
-        );
-        // 连续两轮颗粒无收：放开钉，让备用源有机会顶上。
-        assert_eq!(
-            pin_resume_first(urls.clone(), "https://b.cn/p.zip", 2),
-            urls
-        );
-    }
-
-    #[test]
     fn connections_back_off_across_retries() {
         // 有些镜像不是挂了，是被 32 路并发打到限流。同并发重试五轮全是白费。
         assert_eq!(connections_for_attempt(32, 1), 32);
@@ -1123,26 +1124,6 @@ mod tests {
         // 本来就只有一条连接的小文件，不该被「退让」抬上去
         assert_eq!(connections_for_attempt(1, 2), 1);
         assert_eq!(connections_for_attempt(4, 2), 4);
-    }
-
-    #[test]
-    fn probe_leaves_a_single_url_alone() {
-        // 只有一个源就没什么可探的 —— 别为它多付一个往返。
-        let urls = vec!["https://example.invalid/a".to_string()];
-        let cancel = Arc::new(AtomicBool::new(false));
-        assert_eq!(probe_order(&urls, &cancel), urls);
-    }
-
-    #[test]
-    fn probe_keeps_every_url_when_none_answers() {
-        // 全都探不通时必须原样返回：探测只重排，不淘汰。真正的下载连接和探测
-        // 连接走的可能不是同一条路，凭一次探测判死太武断。
-        let urls = vec![
-            "https://a.invalid/x".to_string(),
-            "https://b.invalid/x".to_string(),
-        ];
-        let cancel = Arc::new(AtomicBool::new(true)); // 立刻取消，不真发请求
-        assert_eq!(probe_order(&urls, &cancel), urls);
     }
 
     #[test]

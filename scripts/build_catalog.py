@@ -2,7 +2,7 @@
 """在线清单编译器 —— `catalog/sources.json` → `index.json`。
 
 软件启动后读的唯一入口就是发布仓根上的 `index.json`（`catalog.rs` 的
-`MANIFEST_URLS` 写死了那两条地址）。这个脚本把人工维护的单一来源
+`MANIFEST_URLS` 依次读取官网与 CNB 地址）。这个脚本把人工维护的单一来源
 `catalog/sources.json` 编译成它。**产物 json 不要手改** —— 手改的那一次
 一定会和下一次编译打架。
 
@@ -266,7 +266,26 @@ def build_extras(src: dict, rep: Report) -> dict:
     return out
 
 
-def build(src: dict, rep: Report) -> dict:
+def load_modelscope(path: Path) -> dict[str, str]:
+    """读取发布仓的可选 SHA-256 → ModelScope 地址映射。"""
+    if not path.is_file():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))["files"]
+
+
+def apply_modelscope(node: Any, files: dict[str, str]) -> None:
+    if isinstance(node, dict):
+        mirror = files.get(str(node.get("sha256", "")).lower())
+        if mirror and isinstance(node.get("urls"), list):
+            node["urls"] = [mirror, *(u for u in node["urls"] if u != mirror)]
+        for value in node.values():
+            apply_modelscope(value, files)
+    elif isinstance(node, list):
+        for value in node:
+            apply_modelscope(value, files)
+
+
+def build(src: dict, rep: Report, modelscope: dict[str, str] | None = None) -> dict:
     app = src.get("app") or {}
     core = src.get("engine_core") or {}
 
@@ -277,6 +296,7 @@ def build(src: dict, rep: Report) -> dict:
         "cnb_repo": CNB_ORG_REPO,
         "runtime_release_tag": TAG_RUNTIME,
         "manifest_urls": [
+            "https://www.turingmirror.com/releases/gpt-sovits-fabric/index.json",
             f"{CNB_BASE}/-/git/raw/main/index.json",
             f"{CNB_BASE}/-/git/raw/main/catalog/online_catalog.snippet.json",
         ],
@@ -371,6 +391,10 @@ def build(src: dict, rep: Report) -> dict:
                 "release_tag": TAG_GSV_CPP,
                 "urls": [asset_url(TAG_GSV_CPP, name)],
             }
+    apply_modelscope(out, modelscope or {})
+    # 自动更新的安装包由浏览器打开；保持单 URL 契约并使用同一制品的镜像。
+    if app and (mirror := (modelscope or {}).get(out["app"]["sha256"])):
+        out["app"]["gui"]["url"] = mirror
     return out
 
 
@@ -436,7 +460,7 @@ def main() -> int:
     src = json.loads(path.read_text(encoding="utf-8"))
 
     rep = Report()
-    doc = build(src, rep)
+    doc = build(src, rep, load_modelscope(path.parent / "modelscope.json"))
     if not rep.errors:
         loopback(doc, rep)
 

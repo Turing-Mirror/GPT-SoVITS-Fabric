@@ -184,6 +184,7 @@ pub(crate) fn request_error(
 }
 
 struct Pack<'a> {
+    urls: Vec<String>,
     name: &'a str,
     sha: &'a str,
     tag: &'a str,
@@ -205,6 +206,7 @@ fn pack<'a>(data: &'a Value, part: &str) -> Option<Pack<'a>> {
         return None;
     }
     Some(Pack {
+        urls: catalog::download_urls(blob, Vec::new()),
         name,
         sha,
         tag,
@@ -230,7 +232,10 @@ fn install_pack(
     if download::verify_sha256(&archive, pack.sha).is_err() {
         download::download_request(
             download::DownloadRequest {
-                urls: engine_assets::release_urls(root, pack.tag, pack.name),
+                urls: catalog::download_urls(
+                    &json!({"urls": pack.urls}),
+                    engine_assets::release_urls(root, pack.tag, pack.name),
+                ),
                 root: Some(root.to_path_buf()),
                 dest: archive.clone(),
                 expected_sha256: pack.sha.to_string(),
@@ -389,4 +394,23 @@ pub(crate) fn ensure(root: &Path, progress: download::ProgressFn) -> Result<Valu
         ));
     }
     Ok(json!({"ok": true}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_keeps_modelscope_mirrors_and_checksum() {
+        let sha = "a".repeat(64);
+        let mirror = "https://modelscope.cn/models/Kara251/kara-gsv-model/resolve/commit/engine.zip";
+        let data = json!({GROUP: {"engine": {
+            "name": "engine.zip", "sha256": sha, "size_bytes": 12,
+            "release_tag": "GSV-cpp", "urls": [mirror]
+        }}});
+        let parsed = pack(&data, "engine").unwrap();
+        assert_eq!(parsed.urls, vec![mirror]);
+        assert_eq!(parsed.sha, sha);
+        assert_eq!(parsed.size, 12);
+    }
 }
