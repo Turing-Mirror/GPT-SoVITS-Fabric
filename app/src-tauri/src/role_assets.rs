@@ -146,6 +146,18 @@ fn replace_weight_with(
     version: Option<&str>,
     inspect: impl FnOnce(&Path, &str, &Path, Option<&Path>, Option<&str>) -> Result<Value, String>,
 ) -> Result<Value, String> {
+    replace_weight_and_record_with(root, id, kind, src, version, None, inspect)
+}
+
+pub(crate) fn replace_weight_and_record_with(
+    root: &Path,
+    id: &str,
+    kind: &str,
+    src: &Path,
+    version: Option<&str>,
+    selection: Option<&Value>,
+    inspect: impl FnOnce(&Path, &str, &Path, Option<&Path>, Option<&str>) -> Result<Value, String>,
+) -> Result<Value, String> {
     crate::synth::while_idle(|| {
         let ext = weight_extension(kind)?;
         if !has_extension(src, ext)
@@ -189,6 +201,18 @@ fn replace_weight_with(
                 cfg["version"] = json!(detected);
             }
             cfg["weight_info"] = json!({"gpt":validation["gpt"], "sovits":validation["sovits"]});
+            if let Some(selection) = selection {
+                let mut selection = selection.clone();
+                // Record the staged bytes that were actually validated and installed.
+                selection["sha256"] = json!(crate::model_versions::sha256(&tmp)?);
+                if !cfg["training"].is_object() { cfg["training"] = json!({}); }
+                if !cfg["training"]["selected"].is_object() {
+                    cfg["training"]["selected"] = json!({});
+                }
+                cfg["training"]["selected"][kind] = selection;
+            } else if let Some(selected) = cfg["training"]["selected"].as_object_mut() {
+                selected.remove(kind);
+            }
             // The worker caches by role ID, including when filenames remain unchanged.
             crate::synth::shutdown();
             let backup = models.join(format!(".weight-previous-{}", unique()));

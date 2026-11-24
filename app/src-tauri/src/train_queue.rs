@@ -404,6 +404,7 @@ mod tests {
                 gpt_epoch: 15,
                 gpt_batch: 4,
                 gpt_save_every: 5,
+                save_every_weights: true,
                 learning_rate: 0.0001,
                 lora_rank: 32,
                 resume: true,
@@ -437,6 +438,20 @@ mod tests {
             ]
         );
         assert!(claim(&mut q).is_none());
+    }
+
+    #[test]
+    fn old_queued_requests_default_to_snapshots_and_explicit_false_survives() {
+        let queued = job("snapshot-default", State::Queued);
+        let mut value = serde_json::to_value(&queued).unwrap();
+        value["req"].as_object_mut().unwrap().remove("save_every_weights");
+        let recovered: Job = serde_json::from_value(value.clone()).unwrap();
+        assert!(recovered.req.save_every_weights);
+        value["req"]["save_every_weights"] = json!(false);
+        let recovered: Job = serde_json::from_value(value).unwrap();
+        assert!(!recovered.req.save_every_weights);
+        let roundtrip: Job = serde_json::from_slice(&serde_json::to_vec(&recovered).unwrap()).unwrap();
+        assert!(!roundtrip.req.save_every_weights);
     }
     #[test]
     fn claims_are_serial_and_retry_preserves_parameters() {

@@ -8,6 +8,7 @@ mod autostart;
 pub mod catalog;
 mod characters;
 mod role_assets;
+mod model_versions;
 mod config;
 mod community_account;
 mod community_catalog;
@@ -1048,6 +1049,22 @@ fn role_assets_get(state: State<'_, Mutex<AppState>>, id: String) -> Result<Valu
 }
 
 #[tauri::command]
+async fn model_versions_list(state: State<'_, Mutex<AppState>>, target: String) -> Result<model_versions::ModelVersions, String> {
+    let root = root_clone(&state)?;
+    tauri::async_runtime::spawn_blocking(move || model_versions::list(&root, &target))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn model_version_apply(app: tauri::AppHandle, state: State<'_, Mutex<AppState>>, target: String, kind: String, file: String) -> Result<model_versions::ModelVersions, String> {
+    let root = root_clone(&state)?;
+    let result = tauri::async_runtime::spawn_blocking(move || model_versions::apply(&root, &target, &kind, &file))
+        .await.map_err(|e| e.to_string())??;
+    let _ = app.emit("roles-changed", ());
+    Ok(result)
+}
+
+#[tauri::command]
 async fn role_weight_replace(window: tauri::WebviewWindow, app: tauri::AppHandle, state: State<'_, Mutex<AppState>>, id: String, kind: String, src: Option<String>, version: Option<String>) -> Result<Option<Value>, String> {
     let root = root_clone(&state)?;
     let ext = role_assets::weight_extension(&kind)?;
@@ -1666,6 +1683,8 @@ pub fn run() {
             annot_relocate,
             role_import_pack,
             role_assets_get,
+            model_versions_list,
+            model_version_apply,
             role_weight_replace,
             role_list_associate,
             role_list_unlink,

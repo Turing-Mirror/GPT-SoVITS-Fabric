@@ -183,6 +183,36 @@ def _is_vendored(p: Path) -> bool:
     return rel.parts[0] not in OURS_IN_TOOLS
 
 
+def patch_training_exports() -> None:
+    """Keep the final inference export even with snapshots off or an uneven interval."""
+    common = [
+        ("if epoch % hps.train.save_every_epoch == 0 and rank == 0:",
+         "if (epoch % hps.train.save_every_epoch == 0 or epoch == hps.train.epochs) and rank == 0:"),
+        ("if rank == 0 and hps.train.if_save_every_weights == True:",
+         "if rank == 0 and (hps.train.if_save_every_weights == True or epoch == hps.train.epochs):"),
+    ]
+    patches = {
+        "s2_train.py": common,
+        "s2_train_v3_lora.py": common,
+        "s1_train.py": [
+            ("            if self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0:",
+             '            is_final = trainer.current_epoch + 1 == self.config["train"]["epochs"]\n'
+             "            if is_final or (self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0):"),
+            ("if self.if_save_every_weights == True:", "if self.if_save_every_weights == True or is_final:"),
+        ],
+    }
+    for name, replacements in patches.items():
+        path = PAYLOAD / "GPT_SoVITS" / name
+        source = path.read_text(encoding="utf-8")
+        for before, after in replacements:
+            if after in source:
+                continue
+            if source.count(before) != 1:
+                fail(f"{name}: final weight export patch no longer matches the pinned upstream")
+            source = source.replace(before, after, 1)
+        path.write_text(source, encoding="utf-8", newline="\n")
+
+
 def scrub() -> int:
     """删掉负载里的字节码与缓存。构建机上跑过一次就会长出来。"""
     n = 0
@@ -383,6 +413,7 @@ def main() -> int:
 
     print(f"[payload] 上游：{up}（{commit or '非 git 目录'}）")
     vendor(up)
+    patch_training_exports()
     n = scrub()
     if n:
         print(f"[payload] 清掉 {n} 个缓存/字节码条目")

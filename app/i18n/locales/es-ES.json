@@ -756,7 +756,7 @@
     "cleanupSnapshots": "Pesos guardados por época",
     "cleanupCheckpoints": "Puntos de control de entrenamiento",
     "cleanupDataset": "Limpiar archivos temporales del conjunto de datos (fragmentos cortados, texto reconocido y caché de características)",
-    "cleanupEffectNone": "Sin consecuencias",
+    "cleanupEffectNone": "Después de eliminarlos no podrás cambiar a estas épocas",
     "cleanupEffectNoResume": "Después no se podrá reanudar el entrenamiento",
     "cleanupEffectRestart": "Habrá que empezar de nuevo desde el preprocesamiento",
     "cleanConfirm": "Se limpiará: {list}. No se puede deshacer. ¿Continuar?",
@@ -1207,7 +1207,9 @@
     "queueConflict": "Ya hay un personaje con este nombre entrenando o en espera. Elige otro nombre.",
     "queueMissing": "Esta tarea de entrenamiento se ha quitado.",
     "queueChanged": "El estado de la tarea ha cambiado. Inténtalo de nuevo.",
-    "createList": "Crear .list"
+    "createList": "Crear .list",
+    "saveEveryWeights": "Guardar modelos intermedios",
+    "saveEveryWeightsTip": "Conserva un modelo utilizable adicional en cada intervalo de guardado. Al finalizar el entrenamiento, podrás cambiar de época en el personaje."
   },
   "help": {
     "synthEngineQ": "¿Cómo elijo un motor de inferencia?",
@@ -1330,7 +1332,12 @@
     "noLists": "No hay anotaciones vinculadas.",
     "unlinkList": "Desvincular",
     "listRows": "{v0} anotaciones",
-    "invalidList": "No se pueden leer las anotaciones"
+    "invalidList": "No se pueden leer las anotaciones",
+    "epochOption": "Época {v0}",
+    "epochSourceRemoved": "Época {v0} (archivo fuente eliminado)",
+    "weightSourceRemoved": "Archivo fuente eliminado",
+    "weightExternal": "Archivo externo",
+    "selectEpoch": "Seleccionar época"
   },
   "sep": {
     "title": "Separación de voz",

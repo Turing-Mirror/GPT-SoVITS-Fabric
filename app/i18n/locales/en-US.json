@@ -756,7 +756,7 @@
     "cleanupSnapshots": "Per-epoch weights",
     "cleanupCheckpoints": "Training checkpoints",
     "cleanupDataset": "Clean up temporary dataset files (sliced segments, ASR transcripts, and feature caches)",
-    "cleanupEffectNone": "No impact",
+    "cleanupEffectNone": "You can no longer switch to these epochs after deleting",
     "cleanupEffectNoResume": "Training cannot be resumed afterwards",
     "cleanupEffectRestart": "Training must start again from preprocessing",
     "cleanConfirm": "This will clear: {list}. It cannot be undone. Continue?",
@@ -1207,7 +1207,9 @@
     "queueConflict": "A character with this name is already training or waiting. Choose another name.",
     "queueMissing": "This training task has been removed.",
     "queueChanged": "The task status has changed. Try again.",
-    "createList": "Create .list"
+    "createList": "Create .list",
+    "saveEveryWeights": "Save intermediate models",
+    "saveEveryWeightsTip": "Keep an extra usable model at each save interval. After training completes, you can switch epochs in the character."
   },
   "help": {
     "synthEngineQ": "How do I choose an inference engine?",
@@ -1330,7 +1332,12 @@
     "noLists": "No annotations linked.",
     "unlinkList": "Unlink",
     "listRows": "{v0} annotations",
-    "invalidList": "Cannot read annotations"
+    "invalidList": "Cannot read annotations",
+    "epochOption": "Epoch {v0}",
+    "epochSourceRemoved": "Epoch {v0} (source file deleted)",
+    "weightSourceRemoved": "Source file deleted",
+    "weightExternal": "External file",
+    "selectEpoch": "Select epoch"
   },
   "sep": {
     "title": "Vocal separation",

@@ -124,6 +124,7 @@ export function TrainPage() {
   const [lr, setLr] = useState(0.0001);
   const [loraRank, setLoraRank] = useState(32);
   const [resume, setResume] = useState(true);
+  const [saveEveryWeights, setSaveEveryWeights] = useState(true);
 
   const queue = useTrainingQueue();
   const refreshQueue = queue.refresh;
@@ -250,6 +251,7 @@ export function TrainPage() {
           gpt_epoch: gpt.epochs,
           gpt_batch: gpt.batch,
           gpt_save_every: gpt.saveEvery,
+          save_every_weights: saveEveryWeights,
           learning_rate: lr,
           lora_rank: loraRank,
           resume,
@@ -263,7 +265,7 @@ export function TrainPage() {
       void refresh();
       void refreshQueue();
     }
-  }, [exp, dataset, version, sovits, gpt, lr, loraRank, resume, outDir, refresh, refreshQueue]);
+  }, [exp, dataset, version, sovits, gpt, saveEveryWeights, lr, loraRank, resume, outDir, refresh, refreshQueue]);
 
   const versions = st.versions ?? [];
   const missing = [...(st.engine_core_missing ?? []), ...versionMissing];
@@ -452,9 +454,15 @@ export function TrainPage() {
         <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
       </div>
 
-      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2">
+      <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2 flex flex-col gap-[16px]">
         {/* Toggle 自带 label/tip，不套 Field —— 套了会出现两个标题。 */}
         <Toggle checked={resume} onChange={setResume} label={t("train.resume")} tip={t("train.resumeTip")} />
+        <Toggle
+          checked={saveEveryWeights}
+          onChange={setSaveEveryWeights}
+          label={t("train.saveEveryWeights")}
+          tip={t("train.saveEveryWeightsTip")}
+        />
       </div>
     </div>,
 

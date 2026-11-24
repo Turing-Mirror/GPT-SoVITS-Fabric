@@ -756,7 +756,7 @@
     "cleanupSnapshots": "エポックごとの保存モデル",
     "cleanupCheckpoints": "学習チェックポイント",
     "cleanupDataset": "データセットの一時ファイルを整理（分割セグメント、認識テキスト、特徴量キャッシュ）",
-    "cleanupEffectNone": "削除しても影響なし",
+    "cleanupEffectNone": "削除するとこれらのエポックに切り替えられなくなります",
     "cleanupEffectNoResume": "削除すると学習を再開できません",
     "cleanupEffectRestart": "削除すると前処理からやり直しになります",
     "cleanConfirm": "次を削除します：{list}。元に戻せません。続けますか？",
@@ -1207,7 +1207,9 @@
     "queueConflict": "同じ名前のキャラクターが学習中または待機中です。別の名前を指定してください。",
     "queueMissing": "この学習タスクは削除されました。",
     "queueChanged": "タスクの状態が変わりました。再試行してください。",
-    "createList": ".list を作成"
+    "createList": ".list を作成",
+    "saveEveryWeights": "途中のモデルを保存",
+    "saveEveryWeightsTip": "保存間隔ごとに使用可能なモデルを追加で保存します。学習完了後、キャラクター内でエポックを切り替えられます。"
   },
   "help": {
     "synthEngineQ": "推論エンジンはどう選びますか？",
@@ -1330,7 +1332,12 @@
     "noLists": "関連付けられた注釈はありません。",
     "unlinkList": "関連付けを解除",
     "listRows": "注釈 {v0} 件",
-    "invalidList": "注釈を読み込めません"
+    "invalidList": "注釈を読み込めません",
+    "epochOption": "エポック {v0}",
+    "epochSourceRemoved": "エポック {v0}（元ファイル削除済み）",
+    "weightSourceRemoved": "元ファイル削除済み",
+    "weightExternal": "外部ファイル",
+    "selectEpoch": "エポックを選択"
   },
   "sep": {
     "title": "ボーカル分離",

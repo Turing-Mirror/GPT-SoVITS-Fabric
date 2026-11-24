@@ -756,7 +756,7 @@
     "cleanupSnapshots": "按輪次另存的推理模型",
     "cleanupCheckpoints": "訓練檢查點",
     "cleanupDataset": "清理資料集暫存檔案（切分片段、辨識文字與特徵快取）",
-    "cleanupEffectNone": "刪除後無影響",
+    "cleanupEffectNone": "刪除後無法再切換到這些輪次",
     "cleanupEffectNoResume": "刪除後不能續訓",
     "cleanupEffectRestart": "刪除後需從前處理重新開始",
     "cleanConfirm": "將清理：{list}。清理後無法復原，確定繼續嗎？",
@@ -1207,7 +1207,9 @@
     "queueConflict": "已有同名角色正在訓練或等待。請更換角色名稱。",
     "queueMissing": "該訓練任務已被移除。",
     "queueChanged": "任務狀態已改變，請重試。",
-    "createList": "建立 .list"
+    "createList": "建立 .list",
+    "saveEveryWeights": "儲存中途模型",
+    "saveEveryWeightsTip": "依存檔間隔額外保留可用模型，訓練完成後可在角色中切換輪次。"
   },
   "help": {
     "synthEngineQ": "如何選擇推論引擎？",
@@ -1330,7 +1332,12 @@
     "noLists": "尚未關聯標註。",
     "unlinkList": "解除關聯",
     "listRows": "{v0} 條標註",
-    "invalidList": "無法讀取標註"
+    "invalidList": "無法讀取標註",
+    "epochOption": "第 {v0} 輪",
+    "epochSourceRemoved": "第 {v0} 輪（來源檔案已刪除）",
+    "weightSourceRemoved": "來源檔案已刪除",
+    "weightExternal": "外部檔案",
+    "selectEpoch": "選擇輪次"
   },
   "sep": {
     "title": "人聲分離",

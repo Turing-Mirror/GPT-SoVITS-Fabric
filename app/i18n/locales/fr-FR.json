@@ -756,7 +756,7 @@
     "cleanupSnapshots": "Poids enregistrés par époque",
     "cleanupCheckpoints": "Points de contrôle d'entraînement",
     "cleanupDataset": "Nettoyer les fichiers temporaires du jeu de données (segments découpés, transcriptions ASR et caches de caractéristiques)",
-    "cleanupEffectNone": "Sans conséquence",
+    "cleanupEffectNone": "Impossible de basculer vers ces époques après suppression",
     "cleanupEffectNoResume": "L'entraînement ne pourra plus être repris",
     "cleanupEffectRestart": "Il faudra repartir du prétraitement",
     "cleanConfirm": "Sera nettoyé : {list}. Action irréversible. Continuer ?",
@@ -1207,7 +1207,9 @@
     "queueConflict": "Un personnage de ce nom est déjà en cours d’entraînement ou en attente. Choisissez un autre nom.",
     "queueMissing": "Cette tâche d’entraînement a été retirée.",
     "queueChanged": "L’état de la tâche a changé. Réessayez.",
-    "createList": "Créer .list"
+    "createList": "Créer .list",
+    "saveEveryWeights": "Enregistrer les modèles intermédiaires",
+    "saveEveryWeightsTip": "Conserve un modèle utilisable supplémentaire à chaque intervalle de sauvegarde. Une fois l'entraînement terminé, vous pourrez changer d'époque dans le personnage."
   },
   "help": {
     "synthEngineQ": "Comment choisir un moteur d’inférence ?",
@@ -1330,7 +1332,12 @@
     "noLists": "Aucune annotation associée.",
     "unlinkList": "Dissocier",
     "listRows": "{v0} annotations",
-    "invalidList": "Impossible de lire les annotations"
+    "invalidList": "Impossible de lire les annotations",
+    "epochOption": "Époque {v0}",
+    "epochSourceRemoved": "Époque {v0} (fichier source supprimé)",
+    "weightSourceRemoved": "Fichier source supprimé",
+    "weightExternal": "Fichier externe",
+    "selectEpoch": "Sélectionner l'époque"
   },
   "sep": {
     "title": "Séparation de la voix",

@@ -189,6 +189,7 @@ def normalize(raw: dict) -> dict:
         "gpt_epoch": num("gpt_epoch", 15, 200),
         "gpt_batch": num("gpt_batch", 4, 64),
         "gpt_save_every": num("gpt_save_every", 5, 200),
+        "save_every_weights": bool(raw.get("save_every_weights", True)),
         "lora_rank": num("lora_rank", 32, 256),
         "learning_rate": float(raw.get("learning_rate") or 1e-4),
         "device": str(raw.get("device") or "cpu"),
@@ -676,7 +677,7 @@ def stage_sovits(req: dict, opt_dir: Path, weights_dir: Path) -> None:
         "learning_rate": req["learning_rate"],
         "save_every_epoch": req["sovits_save_every"],
         "if_save_latest": True,
-        "if_save_every_weights": True,
+        "if_save_every_weights": req.get("save_every_weights", True),
         "pretrained_s2G": base(info["s2G"]),
         # LoRA 版本没有判别器底模，上游 webui 传空串。
         "pretrained_s2D": "" if lora else base(info["s2D"]),
@@ -725,7 +726,7 @@ def stage_gpt(req: dict, opt_dir: Path, weights_dir: Path) -> None:
         "epochs": req["gpt_epoch"],
         "save_every_n_epoch": req["gpt_save_every"],
         "if_save_latest": True,
-        "if_save_every_weights": True,
+        "if_save_every_weights": req.get("save_every_weights", True),
         "exp_name": req["exp"],
         "precision": "16-mixed" if req["is_half"] else "32",
         # `s1_train.py:99` 直接 `config["train"]["half_weights_save_dir"]`，
@@ -781,7 +782,17 @@ def _report_ckpts(stage: str, d: Path) -> None:
 # 收尾：把两个权重拼成一个角色
 # ---------------------------------------------------------------------------
 
-def collect(req: dict, weights_dir: Path, list_path: Path | None) -> dict:
+def weight_epoch(exp: str, kind: str, file: str) -> dict | None:
+    pattern = (rf"{re.escape(exp)}_e([0-9]+)_s([0-9]+)(?:_l[0-9]+)?\.pth"
+               if kind == "sovits" else rf"{re.escape(exp)}-e([0-9]+)\.ckpt")
+    match = re.fullmatch(pattern, file)
+    if match is None:
+        return None
+    return {"file": file, "epoch": int(match[1]),
+            "step": int(match[2]) if kind == "sovits" else None}
+
+
+def collect(req: dict, weights_dir: Path, list_path: Path | None, *, started_ns: int) -> dict:
     """把这次训练的两份权重拼成一个**能直接用的角色**。
 
     以前这里只是返回两个文件路径，权重就那么散落在 `User_Data/models/` 下 ——
@@ -796,18 +807,26 @@ def collect(req: dict, weights_dir: Path, list_path: Path | None) -> dict:
     权重从 `weights_dir` 里按**修改时间**挑最新的，不按文件名里的轮数 ——
     续跑时轮数会从头再来一遍，时间不会。
     """
-    def newest(exts: tuple[str, ...]) -> Path | None:
-        cands = [p for p in weights_dir.rglob("*")
-                 if p.is_file() and p.suffix in exts and req["exp"] in p.name]
-        return max(cands, key=lambda p: p.stat().st_mtime) if cands else None
+    def newest(kind: str) -> Path | None:
+        cands = [p for p in weights_dir.iterdir()
+                 if p.is_file() and weight_epoch(req["exp"], kind, p.name) is not None]
+        # Prefer this run's exports. A resumed run that was already at its last
+        # epoch trains nothing, so it keeps the newest earlier export.
+        fresh = [p for p in cands if p.stat().st_mtime_ns >= started_ns]
+        pool = fresh or cands
+        return max(pool, key=lambda p: p.stat().st_mtime_ns) if pool else None
 
-    sovits = newest((".pth",))
-    gpt = newest((".ckpt",))
+    sovits = newest("sovits")
+    gpt = newest("gpt")
     if sovits is None or gpt is None:
         raise Fail("no_weight", "training finished but the weights are missing",
                    name="SoVITS/GPT")
 
     role_dir = Path(req["role_dir"])
+    config_path = role_dir / "config.json"
+    cfg = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
+    if not isinstance(cfg, dict):
+        raise ValueError("character config must be an object")
     (role_dir / "models").mkdir(parents=True, exist_ok=True)
     shutil.copy2(sovits, role_dir / "models" / "sovits.pth")
     shutil.copy2(gpt, role_dir / "models" / "gpt.ckpt")
@@ -838,15 +857,22 @@ def collect(req: dict, weights_dir: Path, list_path: Path | None) -> dict:
             # `TTS_Config.v2_languages` 全是小写，合成时按大写去查是查不到的。
             lists = [{"file": f"dataset/{name}", "lang": rows[0]["lang"].strip().lower()}]
 
-    cfg = {
-        "id": role_dir.name,
-        "name": req["exp"],
-        "author": "",
-        "version": req["version"],
-        "source": "trained",
-        "lists": lists,
-    }
-    (role_dir / "config.json").write_text(
+    cfg.setdefault("id", role_dir.name)
+    cfg.setdefault("name", req["exp"])
+    cfg.setdefault("author", "")
+    cfg["version"] = req["version"]
+    cfg["source"] = "trained"
+    existing_lists = cfg.get("lists") if isinstance(cfg.get("lists"), list) else []
+    updated_files = {item["file"] for item in lists}
+    cfg["lists"] = [item for item in existing_lists if item.get("file") not in updated_files] + lists
+    training = cfg.get("training") if isinstance(cfg.get("training"), dict) else {}
+    training.update({"experiment": req["exp"], "weights_dir": str(weights_dir.resolve()),
+                     "final": {"sovits": weight_epoch(req["exp"], "sovits", sovits.name),
+                               "gpt": weight_epoch(req["exp"], "gpt", gpt.name)}})
+    # Both installed files have just been replaced by this run's final exports.
+    training.pop("selected", None)
+    cfg["training"] = training
+    config_path.write_text(
         json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return {
@@ -917,12 +943,13 @@ def main() -> int:
          weights_dir=str(weights_dir), python=sys.version.split()[0])
 
     started = time.time()
+    started_ns = time.time_ns()
     try:
         list_path = stage_prepare(req, exp_dir)
         stage_format(req, list_path, exp_dir)
         stage_sovits(req, exp_dir, weights_dir)
         stage_gpt(req, exp_dir, weights_dir)
-        weights = collect(req, weights_dir, list_path)
+        weights = collect(req, weights_dir, list_path, started_ns=started_ns)
     except Fail as f:
         emit(phase="error", message_code=f.code, message=f.fallback,
              message_params=f.params)

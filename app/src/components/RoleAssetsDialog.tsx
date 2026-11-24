@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from "react";
 import { Modal } from "./Modal";
 import { Btn } from "./ui";
+import { Select } from "./controls";
 import { Collapse } from "./Presence";
 import { useI18n } from "../i18n";
 import { openInAnnot, synthWithRole } from "../lib/intent";
+import { applyModelVersion, listModelVersions, type ModelVersions, type ModelWeightKind } from "../lib/modelVersions";
 import { associateRoleList, getRoleAssets, replaceRoleWeight, unlinkRoleList, type RoleAssets } from "../lib/roleAssets";
 
 export function RoleAssetsDialog({ role, onClose, onChanged }: {
@@ -14,19 +16,25 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
   const { t } = useI18n();
   const titleId = useId();
   const [details, setDetails] = useState<RoleAssets | null>(null);
+  const [versionsData, setVersionsData] = useState<ModelVersions | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [replaceSovits, setReplaceSovits] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    void getRoleAssets(role.id).then(data => {
-      if (alive) { setDetails(data); }
+    void Promise.all([
+      getRoleAssets(role.id),
+      listModelVersions(role.id).catch(() => null),
+    ]).then(([data, versions]) => {
+      if (!alive) return;
+      setDetails(data);
+      setVersionsData(versions);
     }).catch(e => { if (alive) setError(String(e)); });
     return () => { alive = false; };
   }, [role.id]);
 
-  const update = async (action: () => Promise<RoleAssets | null>) => {
+  const update = async (action: () => Promise<RoleAssets | null>, refreshVersions = false) => {
     if (busy) return;
     setBusy(true);
     setError("");
@@ -35,10 +43,31 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
       if (data) {
         setDetails(data);
         setReplaceSovits(false);
+        if (refreshVersions) {
+          setVersionsData(await listModelVersions(role.id).catch(() => null));
+        }
         onChanged();
       }
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
+  };
+
+  const applyVersion = async (kind: ModelWeightKind, nextFile: string) => {
+    if (busy || !nextFile || nextFile.startsWith("__current_")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const nextVersions = await applyModelVersion(role.id, kind, nextFile);
+      const nextAssets = await getRoleAssets(role.id);
+      setDetails(nextAssets);
+      setVersionsData(nextVersions);
+      setReplaceSovits(false);
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Above page controls (40), below TRM dropdown popovers (70).
@@ -57,22 +86,65 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
           <section className="mb-5">
             <h3 className="text-[13px] font-medium mb-2 mt-0">{t("library.modelFiles")}</h3>
             <div className="rounded-[var(--r)] bg-[var(--group)] px-4 divide-y divide-[var(--line)]">
-              {details.weights.map(weight => <div key={weight.kind} className="py-3">
-                <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium">{weight.kind === "gpt" ? "GPT" : "SoVITS"}{weight.kind === "sovits" ? <span className="text-[11.5px] text-[var(--meta)] ml-2">{details.version}</span> : null}</div>
-                    <div className="text-[11.5px] text-[var(--help)] break-all selectable" title={weight.path}>{weight.path}</div>
-                    {!weight.exists ? <div className="text-[12.5px] text-[var(--danger-text)]">{t("library.missingFile")}</div> : null}
+              {details.weights.map(weight => {
+                const weightVersions = versionsData?.weights?.find(w => w.kind === weight.kind);
+                const showVersionSelect =
+                  versionsData?.experiment != null &&
+                  !!weightVersions &&
+                  weightVersions.versions.length > 0;
+                const versionOptions = showVersionSelect ? [
+                  ...(weightVersions.current.state === "source_removed"
+                    ? [{
+                        id: "__current_removed__",
+                        label: weightVersions.current.epoch != null
+                          ? t("library.epochSourceRemoved", { v0: weightVersions.current.epoch })
+                          : t("library.weightSourceRemoved"),
+                      }]
+                    : weightVersions.current.state === "external"
+                      ? [{ id: "__current_external__", label: t("library.weightExternal") }]
+                      : weightVersions.current.state === "missing"
+                        ? [{ id: "__current_missing__", label: t("library.selectEpoch") }]
+                        : []),
+                  ...weightVersions.versions.map(v => ({
+                    id: v.file,
+                    label: v.epoch != null ? t("library.epochOption", { v0: v.epoch }) : v.file,
+                  })),
+                ] : [];
+                const selectedVersion = !showVersionSelect
+                  ? ""
+                  : weightVersions.current.state === "matched"
+                    ? (weightVersions.versions.find(v => v.current)?.file ?? "")
+                    : weightVersions.current.state === "source_removed"
+                      ? "__current_removed__"
+                      : weightVersions.current.state === "external"
+                        ? "__current_external__"
+                        : "__current_missing__";
+
+                return <div key={weight.kind} className="py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-medium">{weight.kind === "gpt" ? "GPT" : "SoVITS"}{weight.kind === "sovits" ? <span className="text-[11.5px] text-[var(--meta)] ml-2">{details.version}</span> : null}</div>
+                      <div className="text-[11.5px] text-[var(--help)] break-all selectable" title={weight.path}>{weight.path}</div>
+                      {!weight.exists ? <div className="text-[12.5px] text-[var(--danger-text)]">{t("library.missingFile")}</div> : null}
+                    </div>
+                    {showVersionSelect ? (
+                      <Select
+                        disabled={busy}
+                        value={selectedVersion}
+                        options={versionOptions}
+                        onChange={nextFile => void applyVersion(weight.kind, nextFile)}
+                      />
+                    ) : null}
+                    <Btn disabled={busy} onClick={() => weight.kind === "sovits" ? setReplaceSovits(v => !v) : void update(() => replaceRoleWeight(role.id, "gpt"), true)}>{t("library.replaceWeight")}</Btn>
                   </div>
-                  <Btn disabled={busy} onClick={() => weight.kind === "sovits" ? setReplaceSovits(v => !v) : void update(() => replaceRoleWeight(role.id, "gpt"))}>{t("library.replaceWeight")}</Btn>
-                </div>
-                {weight.kind === "sovits" ? <Collapse open={replaceSovits}>
-                  <div className="flex items-center gap-3 flex-wrap pt-3">
-                    <Btn busy={busy} onClick={() => void update(() => replaceRoleWeight(role.id, "sovits"))}>{t("sep.pickFile")}</Btn>
-                    <Btn disabled={busy} onClick={() => setReplaceSovits(false)}>{t("dialog.cancel")}</Btn>
-                  </div>
-                </Collapse> : null}
-              </div>)}
+                  {weight.kind === "sovits" ? <Collapse open={replaceSovits}>
+                    <div className="flex items-center gap-3 flex-wrap pt-3">
+                      <Btn busy={busy} onClick={() => void update(() => replaceRoleWeight(role.id, "sovits"), true)}>{t("sep.pickFile")}</Btn>
+                      <Btn disabled={busy} onClick={() => setReplaceSovits(false)}>{t("dialog.cancel")}</Btn>
+                    </div>
+                  </Collapse> : null}
+                </div>;
+              })}
             </div>
           </section>
           <section>

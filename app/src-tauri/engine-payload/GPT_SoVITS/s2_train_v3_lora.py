@@ -348,7 +348,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
                 )
 
         global_step += 1
-    if epoch % hps.train.save_every_epoch == 0 and rank == 0:
+    if (epoch % hps.train.save_every_epoch == 0 or epoch == hps.train.epochs) and rank == 0:
         if hps.train.if_save_latest == 0:
             utils.save_checkpoint(
                 net_g,
@@ -365,7 +365,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
                 epoch,
                 os.path.join(save_root, "G_{}.pth".format(233333333333)),
             )
-        if rank == 0 and hps.train.if_save_every_weights == True:
+        if rank == 0 and (hps.train.if_save_every_weights == True or epoch == hps.train.epochs):
             if hasattr(net_g, "module"):
                 ckpt = net_g.module.state_dict()
             else:

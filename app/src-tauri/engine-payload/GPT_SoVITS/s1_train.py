@@ -47,7 +47,8 @@ class my_model_ckpt(ModelCheckpoint):
         # if not self._should_skip_saving_checkpoint(trainer) and self._should_save_on_train_epoch_end(trainer):
         if self._should_save_on_train_epoch_end(trainer):
             monitor_candidates = self._monitor_candidates(trainer)
-            if self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0:
+            is_final = trainer.current_epoch + 1 == self.config["train"]["epochs"]
+            if is_final or (self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0):
                 if (
                     self.if_save_latest == True
                 ):  ####如果设置只保存最后一个ckpt，在保存下一个ckpt后要清理掉之前的所有ckpt
@@ -59,7 +60,7 @@ class my_model_ckpt(ModelCheckpoint):
                             os.remove("%s/%s" % (self.dirpath, name))
                         except:
                             pass
-                if self.if_save_every_weights == True:
+                if self.if_save_every_weights == True or is_final:
                     to_save_od = OrderedDict()
                     to_save_od["weight"] = OrderedDict()
                     dictt = trainer.strategy._lightning_module.state_dict()

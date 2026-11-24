@@ -219,6 +219,16 @@ pub fn exp_root(root: &Path) -> PathBuf {
     crate::paths::user_data(root).join("train")
 }
 
+/// The same output location passed to both worker stages; completed roles are copies.
+pub(crate) fn weights_dir(root: &Path, exp: &str) -> PathBuf {
+    let configured = crate::config::train_output_dir(root);
+    if configured.is_empty() {
+        exp_root(root).join(exp).join("weights")
+    } else {
+        PathBuf::from(configured)
+    }
+}
+
 /// 已有的实验（`User_Data/train/<名字>`）。`mute` 是随包发的静音样本，不是用户的实验。
 fn experiments(root: &Path) -> Vec<Value> {
     let mut out = Vec::new();
@@ -636,15 +646,14 @@ fn probe_loudness(root: &Path, files: &[(PathBuf, f64)]) -> Option<(f64, f64)> {
 ///
 /// 永不触碰：训练输出目录下已经成形的角色（`User_Data/characters/**`）、各类 `.log`。
 ///
-/// RVC 那版还有第三类 `snapshots`（`assets/weights/<exp>_eN_sM.pth`，训练途中
-/// 另存的小模型）。GPT-SoVITS 没有这个东西：中途的检查点就在 `logs_s?/` 里，
-/// 最终权重直接落到输出目录，两者已经分别对应上面两类了。
-pub const CLEANUP_KINDS: [&str; 2] = ["checkpoints", "dataset"];
+/// `snapshots` 是按保存间隔导出的推理权重，不包括角色目录里的安装副本。
+pub const CLEANUP_KINDS: [&str; 3] = ["checkpoints", "dataset", "snapshots"];
 
 /// 某一类在盘上的文件清单。扫描和删除都调它 —— 只有一处判据。
 fn cleanup_targets(root: &Path, exp: &str, kind: &str) -> Vec<PathBuf> {
     let exp_dir = exp_root(root).join(exp);
     match kind {
+        "snapshots" => crate::model_versions::snapshot_files(root, exp),
         // 两段微调的检查点整目录算一类。不按文件名认（`G_*.pth` / `epoch=*.ckpt`
         // 两套命名，还会随上游版本变），按目录认 —— 目录是我们和 worker 之间
         // 约定死的，文件名不是。
@@ -1025,6 +1034,9 @@ pub struct TrainReq {
     pub gpt_epoch: u32,
     pub gpt_batch: u32,
     pub gpt_save_every: u32,
+    /// Keep inference snapshots at the requested intervals; always export the final epoch.
+    #[serde(default = "default_save_every_weights")]
+    pub save_every_weights: bool,
     /// SoVITS 学习率。上游 s2 配置的默认值是 1e-4。
     pub learning_rate: f64,
     /// LoRA 版本的秩，全参版本忽略。
@@ -1040,6 +1052,8 @@ pub struct TrainReq {
 fn default_lora_rank() -> u32 {
     32
 }
+
+fn default_save_every_weights() -> bool { true }
 
 pub const LORA_RANK_RANGE: (u32, u32) = (1, 256);
 
@@ -1418,6 +1432,7 @@ pub(crate) fn run_queued(app: &AppHandle, root: &Path, mut req: TrainReq, job_id
             "gpt_epoch": req.gpt_epoch,
             "gpt_batch": req.gpt_batch,
             "gpt_save_every": req.gpt_save_every,
+            "save_every_weights": req.save_every_weights,
             "learning_rate": req.learning_rate,
             "lora_rank": req.lora_rank,
             "resume": req.resume,
@@ -1492,6 +1507,7 @@ fn run_inner(
         "gpt_epoch": req.gpt_epoch,
         "gpt_batch": req.gpt_batch,
         "gpt_save_every": req.gpt_save_every,
+        "save_every_weights": req.save_every_weights,
         "learning_rate": req.learning_rate,
         "lora_rank": req.lora_rank,
         "device": device,
@@ -1932,6 +1948,7 @@ mod tests {
             gpt_epoch: 15,
             gpt_batch: 4,
             gpt_save_every: 5,
+            save_every_weights: true,
             learning_rate: 1e-4,
             lora_rank: 32,
             resume: false,

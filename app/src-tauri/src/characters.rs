@@ -546,6 +546,7 @@ pub fn export_zip(root: &Path, id: &str, dest: &Path) -> Result<Value, String> {
     }
     let mut annotations = add_export_references(&dir, &mut lists, &mut files)?;
     config["lists"] = json!(lists);
+    config.as_object_mut().unwrap().remove("training");
     let config_text = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     annotations.insert("config.json".into(), config_text);
     let mut total = 0_u64;
@@ -883,6 +884,7 @@ mod tests {
         std::fs::write(&linked, "audios/a.wav|Yuzu|JA|same recording\nother/a.wav|Yuzu|EN|different recording\n").unwrap();
         config["lists"][0]["lang"] = json!("ja");
         config["lists"].as_array_mut().unwrap().push(json!({ "file": "dataset/second.list", "note": "More references" }));
+        config["training"] = json!({"experiment":"private experiment", "weights_dir":"C:/local/weights", "selected":{"gpt":{"epoch":5}}});
         write_cfg(&dir, &config).unwrap();
 
         let output = root.join("exported.zip");
@@ -890,6 +892,8 @@ mod tests {
         assert_eq!(read_cfg(&dir).unwrap(), config);
         assert_eq!(std::fs::read_to_string(primary).unwrap(), external_style);
         let entries = read_zip(&output).unwrap().files;
+        let exported: Value = serde_json::from_slice(&entries["config.json"]).unwrap();
+        assert!(exported.get("training").is_none());
         assert!(!entries.contains_key("dataset/audios/unlinked.wav"));
         assert_eq!(entries.keys().filter(|name| name.starts_with("dataset/audios/")).count(), 2);
 
