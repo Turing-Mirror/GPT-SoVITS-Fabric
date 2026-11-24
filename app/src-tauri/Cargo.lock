@@ -2122,7 +2122,7 @@ dependencies = [
 
 [[package]]
 name = "gpt-sovits-fabric"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "chrono",
  "flate2",

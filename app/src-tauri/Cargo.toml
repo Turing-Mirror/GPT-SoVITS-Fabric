@@ -1,6 +1,6 @@
 [package]
 name = "gpt-sovits-fabric"
-version = "1.0.4"
+version = "1.0.5"
 description = "RVC Fabric desktop shell (Tauri + React)"
 authors = ["Turing Mirror"]
 edition = "2021"
