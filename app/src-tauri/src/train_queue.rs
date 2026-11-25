@@ -34,12 +34,16 @@ impl State {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Job {
     id: String,
+    #[serde(default)]
+    attempt: u32,
     req: TrainReq,
     state: State,
     #[serde(default)]
     progress: Value,
     #[serde(default)]
     error: String,
+    #[serde(default)]
+    diagnostic: Option<fabric_diagnostics::Diagnostic>,
     #[serde(default)]
     result: Value,
     /// Annotation text is immutable; audio files remain in their original locations.
@@ -106,8 +110,8 @@ fn load<'a>(slot: &'a mut Option<Queue>, root: &Path) -> Result<&'a mut Queue, S
 fn view(q: &Queue) -> Value {
     // Snapshotted annotation text stays on disk; progress events only carry display data.
     json!({"jobs": q.jobs.iter().map(|j| json!({
-        "id": j.id, "req": j.req, "state": j.state,
-        "progress": j.progress, "error": j.error, "result": j.result,
+        "id": j.id, "attempt": j.attempt, "req": j.req, "state": j.state,
+        "progress": j.progress, "error": j.error, "result": j.result, "diagnostic": j.diagnostic,
     })).collect::<Vec<_>>()})
 }
 fn publish(app: &AppHandle, q: &Queue) {
@@ -188,10 +192,12 @@ pub fn enqueue(app: AppHandle, root: PathBuf, mut req: TrainReq) -> Result<Value
         q.next_id += 1;
         q.jobs.push(Job {
             id: q.next_id.to_string(),
+            attempt: 0,
             req,
             state: State::Queued,
             progress: Value::Null,
             error: String::new(),
+            diagnostic: None,
             result: Value::Null,
             annotation,
         });
@@ -232,6 +238,7 @@ fn change(q: &mut Queue, id: &str, action: &str) -> Result<bool, String> {
             job.state = State::Queued;
             job.progress = Value::Null;
             job.error.clear();
+            job.diagnostic = None;
             job.result = Value::Null;
             q.jobs.push(job);
         }
@@ -306,6 +313,7 @@ fn claim(q: &mut Queue) -> Option<Job> {
     }
     let job = q.jobs.iter_mut().find(|j| j.state == State::Queued)?;
     job.state = State::Running;
+    job.attempt += 1;
     Some(job.clone())
 }
 fn dispatch(app: AppHandle, root: PathBuf) {
@@ -333,7 +341,9 @@ fn dispatch(app: AppHandle, root: PathBuf) {
             if let Err(e) = save(q) {
                 if let Some(j) = q.jobs.iter_mut().find(|j| j.id == job.id) {
                     j.state = State::Paused;
-                    j.error = e;
+                    let d = crate::diagnostics::from_error(fabric_diagnostics::Feature::Training, &e, true);
+                    j.error = crate::i18n::t(&d.title.key);
+                    j.diagnostic = Some(d);
                 }
                 q.dispatching = false;
                 publish(&app, q);
@@ -352,7 +362,7 @@ fn dispatch(app: AppHandle, root: PathBuf) {
                 std::fs::write(&snapshot, text).map_err(|e| e.to_string())?;
                 req.dataset = snapshot.to_string_lossy().into_owned();
             }
-            train::run_queued(&app, &root, req, Some(&job.id))
+            train::run_queued(&app, &root, req, Some(&job.id), Some(job.attempt))
         })();
         if job.annotation.is_some() {
             let _ = std::fs::remove_file(snapshot);
@@ -373,7 +383,13 @@ fn dispatch(app: AppHandle, root: PathBuf) {
                     } else {
                         State::Failed
                     };
-                    j.error = error;
+                    if j.state == State::Failed {
+                        let mut d = crate::diagnostics::from_error(fabric_diagnostics::Feature::Training, &error, true);
+                        d.scope.job_id = Some(j.id.clone());
+                        d.scope.attempt = Some(j.attempt);
+                        j.error = crate::i18n::t(&d.title.key);
+                        j.diagnostic = Some(d);
+                    } else { j.error = error; }
                 }
             }
         }
@@ -393,6 +409,7 @@ mod tests {
     fn job(id: &str, state: State) -> Job {
         Job {
             id: id.into(),
+            attempt: 0,
             state,
             req: TrainReq {
                 exp: format!("role{id}"),
@@ -412,6 +429,7 @@ mod tests {
             },
             progress: Value::Null,
             error: String::new(),
+            diagnostic: None,
             result: Value::Null,
             annotation: None,
         }

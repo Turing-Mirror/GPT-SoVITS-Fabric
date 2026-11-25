@@ -66,8 +66,8 @@ pub enum PublicationRequest {
     },
 }
 
-fn unavailable() -> ApiError {
-    ApiError::new("unavailable", "Community is temporarily unavailable.")
+fn unavailable(error: impl std::error::Error) -> ApiError {
+    ApiError::new("unavailable", crate::diagnostics::error_chain(&error))
 }
 
 fn catalog_query(url: &mut url::Url, page: Option<u32>, cursor: Option<String>, query: Option<String>, limit: Option<u32>) {
@@ -125,14 +125,15 @@ fn cover_body(request: RequestBuilder, bytes: &[u8]) -> ApiResult<RequestBuilder
 pub async fn community_publication(
     state: State<'_, Mutex<AppState>>,
     request: PublicationRequest,
-) -> ApiResult {
+) -> Result<serde_json::Value, crate::diagnostics::CommandError> {
+    let result: ApiResult = async {
     let root = root_clone(&state).map_err(ApiError::invalid)?;
     let base = community_catalog::publication_base(&root)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(45))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|_| unavailable())?;
+        .map_err(unavailable)?;
     let endpoint = |path: &[&str]| community_catalog::endpoint(&base, path);
     let public = matches!(&request, PublicationRequest::Author { .. }
         | PublicationRequest::Asset { .. } | PublicationRequest::Version { .. } | PublicationRequest::Categories { .. });
@@ -211,7 +212,7 @@ pub async fn community_publication(
     let request = if public { request } else { request.bearer_auth(community_account::access_token().await?) };
     let response = request.send()
         .await
-        .map_err(|_| unavailable())?;
+        .map_err(|error| unavailable(error.without_url()))?;
     let status = response.status();
     if preview && status.is_success() {
         let mime = response.headers().get(header::CONTENT_TYPE)
@@ -221,11 +222,11 @@ pub async fn community_publication(
             || size.is_none_or(|size| size > 8 * 1024 * 1024) {
             return Err(ApiError::invalid("Invalid Community cover."));
         }
-        let bytes = response.bytes().await.map_err(|_| unavailable())?;
+        let bytes = response.bytes().await.map_err(unavailable)?;
         return Ok(json!({ "url": format!("data:{mime};base64,{}", crate::wallpaper::encode_base64(&bytes)) }));
     }
-    let body = response.text().await.map_err(|_| unavailable())?;
-    let mut value: Value = serde_json::from_str(&body).map_err(|_| unavailable())?;
+    let body = response.text().await.map_err(unavailable)?;
+    let mut value: Value = serde_json::from_str(&body).map_err(unavailable)?;
     if status.is_success() {
         if let Some(items) = value["items"].as_array_mut() {
             for item in items {
@@ -253,8 +254,11 @@ pub async fn community_publication(
             .as_str()
             .unwrap_or("Community request failed."),
     );
+    failure.details = json!({ "http_status": status.as_u16() });
     if let Some(seconds) = error["retryAfter"].as_u64() {
-        failure.details = json!({ "retryAfter": seconds });
+        failure.details["retryAfter"] = json!(seconds);
     }
     Err(failure)
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::api("community_publication", error))
 }

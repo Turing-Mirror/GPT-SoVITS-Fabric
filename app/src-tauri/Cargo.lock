@@ -1593,6 +1593,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fabric-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fancy-regex"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2125,6 +2133,7 @@ name = "gpt-sovits-fabric"
 version = "1.0.5"
 dependencies = [
  "chrono",
+ "fabric-diagnostics",
  "flate2",
  "hex",
  "keyring",

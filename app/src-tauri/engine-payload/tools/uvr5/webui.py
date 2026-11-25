@@ -1,6 +1,8 @@
 import logging
 import os
 import traceback
+from html import escape
+from tools.fabric_errors import failure_html, COPY_HEAD
 
 import gradio as gr
 
@@ -63,7 +65,7 @@ def uvr(model_name, inp_root, save_root_vocal, paths, save_root_ins, agg, format
                 infos.append(
                     "Warning: You are using a model without a configuration file. The program will automatically use the default configuration file. However, the default configuration file cannot guarantee that all models will run successfully. You can manually place the model configuration file into 'tools/uvr5/uvr5w_weights' and ensure that the configuration file is named as '<model_name>.yaml' then try it again. (For example, the configuration file corresponding to the model 'bs_roformer_ep_368_sdr_12.9628.ckpt' should be 'bs_roformer_ep_368_sdr_12.9628.yaml'.) Or you can just ignore this warning."
                 )
-                yield "\n".join(infos)
+                yield "<br>".join(infos)
         else:
             func = AudioPre if "DeEcho" not in model_name else AudioPreDeEcho
             pre_fun = func(
@@ -101,14 +103,14 @@ def uvr(model_name, inp_root, save_root_vocal, paths, save_root_ins, agg, format
             try:
                 if done == 0:
                     pre_fun._path_audio_(inp_path, save_root_ins, save_root_vocal, format0, is_hp3)
-                infos.append("%s->Success" % (os.path.basename(inp_path)))
-                yield "\n".join(infos)
+                infos.append(escape("%s->Success" % (os.path.basename(inp_path))))
+                yield "<br>".join(infos)
             except:
-                infos.append("%s->%s" % (os.path.basename(inp_path), traceback.format_exc()))
-                yield "\n".join(infos)
+                infos.append(failure_html("%s->%s" % (os.path.basename(inp_path), traceback.format_exc()), "separation"))
+                yield "<br>".join(infos)
     except:
-        infos.append(traceback.format_exc())
-        yield "\n".join(infos)
+        infos.append(failure_html(traceback.format_exc(), "separation"))
+        yield "<br>".join(infos)
     finally:
         try:
             if model_name == "onnx_dereverb_By_FoxJoy":
@@ -122,10 +124,10 @@ def uvr(model_name, inp_root, save_root_vocal, paths, save_root_ins, agg, format
         print("clean_empty_cache")
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    yield "\n".join(infos)
+    yield "<br>".join(infos)
 
 
-with gr.Blocks(title="UVR5 WebUI", analytics_enabled=False) as app:
+with gr.Blocks(title="UVR5 WebUI", analytics_enabled=False, head=COPY_HEAD) as app:
     gr.Markdown(
         value=i18n("本软件以MIT协议开源, 作者不对软件具备任何控制力, 使用软件者、传播软件导出的声音者自负全责.")
         + "<br>"
@@ -200,7 +202,7 @@ with gr.Blocks(title="UVR5 WebUI", analytics_enabled=False) as app:
                         with gr.Row():
                             but2 = gr.Button(i18n("转换"), variant="primary")
                         with gr.Row():
-                            vc_output4 = gr.Textbox(label=i18n("输出信息"), lines=3)
+                            vc_output4 = gr.HTML(label=i18n("输出信息"))
                 but2.click(
                     uvr,
                     [

@@ -8,7 +8,9 @@ const bridge = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: bridge.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: bridge.listen }));
 const job = (id: string, state: TrainJob["state"]): TrainJob => ({ id, state,
-  req: { exp: `voice${id}`, version: "v2", dataset: "dataset", sovits_epoch: 8, gpt_epoch: 15 },
+  req: { exp: `voice${id}`, version: "v2", dataset: "dataset", sovits_epoch: 8, gpt_epoch: 15,
+    sovits_batch: 4, sovits_save_every: 4, gpt_batch: 4, gpt_save_every: 5,
+    save_every_weights: true, learning_rate: 0.0001, lora_rank: 32, resume: true, output_dir: "" },
   progress: { stage: "sovits", done: 4, total: 8 }, error: "" });
 let root: Root;
 let host: HTMLDivElement;

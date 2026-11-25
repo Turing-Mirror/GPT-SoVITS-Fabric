@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, invokeFor } from "../lib/invoke";
+import { errorWithTitle } from "../lib/diagnostics";
 import { useAudioPreview } from "../hooks/useAudioPreview";
 import { Btn } from "./ui";
 import { Select } from "./controls";
@@ -81,7 +82,7 @@ export function SynthResults({
   useEffect(() => {
     player.retain(rows.map(r => r.path));
   }, [rows, player]);
-  const play = (path: string) => playAudio(path, () => onError(t("synth.playFailed")));
+  const play = (path: string) => playAudio(path, () => onError(errorWithTitle(t("synth.playFailed"), "synth.playFailed", "synthesis")));
 
   const current = rows.find((r) => r.path === sel) ?? null;
   const seed = current?.record?.params?.seed;
@@ -98,7 +99,7 @@ export function SynthResults({
     if (!current) return;
     player.stopPath(current.path);
     setRenaming(false);
-    void invoke<string>("synth_rename", { path: current.path, name })
+    void invokeFor<string>("other", "synth_rename", { path: current.path, name })
       .then((p) => {
         setSel(p);
         reload();
@@ -109,7 +110,7 @@ export function SynthResults({
   const remove = () => {
     if (!current) return;
     player.stopPath(current.path);
-    void invoke("synth_delete", { path: current.path })
+    void invokeFor("other", "synth_delete", { path: current.path })
       .then(() => {
         setSel("");
         reload();

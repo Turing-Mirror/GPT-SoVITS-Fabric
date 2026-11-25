@@ -61,6 +61,8 @@ fn spawn_detached(
     cmd.args(args)
         .current_dir(root)
         .envs(&env)
+        .env("FABRIC_DIAGNOSTICS_EXE", std::env::current_exe().map_err(|e| e.to_string())?)
+        .env("FABRIC_DIAGNOSTICS_LOCALE", crate::i18n::current())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(match log_file {

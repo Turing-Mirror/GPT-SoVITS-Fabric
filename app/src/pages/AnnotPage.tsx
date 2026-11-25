@@ -1,6 +1,8 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
+import { diagnosticContent, errorWithTitle, isCancelled, withFeature } from "../lib/diagnostics";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Block, Btn, PageHead, PagePad } from "../components/ui";
 import { Field, Select, Slider } from "../components/controls";
@@ -246,7 +248,8 @@ function AnnotPageImpl() {
         setCreateMin(false);
       }
     } catch (e) {
-      setErr(String(e));
+      if (isCancelled(e)) setMsg(t("s.annot.cancelled"));
+      else setErr(String(e));
     } finally {
       unlisten?.();
       setBusy(false);
@@ -288,7 +291,7 @@ function AnnotPageImpl() {
   const [roleLists, setRoleLists] = useState<RoleList[]>(() => listsOf(peekCharacters() ?? []));
   const loadRoleLists = useCallback(() => {
     if (!isTauri()) return;
-    void readCharacters().then(roles => setRoleLists(listsOf(roles))).catch(e => setErr(String(e)));
+    void readCharacters().then(roles => setRoleLists(listsOf(roles))).catch(e => setErr(JSON.stringify(withFeature(e, "annotation"))));
   }, []);
   useEffect(loadRoleLists, [loadRoleLists]);
   const roleGrid = useModelGrid();
@@ -362,7 +365,8 @@ function AnnotPageImpl() {
   }, []);
 
   const play = (r: Row) => {
-    if (r.exists && r.abs) playAudio(r.abs, () => setErr(t("s.annot.playFailed", { v0: r.wav })));
+    const fileName = r.wav.split(/[\\/]/).pop() || r.wav;
+    if (r.exists && r.abs) playAudio(r.abs, () => setErr(errorWithTitle(r.wav, "s.annot.playFailed", "annotation", { v0: fileName })));
   };
 
   const view = useMemo(() => {
@@ -505,7 +509,7 @@ function AnnotPageImpl() {
           }
         />
 
-        {(!creating && err) || config.error ? <ErrorNote text={(!creating && err) || config.error} /> : null}
+        {(!creating && err) || config.error ? <ErrorNote feature="annotation" text={(!creating && err) || config.error} /> : null}
         <DockableModal
           open={creating}
           minimized={createMin}
@@ -529,7 +533,7 @@ function AnnotPageImpl() {
           attention={err ? "error" : genReady ? "ready" : "idle"}
           tooltip={joinClauses([
             t("s.annot.create"),
-            err || (genReady ? t("s.annot.readyOrb") : progress || t("s.annot.generating")),
+            err ? diagnosticContent(err, "annotation").title : (genReady ? t("s.annot.readyOrb") : progress || t("s.annot.generating")),
           ])}
         >
           <div className="space-y-4 p-6" aria-busy={busy}>
@@ -576,7 +580,7 @@ function AnnotPageImpl() {
             {!isTauri() ? (
               <p className="m-0 text-[12.5px] text-[var(--help)]">{t("s.annot.createPreview")}</p>
             ) : null}
-            {err ? <ErrorNote text={err} /> : null}
+            {err ? <ErrorNote feature="annotation" text={err} /> : null}
             <div className="flex justify-end gap-2">
               {busy ? (
                 <>

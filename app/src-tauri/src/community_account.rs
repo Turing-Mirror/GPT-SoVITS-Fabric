@@ -436,7 +436,8 @@ pub struct AuthorProfileUpdate {
 }
 
 #[tauri::command]
-pub async fn community_account_author_profile(update: Option<AuthorProfileUpdate>) -> ApiResult {
+pub async fn community_account_author_profile(update: Option<AuthorProfileUpdate>) -> Result<serde_json::Value, crate::diagnostics::CommandError> {
+    let result: ApiResult = async {
     let endpoint = url::Url::parse(&issuer()?)
         .and_then(|url| url.join("/api/account/author-profile"))
         .map_err(ApiError::invalid)?;
@@ -461,20 +462,29 @@ pub async fn community_account_author_profile(update: Option<AuthorProfileUpdate
         429 => Err(ApiError::new("rate_limited", "Please try again later.")),
         _ => Err(unavailable()),
     }
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::api("community_account_author_profile", error))
 }
 
 #[tauri::command]
-pub async fn community_account_status() -> ApiResult {
+pub async fn community_account_status() -> Result<serde_json::Value, crate::diagnostics::CommandError> {
+    let result: ApiResult = async {
     current().await.map(public_status)
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::api("community_account_status", error))
 }
 
 #[tauri::command]
-pub async fn community_account_sign_in(app: tauri::AppHandle) -> ApiResult {
+pub async fn community_account_sign_in(app: tauri::AppHandle) -> Result<serde_json::Value, crate::diagnostics::CommandError> {
+    let result: ApiResult = async {
     sign_in(app).await.map(public_status)
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::api("community_account_sign_in", error))
 }
 
 #[tauri::command]
-pub async fn community_account_sign_out() -> ApiResult {
+pub async fn community_account_sign_out() -> Result<serde_json::Value, crate::diagnostics::CommandError> {
+    let result: ApiResult = async {
     CANCEL.store(true, Ordering::Release);
     let issuer = issuer()?;
     let mut cached = cache().lock().await;
@@ -489,6 +499,8 @@ pub async fn community_account_sign_out() -> ApiResult {
     }
     *cached = None;
     Ok(public_status(json!({"profile": null})))
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::api("community_account_sign_out", error))
 }
 
 #[cfg(test)]

@@ -114,7 +114,8 @@ fn emit(app: &AppHandle, phase: &str, done: u64, total: u64, message: &str) {
             "phase": phase,
             "done": done,
             "total": total.max(1),
-            "message": message,
+            "message": crate::diagnostics::summary(message),
+            "diagnostic": crate::diagnostics::decode(message),
         }),
     );
 }
@@ -155,6 +156,9 @@ pub fn run(
             .unwrap_or("separate")
     );
     let mut trace = crate::logging::RunTrace::new(log.clone());
+    let slice = crate::diagnostics::LogSlice::start(&log);
+    let mut evidence = crate::diagnostics::evidence(fabric_diagnostics::Feature::Separation, false);
+    evidence.context.target_disk_path = Some(output.into());
     let started = std::time::Instant::now();
     let result = run_inner(
         app,
@@ -165,7 +169,14 @@ pub fn run(
         format,
         aggression,
         &mut trace,
+        &mut evidence,
     );
+    let result = result.map_err(|error| {
+        if error == crate::i18n::t("s.a5ffdc95ee") { return error; }
+        if evidence.text.is_empty() { evidence.text = error; }
+        slice.append(&mut evidence);
+        crate::diagnostics::encode(&crate::diagnostics::finish(&evidence))
+    });
     let outcome = match &result {
         Ok(_) => "ok",
         Err(e) if e == &crate::i18n::t("s.a5ffdc95ee") => "cancelled",
@@ -220,6 +231,7 @@ fn run_inner(
     format: &str,
     aggression: u32,
     trace: &mut crate::logging::RunTrace,
+    evidence: &mut fabric_diagnostics::Evidence,
 ) -> Result<Value, String> {
     if !paths::runtime_ready(root) {
         return Err(crate::i18n::t("s.75b84a31d6").into());
@@ -297,9 +309,14 @@ fn run_inner(
     let mut files: Vec<String> = Vec::new();
     let mut fail: Option<String> = None;
 
-    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+    for line in BufReader::new(stdout).lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(error) => { fail = Some(error.to_string()); let _ = child.kill(); break; }
+        };
         if cancel_flag().load(Ordering::SeqCst) {
             let _ = child.kill();
+            let _ = child.wait();
             trace.note("cancelled by user");
             return Err(crate::i18n::t("s.a5ffdc95ee").into());
         }
@@ -308,6 +325,7 @@ fn run_inner(
         };
         let phase = v.get("phase").and_then(|x| x.as_str()).unwrap_or("");
         // worker 的中文原样转发 = 非中文用户看中文。有 code 走语言包。
+        if phase == "error" { crate::diagnostics::worker(evidence, &v); }
         let msg_owned = crate::i18n::t_worker_msg(&v);
         let msg = msg_owned.as_str();
         let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
@@ -361,6 +379,7 @@ fn run_inner(
     }
 
     let st = child.wait().map_err(|e| crate::i18n::te("s.a4abecd0fe", &(e)))?;
+    evidence.exit_code = st.code();
     if let Some(e) = fail {
         return Err(e);
     }

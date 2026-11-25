@@ -36,7 +36,7 @@ export function VulkanResourceAction({ jobs, disabled = false }: { jobs: ExtraJo
           </Btn>
         )}
       </div>
-      {vulkanError ? <ErrorNote text={vulkanError} compact /> : null}
+      {vulkanError ? <ErrorNote feature="download" text={vulkanError} compact /> : null}
     </div>
   );
 }

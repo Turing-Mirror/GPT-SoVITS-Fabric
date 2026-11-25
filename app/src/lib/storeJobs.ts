@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { displayVoiceName } from "./voiceDisplay";
+import { errorWithTitle, type Diagnostic } from "./diagnostics";
 import {
   cancelStoreDownload,
   installStagedVoice,
@@ -84,6 +85,7 @@ function ensureListen() {
   if (listening || !isTauri()) return;
   listening = true;
   void listen<{
+    diagnostic?: Diagnostic;
     voice_id?: string;
     message?: string;
     percent?: number;
@@ -93,6 +95,13 @@ function ensureListen() {
   }>("store-progress", (ev) => {
     const p = ev.payload;
     const id = (p.voice_id || "").trim();
+    if (p.diagnostic) {
+      const entry = id ? entries.get(id) : undefined;
+      const label = entry ? displayVoiceName(entry.voice) : "";
+      error = label || id
+        ? errorWithTitle(p.diagnostic, "store.downloadFailedNamed", "store", { name: label || id })
+        : JSON.stringify(p.diagnostic);
+    }
     if (!id) return;
     const done = Number(p.done);
     const total = Number(p.total);
@@ -140,7 +149,7 @@ async function startOne(id: string) {
     lastCompleted = id;
     lastCompletedThird = job.voice.official === false;
   } catch (e) {
-    error = `${label || id}：${String(e)}`;
+    error = errorWithTitle(e, "store.downloadFailedNamed", "store", { name: label || id });
   } finally {
     running = running.filter((x) => x !== id);
     if (id in prog) {

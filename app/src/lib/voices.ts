@@ -1,4 +1,6 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
+import { errorWithTitle, type Diagnostic } from "./diagnostics";
 import { t } from "../i18n/t";
 
 /**
@@ -81,6 +83,7 @@ export type StoreCatalog = {
   voices?: StoreVoice[];
   thirdparty_voices?: StoreVoice[];
   fetch_error?: string;
+  diagnostic?: Diagnostic;
 };
 
 export function coverSrc(path?: string): string {
@@ -100,7 +103,7 @@ export async function fetchStoreCatalog(preferRemote = true) {
       source: "demo",
       voices: [],
       thirdparty_voices: [],
-      fetch_error: t("s.d15a7a3da1"),
+      fetch_error: errorWithTitle(t("s.d15a7a3da1"), "s.d15a7a3da1", "store"),
     } satisfies StoreCatalog;
   }
   return invoke<StoreCatalog>("store_catalog", { preferRemote });

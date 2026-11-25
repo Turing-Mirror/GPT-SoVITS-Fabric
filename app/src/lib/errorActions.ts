@@ -7,7 +7,7 @@
  * 这张表只登记**当前进程就能完成、且有明确成功反馈**的动作。做不到的宁可不
  * 登记：一个点下去什么都没发生的按钮，比没有按钮更伤。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { openDownloadModels } from "./downloadModels";
 import type { ExtrasFilter } from "../components/ExtrasDialog";
 import { t } from "../i18n/t";

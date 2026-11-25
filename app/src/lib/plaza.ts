@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
+import { errorWithTitle } from "./diagnostics";
 import { t } from "../i18n/t";
 
 /** One feed row. Mirrors `plaza::PlazaItem`. */
@@ -58,7 +59,7 @@ function isTauri(): boolean {
 }
 
 export async function fetchPlaza(): Promise<PlazaFeed> {
-  if (!isTauri()) return { ...EMPTY, errors: [t("s.bea562b0a7")] };
+  if (!isTauri()) return { ...EMPTY, errors: [errorWithTitle(t("s.bea562b0a7"), "s.bea562b0a7", "store")] };
   return invoke<PlazaFeed>("plaza_fetch");
 }
 

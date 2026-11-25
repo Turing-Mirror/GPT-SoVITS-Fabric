@@ -1002,7 +1002,10 @@ fn kill_tree(pid: u32) {
 /// 翻译在这一侧。不在这里翻的话，界面要么显示 `train.sovits_started` 这种
 /// 裸 key，要么就得把八份文案再拼一遍 —— 而语言包的四道校验只认这边的引用。
 fn emit(app: &AppHandle, mut payload: Value, job_id: Option<&str>) {
-    let text = crate::i18n::t_worker_msg(&payload);
+    let text = payload.get("diagnostic")
+        .and_then(|value| serde_json::from_value::<fabric_diagnostics::Diagnostic>(value.clone()).ok())
+        .map(|d| crate::i18n::t(&d.title.key))
+        .unwrap_or_else(|| crate::i18n::t_worker_msg(&payload));
     if let Some(obj) = payload.as_object_mut() {
         if !text.is_empty() {
             obj.insert("text".into(), Value::String(text));
@@ -1381,10 +1384,10 @@ pub fn normalize_output_dir(raw: &str) -> Result<String, String> {
 
 /// 阻塞跑一次训练，调用方负责挪到后台线程。
 pub fn run(app: &AppHandle, root: &Path, req: TrainReq) -> Result<Value, String> {
-    run_queued(app, root, req, None)
+    run_queued(app, root, req, None, Some(1))
 }
 
-pub(crate) fn run_queued(app: &AppHandle, root: &Path, mut req: TrainReq, job_id: Option<&str>) -> Result<Value, String> {
+pub(crate) fn run_queued(app: &AppHandle, root: &Path, mut req: TrainReq, job_id: Option<&str>, attempt: Option<u32>) -> Result<Value, String> {
     loop {
         let mut g = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         if !*g {
@@ -1445,7 +1448,20 @@ pub(crate) fn run_queued(app: &AppHandle, root: &Path, mut req: TrainReq, job_id
         log.file_name().and_then(|s| s.to_str()).unwrap_or("train")
     );
     let mut progress = Progress::default();
-    let result = run_inner(app, root, &req, &log, &mut progress, job_id);
+    let slice = crate::diagnostics::LogSlice::start(&log);
+    let mut evidence = crate::diagnostics::evidence(fabric_diagnostics::Feature::Training, job_id.is_some());
+    evidence.job_id = job_id.map(str::to_owned);
+    evidence.attempt = attempt;
+    evidence.context.operation = Some(fabric_diagnostics::Operation::Train);
+    evidence.context.target_disk_path = Some(req.output_dir.clone());
+    let result = run_inner(app, root, &req, &log, &mut progress, job_id, &mut evidence);
+    // Diagnose after the child's pipes have closed, before writing a historical outcome tail.
+    let result = result.map_err(|error| {
+        if error == crate::i18n::t("s.a5ffdc95ee") { return error; }
+        if evidence.text.is_empty() { evidence.text = error; }
+        slice.append(&mut evidence);
+        crate::diagnostics::encode(&crate::diagnostics::finish(&evidence))
+    });
     let outcome = match &result {
         Ok(_) => "ok",
         Err(e) if e == &crate::i18n::t("s.a5ffdc95ee") => "cancelled",
@@ -1460,7 +1476,12 @@ pub(crate) fn run_queued(app: &AppHandle, root: &Path, mut req: TrainReq, job_id
         }
     }
     if let Err(ref e) = result {
-        emit(app, json!({ "phase": "error", "message": e }), job_id);
+        if e != &crate::i18n::t("s.a5ffdc95ee") {
+        let d = crate::diagnostics::from_error(fabric_diagnostics::Feature::Training, e, job_id.is_some());
+        emit(app, json!({ "phase": "error", "message": crate::i18n::t(&d.title.key),
+            "message_code": d.source_code, "message_params": evidence.source_params,
+            "diagnostic": d }), job_id);
+        }
     }
     release_training_slot();
     result
@@ -1473,6 +1494,7 @@ fn run_inner(
     log: &Path,
     progress: &mut Progress,
     job_id: Option<&str>,
+    evidence: &mut fabric_diagnostics::Evidence,
 ) -> Result<Value, String> {
     preflight(root, req)?;
 
@@ -1565,7 +1587,10 @@ fn run_inner(
 
     let mut done: Option<Value> = None;
     let mut fail: Option<String> = None;
-    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+    for line in BufReader::new(stdout).lines() {
+        let line = match line { Ok(line) => line, Err(error) => {
+            fail = Some(error.to_string()); kill_tree(child.id()); break;
+        }};
         if cancel_flag().load(Ordering::SeqCst) {
             kill_tree(child.id());
             let _ = child.wait();
@@ -1574,28 +1599,24 @@ fn run_inner(
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue; // 不是协议行（tqdm 之类），忽略
         };
+        if let Some(stage) = v["stage"].as_str() { evidence.stage = Some(stage.into()); }
+        if v["phase"] == "error" { crate::diagnostics::worker(evidence, &v); }
         note_progress(log, &v, progress);
         match v.get("phase").and_then(|x| x.as_str()).unwrap_or("") {
             "error" => {
-                fail = Some({
-                    let m = crate::i18n::t_worker_msg(&v);
-                    if m.is_empty() {
-                        crate::i18n::t("s.60a21a8105")
-                    } else {
-                        m
-                    }
-                })
+                fail = Some(v["message"].as_str().unwrap_or("worker failed").into());
             }
             "done" => done = Some(v.clone()),
             _ => {}
         }
-        emit(app, v, job_id);
+        if v["phase"] != "error" { emit(app, v, job_id); }
     }
 
     let st = child.wait().map_err(|e| crate::i18n::te("s.d21a4981b7", &(e)))?;
     if cancel_flag().load(Ordering::SeqCst) {
         return Err(crate::i18n::t("s.a5ffdc95ee").into());
     }
+    evidence.exit_code = st.code();
     if let Some(e) = fail {
         return Err(e);
     }

@@ -475,15 +475,9 @@ fn format_speed(bps: u64) -> String {
 /// 「解压失败 Lib/site-packages/…: 拒绝访问」只会以为又得重下，实际上重下
 /// 一遍还是同样的错，真正要动的是杀软白名单或者磁盘空间。
 fn extract_error_text(raw: &str) -> String {
-    let why = crate::download::explain_error(raw)
-        .map(crate::i18n::t)
-        .unwrap_or_else(|| crate::i18n::t("s.rtExtractFailed"));
-    format!(
-        "{}\n\n{}\n\n{}",
-        why,
-        crate::i18n::t("s.rtExtractHelp"),
-        crate::i18n::te("s.dlDetail", &raw),
-    )
+    crate::diagnostics::failure(fabric_diagnostics::Feature::Provision, raw, fabric_diagnostics::Context {
+        operation: Some(fabric_diagnostics::Operation::Extract), retry_safe: Some(false), ..Default::default()
+    })
 }
 
 fn emit_progress(app: &AppHandle, phase: &str, done: u64, total: u64, message: &str) {
@@ -511,7 +505,8 @@ fn emit_progress_speed(
             "percent": pct,
             "speed_bps": speed_bps,
             "speed_label": format_speed(speed_bps),
-            "message": message,
+            "diagnostic": crate::diagnostics::decode(message),
+            "message": crate::diagnostics::summary(message),
         }),
     );
 }
@@ -750,6 +745,10 @@ pub fn run_provision(
     }
     cancel_flag().store(false, Ordering::SeqCst);
 
+    let result = result.map_err(|e| {
+        if e == crate::i18n::t("s.a5ffdc95ee") { return e; }
+        crate::diagnostics::encode(&crate::diagnostics::from_error(fabric_diagnostics::Feature::Provision, &e, false))
+    });
     if let Err(ref e) = result {
         emit_progress(&app, "error", 0, 1, e);
     }

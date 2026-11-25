@@ -515,12 +515,15 @@ pub fn download(app: &AppHandle, root: &Path, key: &str) -> Result<Value, String
         *g = true;
     }
     cancel_flag().store(false, Ordering::SeqCst);
-    let r = download_inner(app, root, key);
+    let r = download_inner(app, root, key).map_err(|e| {
+        if e == crate::i18n::t("s.a5ffdc95ee") { return e; }
+        crate::diagnostics::encode(&crate::diagnostics::from_error(fabric_diagnostics::Feature::Download, &e, false))
+    });
     *BUSY.lock().unwrap_or_else(|e| e.into_inner()) = false;
     if let Err(ref e) = r {
         let _ = app.emit(
             "extra-progress",
-            json!({ "key": key, "phase": "error", "message": e }),
+            json!({ "key": key, "phase": "error", "message": crate::diagnostics::summary(e), "diagnostic": crate::diagnostics::decode(e) }),
         );
     }
     r

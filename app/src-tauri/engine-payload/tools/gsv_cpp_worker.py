@@ -33,7 +33,11 @@ class WorkerError(Exception):
         self.code = code
 
 
+_REQUEST_ID = None
+
 def emit(event: str, **values) -> None:
+    values.setdefault("request_id", _REQUEST_ID)
+    sys.stderr.flush()
     print(json.dumps({"event": event, **values}, ensure_ascii=False), flush=True)
 
 
@@ -248,6 +252,7 @@ class VulkanWorker:
 
 
 def main() -> None:
+    global _REQUEST_ID
     parser = argparse.ArgumentParser()
     parser.add_argument("--resident", action="store_true")
     parser.parse_args()
@@ -259,6 +264,7 @@ def main() -> None:
                 job = {}
                 try:
                     job = json.loads(line)
+                    _REQUEST_ID = job.get("request_id")
                     match job["cmd"]:
                         case "load":
                             worker.load(job)
@@ -276,7 +282,8 @@ def main() -> None:
                     if isinstance(exc, WorkerError):
                         code, message = exc.code, str(exc)
                     emit("error", job=job.get("job") or job.get("role_id"), code=code,
-                         message_code=f"synth.{code}", message=message)
+                         message_code=f"synth.{code}", message=message, detail=traceback.format_exc(),
+                         os_error=getattr(exc, "winerror", None))
         finally:
             worker.close()
 

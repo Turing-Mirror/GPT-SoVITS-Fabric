@@ -1,3 +1,4 @@
+import { ErrorNote } from "./ErrorNote";
 import { useEffect, useId, useState } from "react";
 import { Modal } from "./Modal";
 import { Btn } from "./ui";
@@ -169,7 +170,7 @@ export function RoleAssetsDialog({ role, onClose, onChanged }: {
             </div>
           </section>
         </> : null}
-        {error ? <p role="alert" className="text-[12.5px] text-[var(--danger-text)] break-words selectable">{error}</p> : null}
+        {error ? <ErrorNote feature="importexport" text={error} /> : null}
       </div>
       <footer className="px-6 py-4 flex justify-end gap-2 flex-none">
         <Btn disabled={busy} onClick={onClose}>{t("window.close")}</Btn>

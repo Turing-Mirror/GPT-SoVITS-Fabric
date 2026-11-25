@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { ImageCropDialog } from "trm-ui";
+import { invoke } from "../lib/invoke";
+import { ImageCropDialog } from "./DiagnosticImageCropDialog";
 
 type CoverRole = { id: string; name: string; dir: string; cover?: string; cover_exists?: boolean };
 const pickImage = () => invoke<string | null>("role_cover_pick");

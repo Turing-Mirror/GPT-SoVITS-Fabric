@@ -169,74 +169,14 @@ fn wait_retry(cancel: &AtomicBool) -> Result<(), String> {
     Ok(())
 }
 
-/// 底层那句话 → 用户看得懂的一句话。
-///
-/// `ripget: status 403`、`resume: error sending request for url (...)`、
-/// `os error 10060` 这些是给日志看的，不是给人看的。用户看到的应该是
-/// 「服务器拒绝了这次下载」而不是一串英文加数字 —— 前者他知道该换个源
-/// 或者挂代理，后者他只能截图来问。
-///
-/// 返回 None = 归不了类，原样往外报。宁可露出原文，也不要编一句听起来
-/// 很确定却指错方向的话。
-pub fn explain_error(raw: &str) -> Option<&'static str> {
-    let e = raw.to_ascii_lowercase();
-    if e.contains("sha256") || e.contains("signature") {
-        // 校验不过：下完了但内容不对。跟网断了是两码事，不能都说「网络问题」。
-        return Some("s.dlWhyHash");
-    }
-    if e.contains("os error 112") || e.contains("no space left") || e.contains("not enough space") {
-        return Some("s.dlWhyDisk");
-    }
-    if e.contains("os error 5") || e.contains("access is denied") || e.contains("permission denied")
-    {
-        return Some("s.dlWhyPerm");
-    }
-    if e.contains("11001") || e.contains("dns") || e.contains("failed to lookup") {
-        return Some("s.dlWhyDns");
-    }
-    if e.contains("tls") || e.contains("handshake") || e.contains("certificate") {
-        return Some("s.dlWhyTls");
-    }
-    if e.contains("status 429") || e.contains("too many requests") {
-        return Some("s.dlWhyBusy");
-    }
-    // 各处报状态码的写法不一：ripget 是「status 404」，reqwest 是「HTTP 404」，
-    // 程序更新器是「status: 404」。
-    if e.contains("status 40") || e.contains("status 41") || e.contains("forbidden")
-        || e.contains("http 40") || e.contains("http 41") || e.contains("status: 4")
-    {
-        return Some("s.dlWhyRefused");
-    }
-    if e.contains("status 5") || e.contains("bad gateway") || e.contains("service unavailable")
-        || e.contains("http 5") || e.contains("status: 5")
-    {
-        return Some("s.dlWhyServer");
-    }
-    if e.contains("timed out") || e.contains("timeout") || e.contains("10060") {
-        return Some("s.dlWhyTimeout");
-    }
-    if e.contains("reset") || e.contains("10054") || e.contains("broken pipe") {
-        return Some("s.dlWhyReset");
-    }
-    if e.contains("10061") || e.contains("unreachable") || e.contains("error sending request") {
-        return Some("s.dlWhyUnreachable");
-    }
-    None
-}
 
 /// 联网请求失败时给用户看的话：原因，加上该怎么做。原始报错只写进日志，
 /// 反馈时从日志里取，不在界面上铺一串地址。
 pub(crate) fn plain_error(raw: &str) -> String {
-    crate::logging::shell_log!(format!("network request failed: {raw}"));
-    let Some(key) = explain_error(raw) else {
-        return crate::i18n::t("s.netUnknown");
-    };
-    let action = match key {
-        "s.dlWhyTimeout" | "s.dlWhyDns" | "s.dlWhyTls" | "s.dlWhyReset" => "s.netCheckNetwork",
-        "s.dlWhyHash" | "s.dlWhyPerm" => "s.netRetryOrManual",
-        _ => return crate::i18n::t(key),
-    };
-    crate::i18n::t2("s.netWithAction", &crate::i18n::t(key), &crate::i18n::t(action))
+    crate::logging::shell_log!("network request failed: {raw}");
+    crate::diagnostics::failure(fabric_diagnostics::Feature::Download, raw, fabric_diagnostics::Context {
+        operation: Some(fabric_diagnostics::Operation::Download), retry_safe: Some(false), ..Default::default()
+    })
 }
 
 /// 报错的完整形状：一句人话 → 试过哪些源 → 能自己做点什么 → 技术细节。
@@ -244,30 +184,13 @@ pub(crate) fn plain_error(raw: &str) -> String {
 /// 技术细节留在最后一行而不是删掉：用户来群里问的时候贴的就是这一整段，
 /// 没有它我们只知道「下载失败」，一样查不出是哪一步。
 fn download_error_text(raw: &str, attempts: u32, hosts: &[String]) -> String {
-    let mut out = String::new();
-    match explain_error(raw) {
-        Some(key) => out.push_str(&crate::i18n::t(key)),
-        None => out.push_str(raw),
-    }
-    if !hosts.is_empty() {
-        out.push_str("\n\n");
-        out.push_str(&crate::i18n::t2(
-            "s.dlTriedHosts",
-            &hosts.len(),
-            &hosts.join("、"),
-        ));
-    }
-    if attempts > 1 {
-        out.push_str(if hosts.is_empty() { "\n\n" } else { "\n" });
-        out.push_str(&crate::i18n::te("s.dlGaveUp", &attempts));
-    }
-    out.push_str("\n\n");
-    out.push_str(&crate::i18n::t("s.dlFailedHelp"));
-    if explain_error(raw).is_some() {
-        out.push_str("\n\n");
-        out.push_str(&crate::i18n::te("s.dlDetail", &raw));
-    }
-    out
+    let mut evidence = crate::diagnostics::evidence(fabric_diagnostics::Feature::Download, false);
+    evidence.text = raw.into();
+    evidence.context.operation = Some(fabric_diagnostics::Operation::Download);
+    let mut diagnostic = crate::diagnostics::decode(raw).unwrap_or_else(|| crate::diagnostics::finish(&evidence));
+    diagnostic.scope.attempt = Some(attempts);
+    diagnostic.detail.text.push_str(&format!("\nattempts: {attempts}\nhosts: {}", hosts.join(", ")));
+    crate::diagnostics::encode(&diagnostic)
 }
 
 fn suffixed(base: &Path, suffix: &str) -> PathBuf {
@@ -323,7 +246,7 @@ async fn resume_one_url(
     if have > 0 {
         req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
     }
-    let resp = req.send().await.map_err(|e| format!("resume: {e}"))?;
+    let resp = req.send().await.map_err(|e| format!("resume: {}", crate::diagnostics::error_chain(&e)))?;
     let (start, response_end, complete_size) = match resp.status() {
         reqwest::StatusCode::OK => (0, resp.content_length(), resp.content_length()),
         reqwest::StatusCode::PARTIAL_CONTENT => {
@@ -438,7 +361,12 @@ pub fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
     }
     let got = file_sha256(path)?;
     if got != exp {
-        return Err(crate::i18n::t2("s.73a397a7fd", &exp, &got));
+        let mut e = crate::diagnostics::evidence(fabric_diagnostics::Feature::Download, false);
+        e.source_code = Some("s.73a397a7fd".into());
+        e.text = format!("sha256 mismatch: expected {exp}, got {got}");
+        e.context.operation = Some(fabric_diagnostics::Operation::VerifyResource);
+        e.context.target_disk_path = Some(path.to_string_lossy().into_owned());
+        return Err(crate::diagnostics::encode(&crate::diagnostics::finish(&e)));
     }
     Ok(())
 }
@@ -587,6 +515,20 @@ pub fn download_file(
 }
 
 pub fn download_request(
+    req: DownloadRequest,
+    cancel: Arc<AtomicBool>,
+    progress: Option<ProgressFn>,
+) -> Result<(), String> {
+    let destination = req.dest.to_string_lossy().into_owned();
+    download_request_inner(req, cancel, progress).map_err(|error| {
+        if error == crate::i18n::t("s.a5ffdc95ee") { return error; }
+        crate::diagnostics::failure(fabric_diagnostics::Feature::Download, &error,
+            fabric_diagnostics::Context { operation: Some(fabric_diagnostics::Operation::Download),
+                target_disk_path: Some(destination), retry_safe: Some(false), ..Default::default() })
+    })
+}
+
+fn download_request_inner(
     req: DownloadRequest,
     cancel: Arc<AtomicBool>,
     progress: Option<ProgressFn>,
@@ -931,76 +873,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_error_hides_the_raw_request() {
-        let raw = "https://cnb.cool/a/index.json?_=1: error sending request for url (https://cnb.cool/a/index.json?_=1)";
-        let msg = plain_error(raw);
-        assert!(!msg.contains("cnb.cool"));
-        assert!(!msg.is_empty());
-        assert_eq!(explain_error("x: HTTP 404 Not Found"), Some("s.dlWhyRefused"));
-        assert_eq!(explain_error("Download request failed with status: 503"), Some("s.dlWhyServer"));
-        assert_eq!(explain_error("signature verification failed"), Some("s.dlWhyHash"));
-        let unknown = plain_error("something odd");
-        assert!(!unknown.contains("something odd"));
-    }
-
-    fn mirror_fixture(
-        responses: Vec<(&'static str, String, Duration)>,
-    ) -> (String, std::thread::JoinHandle<()>) {
-        use std::io::{BufRead, BufReader, Write};
-        use std::net::{Ipv4Addr, TcpListener};
-
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let address = listener.local_addr().unwrap();
-        let base = format!("http://{address}");
-        let thread = std::thread::spawn(move || {
-            for (path, response, delay) in responses {
-                let start = std::time::Instant::now();
-                let mut stream = loop {
-                    match listener.accept() {
-                        Ok((stream, _)) => break stream,
-                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
-                            && start.elapsed() < Duration::from_secs(5) => {
-                            std::thread::sleep(Duration::from_millis(10));
-                        }
-                        Err(error) => panic!("missing request {path}: {error}"),
-                    }
-                };
-                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                let mut reader = BufReader::new(&stream);
-                let mut first = String::new();
-                reader.read_line(&mut first).unwrap();
-                assert_eq!(first.split_whitespace().nth(1), Some(path));
-                loop {
-                    let mut line = String::new();
-                    reader.read_line(&mut line).unwrap();
-                    if line == "\r\n" || line.is_empty() { break; }
-                    let lower = line.to_ascii_lowercase();
-                    assert!(!["authorization:", "cookie:", "proxy-authorization:"]
-                        .iter().any(|header| lower.starts_with(header)));
-                }
-                std::thread::sleep(delay);
-                let response = response.replace("{cdn}", &format!("http://localhost:{}/cdn", address.port()));
-                // A deliberately timed-out request may already have closed its socket.
-                let _ = stream.write_all(response.as_bytes());
-            }
-        });
-        (base, thread)
-    }
-
-    fn mirror_request(base: &str, paths: &[&str], tag: &str) -> DownloadRequest {
-        DownloadRequest {
-            urls: paths.iter().map(|path| format!("{base}{path}")).collect(),
-            root: None,
-            dest: crate::testutil::scratch(tag).join("runtime.tar"),
-            expected_sha256: format!("{:x}", Sha256::digest(b"hello fabric")),
-            size_hint: 12,
-            connections: Some(1),
-            kind: DownloadKind::Runtime,
-        }
-    }
-
-    #[test]
     fn mirrors_follow_catalog_order_through_http_errors_hash_errors_and_redirects() {
         let empty = Duration::ZERO;
         let (base, server) = mirror_fixture(vec![
@@ -1251,38 +1123,6 @@ mod tests {
     /// 下面这些是真实报错原文（日志里抄来的）。归类错一条，用户就会被指去
     /// 修一件跟他的问题无关的事 —— 磁盘满了却让他换代理，比不解释更糟。
     #[test]
-    fn real_world_errors_land_in_the_right_bucket() {
-        assert_eq!(explain_error("sha256 不匹配"), Some("s.dlWhyHash"));
-        assert_eq!(explain_error("ripget: status 403"), Some("s.dlWhyRefused"));
-        assert_eq!(explain_error("resume: status 404"), Some("s.dlWhyRefused"));
-        assert_eq!(explain_error("ripget: status 503"), Some("s.dlWhyServer"));
-        assert_eq!(explain_error("resume: status 429"), Some("s.dlWhyBusy"));
-        assert_eq!(explain_error("os error 10060"), Some("s.dlWhyTimeout"));
-        assert_eq!(explain_error("os error 11001"), Some("s.dlWhyDns"));
-        assert_eq!(explain_error("os error 10054"), Some("s.dlWhyReset"));
-        assert_eq!(explain_error("os error 112"), Some("s.dlWhyDisk"));
-        assert_eq!(
-            explain_error("解压失败 Lib/foo.dll: Access is denied. (os error 5)"),
-            Some("s.dlWhyPerm"),
-        );
-        assert_eq!(
-            explain_error("client: invalid TLS handshake"),
-            Some("s.dlWhyTls"),
-        );
-        // 归不了类就别硬归 —— 编一句听着很确定的错话，比露出原文更难查。
-        assert_eq!(explain_error("tokio runtime: whatever"), None);
-    }
-
-    /// 429 必须在 4xx 之前判掉：限流是「等一会儿」，403/404 是「换个源」，
-    /// 两句话给的建议正好相反。
-    #[test]
-    fn rate_limiting_is_not_reported_as_a_dead_link() {
-        assert_ne!(explain_error("status 429"), explain_error("status 403"));
-    }
-
-    /// 归不了类的时候，原文必须原样留在正文里 —— 否则用户手上只剩「下载失败」
-    /// 四个字，我们也查不出他卡在哪。
-    #[test]
     fn an_unclassified_error_keeps_its_original_text() {
         let text = download_error_text("tokio runtime: boom", 1, &[]);
         assert!(text.contains("tokio runtime: boom"));
@@ -1299,4 +1139,62 @@ mod tests {
         // 技术细节留在末尾：用户反馈时贴的就是这一整段。
         assert!(text.contains("os error 10060"));
     }
+
+    fn mirror_fixture(
+        responses: Vec<(&'static str, String, Duration)>,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::{Ipv4Addr, TcpListener};
+
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let base = format!("http://{address}");
+        let thread = std::thread::spawn(move || {
+            for (path, response, delay) in responses {
+                let start = std::time::Instant::now();
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+                            && start.elapsed() < Duration::from_secs(5) => {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) => panic!("missing request {path}: {error}"),
+                    }
+                };
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut reader = BufReader::new(&stream);
+                let mut first = String::new();
+                reader.read_line(&mut first).unwrap();
+                assert_eq!(first.split_whitespace().nth(1), Some(path));
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() { break; }
+                    let lower = line.to_ascii_lowercase();
+                    assert!(!["authorization:", "cookie:", "proxy-authorization:"]
+                        .iter().any(|header| lower.starts_with(header)));
+                }
+                std::thread::sleep(delay);
+                let response = response.replace("{cdn}", &format!("http://localhost:{}/cdn", address.port()));
+                // A deliberately timed-out request may already have closed its socket.
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (base, thread)
+    }
+
+    fn mirror_request(base: &str, paths: &[&str], tag: &str) -> DownloadRequest {
+        DownloadRequest {
+            urls: paths.iter().map(|path| format!("{base}{path}")).collect(),
+            root: None,
+            dest: crate::testutil::scratch(tag).join("runtime.tar"),
+            expected_sha256: format!("{:x}", Sha256::digest(b"hello fabric")),
+            size_hint: 12,
+            connections: Some(1),
+            kind: DownloadKind::Runtime,
+        }
+    }
+
 }

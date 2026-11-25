@@ -1,15 +1,22 @@
+import type { Diagnostic } from "./diagnostics";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { Snapshot as Cache } from "./snapshot";
 import { listen } from "@tauri-apps/api/event";
 
 export type TrainJobState = "queued" | "running" | "cancelling" | "paused" | "interrupted" | "completed" | "failed" | "cancelled";
 export type TrainStage = "prepare" | "format" | "sovits" | "gpt";
 export const TRAIN_STAGES: TrainStage[] = ["prepare", "format", "sovits", "gpt"];
+export type TrainRequest = {
+  exp: string; version: string; dataset: string; sovits_epoch: number; sovits_batch: number;
+  sovits_save_every: number; gpt_epoch: number; gpt_batch: number; gpt_save_every: number;
+  save_every_weights: boolean; learning_rate: number; lora_rank: number; resume: boolean; output_dir: string;
+};
 export type TrainJob = {
   id: string;
   state: TrainJobState;
-  req: { exp: string; version: string; dataset: string; sovits_epoch: number; gpt_epoch: number };
+  req: TrainRequest;
+  diagnostic?: Diagnostic | null;
   progress: { stage?: TrainStage; done?: number; total?: number; message_code?: string } | null;
   error: string;
 };

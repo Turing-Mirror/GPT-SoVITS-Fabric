@@ -1,5 +1,7 @@
+import { readDiagnostic } from "../lib/diagnostics";
+import { ErrorNote } from "./ErrorNote";
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { Btn, Warn } from "./ui";
 import { categoriesOf, groupOf, type Category } from "../lib/extraGroups";
 import { Pager } from "./Pager";
@@ -392,9 +394,7 @@ export function ExtrasPanel({
         {msg || jobs.msg ? (
           // 下载失败现在是多行的（一句人话 + 试过的源 + 怎么办 + 技术细节），
           // 不换行的话整段挤成一坨，等于白写。
-          <p className="m-0 mt-3 text-[12.5px] text-[var(--ink-muted)] leading-relaxed whitespace-pre-line break-words">
-            {msg || jobs.msg}
-          </p>
+          <ErrorNote feature="download" text={msg || jobs.msg} error={!!readDiagnostic(msg) || jobs.hasError} />
         ) : null}
 
         {downloading.length > 0 || onClose ? (

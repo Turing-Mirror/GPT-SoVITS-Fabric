@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { useMenu, useNotify, type MenuItem } from "trm-ui";
+import { invoke } from "../lib/invoke";
+import { useMenu, type MenuItem } from "trm-ui";
+import { ErrorNote } from "./ErrorNote";
+import { errorWithTitle } from "../lib/diagnostics";
 import { useI18n } from "../i18n";
 import { openExternal } from "../lib/plaza";
 import { Btn } from "./ui";
@@ -20,8 +22,7 @@ export function useCommunityAccount() {
   const [account, setAccount] = useState<AccountStatus>();
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<AccountAction>();
-  const { t } = useI18n();
-  const { tip } = useNotify();
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -45,18 +46,19 @@ export function useCommunityAccount() {
 
   async function run(next: AccountAction) {
     setAction(next);
+    setError("");
     try {
       const status = await invoke<AccountStatus>(next === "sign_in" ? "community_account_sign_in" : "community_account_sign_out");
       setAccount(status);
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "canceled") return;
-      tip(t(next === "sign_in" ? "community.signInFailed" : "community.signOutFailed"));
+      setError(errorWithTitle(error, next === "sign_in" ? "community.signInFailed" : "community.signOutFailed", "store"));
     } finally {
       setAction(undefined);
     }
   }
 
-  return { links, account, loading, action, run };
+  return { links, account, loading, action, run, error, setError };
 }
 
 export type CommunityAccount = ReturnType<typeof useCommunityAccount>;
@@ -68,7 +70,6 @@ export function CommunityActions({ auth, onPublish, onSubmissions, onAuthor }: {
   onAuthor: () => void;
 }) {
   const { t } = useI18n();
-  const { tip } = useNotify();
   const menu = useMenu();
   const { links, account, loading, action, run } = auth;
   if (!links) return null;
@@ -84,7 +85,7 @@ export function CommunityActions({ auth, onPublish, onSubmissions, onAuthor }: {
     const url = links.accountUrl;
     items.push({
       id: "account", label: t("community.manageAccount"),
-      onSelect: () => void openExternal(url).catch(() => tip(t("community.linkFailed"))),
+      onSelect: () => void openExternal(url).catch(error => auth.setError(errorWithTitle(error, "community.linkFailed", "store"))),
     });
   }
   items.push({ id: "signOut", label: t("community.signOut"), onSelect: () => void run("sign_out") });
@@ -100,6 +101,7 @@ export function CommunityActions({ auth, onPublish, onSubmissions, onAuthor }: {
         <Btn disabled={loading} busy={action === "sign_in"} onClick={() => void run("sign_in")}>{t("community.signIn")}</Btn>
       )}
       {menu.node}
+      {auth.error ? <ErrorNote feature="store" text={auth.error} /> : null}
     </>
   );
 }

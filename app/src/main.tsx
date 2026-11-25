@@ -12,7 +12,7 @@ import { ToolWindow, toolFromHash } from "./components/ToolWindow";
 import { I18nProvider } from "./i18n";
 import { applyAppearance } from "./lib/appearance";
 import "./index.css";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./lib/invoke";
 
 // 焦点环只在键盘操作时出现（TRM UI）。
 trackInputModality();

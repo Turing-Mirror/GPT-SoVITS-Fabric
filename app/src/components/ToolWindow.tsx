@@ -1,7 +1,7 @@
 import { Suspense, createContext, lazy, useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { AnnotPage } from "../pages/AnnotPage";
 import { PageLoading } from "./PageLoading";
 import { t } from "../i18n/t";

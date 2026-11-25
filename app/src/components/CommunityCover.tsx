@@ -1,8 +1,11 @@
 import { useCallback, useRef, useState } from "react";
-import { ImageCropDialog, Leave, usePageActive, usePaneOn } from "trm-ui";
+import { Leave, usePageActive, usePaneOn } from "trm-ui";
+import { ImageCropDialog } from "./DiagnosticImageCropDialog";
+import { ErrorNote } from "./ErrorNote";
+import { errorWithTitle } from "../lib/diagnostics";
 import { useI18n } from "../i18n";
-import { invoke } from "@tauri-apps/api/core";
-import { Btn, Warn } from "./ui";
+import { invoke } from "../lib/invoke";
+import { Btn } from "./ui";
 
 const pickCoverImage = () => invoke<string | null>("publication_pick_cover_path");
 const coverDataUrl = (src: string) => invoke<string>("role_cover_data_url", { src });
@@ -20,7 +23,7 @@ export function CommunityCover({ value, original, name, onChange, disabled, fall
   const pageActive = usePageActive();
   const [source, setSource] = useState<string>();
   const [picking, setPicking] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const originalPath = useRef<string | undefined>(undefined);
   const loadImage = useCallback(async () => source ?? "", [source]);
 
@@ -34,15 +37,15 @@ export function CommunityCover({ value, original, name, onChange, disabled, fall
 
   async function open() {
     setPicking(true);
-    setError(false);
+    setError("");
     originalPath.current = original;
     try {
       const image = value
         ? (original ? await coverDataUrl(original).catch(() => value) : value)
         : await pickImage();
       if (image) setSource(image);
-    } catch {
-      setError(true);
+    } catch (error) {
+      setError(errorWithTitle(error, "publication.coverError", "importexport"));
     } finally {
       setPicking(false);
     }
@@ -56,7 +59,7 @@ export function CommunityCover({ value, original, name, onChange, disabled, fall
         <Btn disabled={disabled || picking} busy={picking} onClick={() => void open()}>{t(value ? "ui.crop.title" : "publication.chooseCover")}</Btn>
         {value && <Btn disabled={disabled || picking} onClick={() => onChange("")}>{t("ui.common.clear")}</Btn>}
       </div>
-      {error && <Warn>{t("publication.coverError")}</Warn>}
+      {error && <ErrorNote feature="importexport" text={error} />}
       <Leave>
         {source && paneActive && pageActive ? (
           <ImageCropDialog

@@ -30,7 +30,7 @@ describe("shared configuration persistence", () => {
     invoke.mockResolvedValueOnce({ config: { synth_role: "next" }, hot: {}, needs_restart: [] });
     const failed = setConfig({ synth_role: "failed" });
     const next = setConfig({ synth_role: "next" });
-    await expect(failed).rejects.toThrow("write failed");
+    await expect(failed).rejects.toMatchObject({ diagnostic: { scope: { feature: "settings" }, detail: { text: expect.stringContaining("write failed") } } });
     expect((await next).config.synth_role).toBe("next");
   });
 });

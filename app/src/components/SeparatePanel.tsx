@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { Btn } from "./ui";
 import { HelpMark } from "./Tooltip";
@@ -34,6 +34,7 @@ type Status = {
 };
 
 type Progress = {
+  diagnostic?: import("../lib/diagnostics").Diagnostic;
   phase: "start" | "run" | "done" | "error";
   done: number;
   total: number;
@@ -96,7 +97,7 @@ export function SeparatePanel() {
     let un: (() => void) | undefined;
     void listen<Progress>("separate-progress", (ev) => {
       setProg(ev.payload);
-      if (ev.payload.phase === "error") showErr(ev.payload.message);
+      if (ev.payload.phase === "error") showErr(ev.payload.diagnostic ? JSON.stringify(ev.payload.diagnostic) : ev.payload.message);
     }).then((fn) => {
       if (disposed) fn();
       else un = fn;
@@ -258,7 +259,7 @@ export function SeparatePanel() {
         </div>
       ) : null}
 
-      {msg ? <ErrorNote text={msg} error={msgErr} /> : null}
+      {msg ? <ErrorNote feature="separation" text={msg} error={msgErr} /> : null}
 
       <ToolActions>
         <div className="ml-auto flex items-center gap-2.5">

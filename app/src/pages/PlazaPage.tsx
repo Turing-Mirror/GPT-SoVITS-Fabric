@@ -1,5 +1,7 @@
+import { ErrorNote } from "../components/ErrorNote";
+import { diagnosticContent } from "../lib/diagnostics";
 import { useCallback, useEffect, useRef, useState, memo, type ReactNode } from "react";
-import { Block, Btn, Group, PageHead, PagePad, Warn } from "../components/ui";
+import { Block, Btn, Group, PageHead, PagePad } from "../components/ui";
 import { Pane, Panes, useNotify, usePaneOn } from "trm-ui";
 import { CommunityActions, useCommunityAccount } from "../components/CommunityActions";
 import { CommunityBatchPublisher } from "../components/CommunityBatchPublisher";
@@ -22,7 +24,6 @@ import {
   type PlazaFeed,
   type PlazaItem,
 } from "../lib/plaza";
-import { formatLocalizedList } from "../lib/voiceDisplay";
 import { useI18n } from "../i18n";
 
 /** Community voices, notices, model resources and release notes, matching RVC Fabric. */
@@ -125,7 +126,7 @@ function PlazaPageImpl(props: PlazaProps) {
       });
       if (request === revisionRequest.current) editVersion(result.asset, result.version, "submissions", metadataOnly);
     } catch (error) {
-      if (request === revisionRequest.current) tip(publicationError(error, "list"));
+      if (request === revisionRequest.current) tip(diagnosticContent(publicationError(error, "list"), "store").title);
     }
   }
 
@@ -302,7 +303,7 @@ function Catalog({ feed, loading = false, onReload, downloadReason = "", extrasF
       />
 
       {feed?.errors?.length ? (
-        <Warn className="mb-4">{formatLocalizedList(feed.errors)}</Warn>
+        <div className="mb-4">{feed.errors.map((error, index) => <ErrorNote key={index} feature="store" text={error} />)}</div>
       ) : null}
 
       {/* 置顶排在社区音色之上。它只有一排卡片高，压不住下面的东西，而它指向的

@@ -1,3 +1,4 @@
+import { ErrorNote } from "./ErrorNote";
 import {
   useCallback,
   useEffect,
@@ -193,7 +194,8 @@ export function StoreSection({ reloadToken, onInstalled, onAuthor, onOpenModel, 
         c = await fetchStoreCatalog(true);
       }
       setCat(c);
-      if (c.fetch_error) setErr(c.fetch_error);
+      if (c.diagnostic) setErr(JSON.stringify(c.diagnostic));
+      else if (c.fetch_error) setErr(c.fetch_error);
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -498,7 +500,7 @@ export function StoreSection({ reloadToken, onInstalled, onAuthor, onOpenModel, 
   if (detail) {
     const model = list[0];
     return <>
-      {(err || jobs.error) && <Warn className="mb-4">{err || jobs.error}</Warn>}
+      {(err || jobs.error) && <ErrorNote feature="store" text={err || jobs.error} />}
       {model ? <VoiceCard {...cardProps(model)} detail /> : <Empty loading={loading || !cat} unpublished={false} />}
     </>;
   }
@@ -581,9 +583,7 @@ export function StoreSection({ reloadToken, onInstalled, onAuthor, onOpenModel, 
       ) : null}
 
       {err || jobs.error ? (
-        <div className="mb-3 text-[12.5px] leading-relaxed whitespace-pre-line break-words text-[var(--danger-text)]">
-          {err || jobs.error}
-        </div>
+        <ErrorNote feature="store" text={err || jobs.error} />
       ) : null}
 
       {/* gridRef 挂在网格上，宽度是从它的父级量的 —— 系列视图下网格有好几个，

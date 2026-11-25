@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from tools.i18n.i18n import I18nAuto
+from tools.fabric_errors import warn
 
 i18n = I18nAuto(language=os.environ.get("language", "Auto"))
 
@@ -65,24 +66,24 @@ def check_for_existance(file_list: list = None, is_train=False, is_dataset_proce
                 if status:
                     pass
                 else:
-                    gr.Warning(file)
-            gr.Warning(i18n("以下文件或文件夹不存在"))
+                    warn("FileNotFoundError: " + str(file), "training")
+            warn(i18n("以下文件或文件夹不存在"), "training")
             return False
         elif is_dataset_processing:
             if files_status[0]:
                 return True
             elif not files_status[0]:
-                gr.Warning(file_list[0])
+                warn("FileNotFoundError: " + str(file_list[0]), "training")
             elif not files_status[1] and file_list[1]:
-                gr.Warning(file_list[1])
-            gr.Warning(i18n("以下文件或文件夹不存在"))
+                warn("FileNotFoundError: " + str(file_list[1]), "training")
+            warn(i18n("以下文件或文件夹不存在"), "training")
             return False
         else:
             if file_list[0]:
-                gr.Warning(file_list[0])
-                gr.Warning(i18n("以下文件或文件夹不存在"))
+                warn("FileNotFoundError: " + str(file_list[0]), "training")
+                warn(i18n("以下文件或文件夹不存在"), "training")
             else:
-                gr.Warning(i18n("路径不能为空"))
+                warn(i18n("路径不能为空"), "training")
             return False
     return True
 
@@ -109,7 +110,7 @@ def check_details(path_list=None, is_train=False, is_dataset_processing=False):
         if os.path.exists(wav_path):
             ...
         else:
-            gr.Warning(wav_path + i18n("路径错误"))
+            warn("FileNotFoundError: " + wav_path, "training")
         return
     if is_train:
         path_list.append(os.path.join(path_list[0], "2-name2text.txt"))
@@ -121,20 +122,20 @@ def check_details(path_list=None, is_train=False, is_dataset_processing=False):
             if f.read(1):
                 ...
             else:
-                gr.Warning(i18n("缺少音素数据集"))
+                warn(i18n("缺少音素数据集"), "training")
         if os.listdir(hubert_path):
             ...
         else:
-            gr.Warning(i18n("缺少Hubert数据集"))
+            warn(i18n("缺少Hubert数据集"), "training")
         if os.listdir(wav_path):
             ...
         else:
-            gr.Warning(i18n("缺少音频数据集"))
+            warn(i18n("缺少音频数据集"), "training")
         df = pd.read_csv(semantic_path, delimiter="\t", encoding="utf-8")
         if len(df) >= 1:
             ...
         else:
-            gr.Warning(i18n("缺少语义数据集"))
+            warn(i18n("缺少语义数据集"), "training")
 
 
 def load_cudnn():

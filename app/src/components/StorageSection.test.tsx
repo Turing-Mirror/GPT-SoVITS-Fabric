@@ -19,7 +19,7 @@ let root: Root, host: HTMLDivElement;
 const rows = Array.from({ length: 6 }, (_, i) => ({ exp: "voice" + i, total_bytes: 6000 - i * 100,
   kinds: { checkpoints: { files: 1, bytes: 1024 }, dataset: { files: 1, bytes: 2048 } } }));
 const apply = () => [...host.querySelectorAll("button")].filter(button => button.textContent === t("s.cleanupApply"));
-const check = (row: number, kind: number) => host.querySelectorAll("li")[row].querySelectorAll("input")[kind] as HTMLInputElement;
+const check = (row: number, kind: number) => [...host.querySelectorAll("li")].filter(item => item.querySelector("input"))[row].querySelectorAll("input")[kind] as HTMLInputElement;
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   Object.assign(window, { __TAURI_INTERNALS__: {} });
@@ -68,7 +68,11 @@ it("clears only successful selections if another experiment fails", async () => 
   await act(async () => apply()[0].click());
   expect(check(0, 1).checked).toBe(false);
   expect(check(1, 2).checked).toBe(true);
-  expect(host.textContent).toContain("experiment is running");
+  expect(host.textContent).not.toContain("experiment is running");
+  const alert = host.querySelector('[role="alert"]');
+  expect(alert).not.toBeNull();
+  expect(alert?.textContent).toContain(t("s.storageCleanFailed"));
+  expect(alert?.textContent).not.toContain(t("diag.title.training"));
   expect(host.textContent).toContain(t("s.cleanupDone", { v0: "1.0 KB" }));
   expect(apply()[0].disabled).toBe(false);
 });

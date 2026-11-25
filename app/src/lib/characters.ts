@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import type { SynthParams } from "./synthRoleParams";
 import { Snapshot } from "./snapshot";
 export type AnnotRow = { line: number; wav: string; speaker: string; lang: string; text: string; abs: string; exists: boolean; issues: string[] };

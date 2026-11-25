@@ -1,6 +1,7 @@
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { useCallback, useEffect, useState } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { Btn } from "../components/ui";
 import { useI18n } from "../i18n";
 import { t } from "../i18n/t";

@@ -1,6 +1,8 @@
 import { peekCharacters, readCharacters, type Character as Role, type AnnotRow } from "../lib/characters";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
+import { errorWithTitle } from "../lib/diagnostics";
 import { listen } from "@tauri-apps/api/event";
 import { PagePad, PageHead, Btn } from "../components/ui";
 import { Field, Select, Slider, Toggle } from "../components/controls";
@@ -497,7 +499,7 @@ export function SynthPage() {
     previewPlayer.retain(refs.filter(r => r.exists).map(r => r.abs));
   }, [refs, previewPlayer]);
   const playRef = (r: RefRow) => {
-    if (isTauri()) previewAudio(r.abs, () => setErr(t("synth.playFailed")));
+    if (isTauri()) previewAudio(r.abs, () => setErr(errorWithTitle(t("synth.playFailed"), "synth.playFailed", "synthesis")));
   };
 
   const refLang = (code: string) => {
@@ -567,7 +569,7 @@ export function SynthPage() {
   const startSingle = useCallback(async () => {
     if (!ready || !text.trim()) return;
     if (!isTauri()) {
-      setErr(t("synth.previewOnly"));
+      setErr(errorWithTitle(t("synth.previewOnly"), "synth.previewOnly", "synthesis"));
       return;
     }
     setBusy(true);
@@ -587,7 +589,7 @@ export function SynthPage() {
     async (list: BatchItem[], only?: number[]) => {
       if (!ready || list.length === 0) return;
       if (!isTauri()) {
-        setErr(t("synth.previewOnly"));
+        setErr(errorWithTitle(t("synth.previewOnly"), "synth.previewOnly", "synthesis"));
         return;
       }
       const todo = only ?? list.map((_, i) => i);
@@ -775,7 +777,7 @@ export function SynthPage() {
         }
       />
 
-      {err || rp.error || c.error ? <ErrorNote text={err || rp.error || c.error} /> : null}
+      {err || rp.error || c.error ? <ErrorNote feature="synthesis" text={err || rp.error || c.error} /> : null}
 
       {/* 角色条：选择在这里，管理去模型页。 */}
       <div className="flex-none mt-[22px] flex items-center gap-3.5 rounded-[var(--r)] bg-[var(--group)] p-2.5 pr-3.5 flex-wrap">
@@ -1019,12 +1021,12 @@ export function SynthPage() {
                 {items.map((it, i) => (
                   <div
                     key={i}
-                    title={it.err}
-                    className="flex items-center gap-2.5 px-3 py-1.5 text-[12.5px]"
+                    className="flex flex-wrap items-center gap-2.5 px-3 py-1.5 text-[12.5px]"
                   >
                     <span className="w-[22px] shrink-0 text-[11.5px] text-[var(--meta)] tabular-nums">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate">{it.text}</span>
                     <span className={`shrink-0 text-[11.5px] ${ITEM_TONE[it.state]}`}>{t(ITEM_LABEL[it.state])}</span>
+                    {it.err ? <div className="basis-full"><ErrorNote feature="synthesis" text={it.err} /></div> : null}
                   </div>
                 ))}
               </div>

@@ -398,6 +398,9 @@ pub fn fetch_store_catalog(root: &Path, prefer_remote: bool) -> Value {
     let mut cat = catalog_from_data(&data, source);
     if let Some(obj) = cat.as_object_mut() {
         obj.insert("fetch_error".into(), json!(fetch_error));
+        if !fetch_error.is_empty() {
+            obj.insert("diagnostic".into(), json!(crate::diagnostics::from_error(fabric_diagnostics::Feature::Store, &fetch_error, false)));
+        }
     }
 
     // annotate installed

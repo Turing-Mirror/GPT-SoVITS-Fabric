@@ -1,5 +1,7 @@
+import { ErrorNote } from "./ErrorNote";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
+import { errorWithTitle, readDiagnostic } from "../lib/diagnostics";
 import { TextArea, TextInput } from "trm-ui";
 import { Btn } from "./ui";
 import { Toggle } from "./controls";
@@ -54,6 +56,7 @@ export function DiagnosticsDialog({
   const [preview, setPreview] = useState<DiagPreview | null>(null);
   const [shots, setShots] = useState<Shot[]>([]);
   const [shotMsg, setShotMsg] = useState("");
+  const [checkError, setCheckError] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const firstRef = useRef<HTMLInputElement | null>(null);
@@ -78,14 +81,12 @@ export function DiagnosticsDialog({
       return;
     }
     let alive = true;
+    setCheckError("");
     invoke<Finding[]>("diagnostics_self_check")
       .then((v) => {
         if (alive) setFindings(Array.isArray(v) ? v : []);
       })
-      .catch(() => {
-        // 自检失败不该挡住出包 —— 包本身才是用户要的东西。
-        if (alive) setFindings([]);
-      });
+      .catch(error => { if (alive) setCheckError(errorWithTitle(error, "s.selfCheckFailed")); });
     return () => {
       alive = false;
     };
@@ -124,7 +125,7 @@ export function DiagnosticsDialog({
       else if (!failed) failed = f.name || "clipboard";
     }
     if (accepted.length) setShots((prev) => [...prev, ...accepted].slice(0, MAX_SHOTS));
-    if (failed) setShotMsg(t("s.diagShotUnreadable", { v0: failed }));
+    if (failed) setShotMsg(errorWithTitle(failed, "s.diagShotUnreadable", "other", { v0: failed }));
     else if (full) setShotMsg(t("s.diagShotsFull"));
   }, [shots.length]);
 
@@ -282,7 +283,7 @@ export function DiagnosticsDialog({
             {t("s.diagShotsAdd")}
           </Btn>
           {shotMsg ? (
-            <p className="m-0 mt-1.5 text-[12.5px] text-[var(--ink-muted)]">{shotMsg}</p>
+            <ErrorNote text={shotMsg} error={!!readDiagnostic(shotMsg)} />
           ) : null}
         </div>
 
@@ -301,7 +302,7 @@ export function DiagnosticsDialog({
           <span className="block mb-1.5 text-[12.5px] text-[var(--ink-muted)]">
             {t("s.diagFindingsTitle")}
           </span>
-          {findings === null ? (
+          {checkError ? <ErrorNote text={checkError} /> : findings === null ? (
             <p className="m-0 text-[12.5px] text-[var(--meta)]">
               {t("s.diagFindingsChecking")}
             </p>

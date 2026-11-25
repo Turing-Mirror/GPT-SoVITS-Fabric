@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { tStatic } from "../i18n";
 
 /**
@@ -62,6 +62,7 @@ export type ProvisionStatus = {
 };
 
 export type ProvisionProgress = {
+  diagnostic?: import("./diagnostics").Diagnostic;
   phase?: string;
   done?: number;
   total?: number;

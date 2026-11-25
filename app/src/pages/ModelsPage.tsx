@@ -1,10 +1,13 @@
+import { readDiagnostic, withFeature } from "../lib/diagnostics";
+import { ErrorNote } from "../components/ErrorNote";
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { TextInput, usePageLeave } from "trm-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportCharacterPackages } from "../components/ExportCharacterPackages";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
 import { Field } from "../components/controls";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { CropCoverDialog } from "../components/CropCoverDialog";
 import { AdBanner } from "../components/AdBanner";
 import { Modal } from "../components/Modal";
@@ -85,7 +88,7 @@ export function ModelsPage({
     setLoading(true);
     void readCharacters()
       .then((r) => { if (request === loadRequest.current) setRoles(r); })
-      .catch((e) => { if (request === loadRequest.current) setMsg(String(e)); })
+      .catch((e) => { if (request === loadRequest.current) setMsg(JSON.stringify(withFeature(e, "other"))); })
       .finally(() => { if (request === loadRequest.current) setLoading(false); });
   }, []);
 
@@ -224,7 +227,7 @@ export function ModelsPage({
           ) : undefined
         }
       >
-        {msg ? <div className="text-[12.5px] text-[var(--help)] mb-3 whitespace-pre-line selectable">{msg}</div> : null}
+        {msg ? <ErrorNote feature="importexport" text={msg} error={!!readDiagnostic(msg)} /> : null}
         {roles.length ? (
           <>
             <div ref={grid.ref} style={grid.style}>
@@ -327,7 +330,7 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
           <Field label={t("library.fieldName")} control={<TextInput value={name} onChange={setName} className="selectable" autoFocus />} />
           <Field label={t("library.fieldAuthor")} control={<TextInput value={author} onChange={setAuthor} className="selectable" />} />
         </div>
-        {err ? <div className="mt-3 text-[12.5px] text-[var(--danger-text)]">{err}</div> : null}
+        {err ? <ErrorNote feature="importexport" text={err} /> : null}
         <div className="mt-6 flex gap-2.5 justify-end">
           <Btn onClick={onClose} disabled={busy}>{t("library.cancel")}</Btn>
           <Btn primary busy={busy} disabled={!name.trim()} onClick={() => void save()}>{t("library.save")}</Btn>

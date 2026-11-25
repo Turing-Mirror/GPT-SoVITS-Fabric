@@ -54,6 +54,7 @@ s2 的 json 和 s1 的 yaml 从 ``GPT_SoVITS/configs/`` 读出来再改几个键
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import shutil
@@ -104,6 +105,14 @@ AUDIO_EXT = (".wav", ".flac", ".mp3", ".m4a", ".ogg", ".opus", ".aac", ".wma")
 # ---------------------------------------------------------------------------
 
 def emit(**kw) -> None:
+    if kw.get("phase") == "error":
+        import traceback
+        kw.setdefault("stage", _CURRENT.get("stage", "prepare"))
+        kw.setdefault("backend", _CURRENT.get("device"))
+        kw.setdefault("batch", _CURRENT.get(f'{kw["stage"]}_batch'))
+        chain = traceback.format_exc()
+        if chain != "NoneType: None\n":
+            kw.setdefault("traceback", chain)
     line = json.dumps(kw, ensure_ascii=False) + "\n"
     try:
         sys.stdout.write(line)
@@ -123,6 +132,7 @@ def say(stage: str, code: str, fallback: str, *, done=None, total=None, **params
     20 轮」这类文案要用到它们，而在调用处再写一遍 `total=…` 会和这里的具名参数
     撞名。
     """
+    _CURRENT["stage"] = stage
     msg = {"phase": "stage", "stage": stage,
            "message_code": f"train.{code}", "message": fallback}
     if done is not None:
@@ -266,6 +276,8 @@ def run_step(argv: list[str], env: dict, *, stage: str, label: str,
     添花**：两段微调各要跑几个小时，不报轮数的话进度条从头到尾停在 0，用户
     分不出「在训」和「卡死了」，也没法判断关掉软件明天还能不能接着跑。
     """
+    _CURRENT["stage"] = stage
+    print(f"[stage={stage}]", file=sys.stderr, flush=True)
     proc = subprocess.Popen(
         argv,
         cwd=str(ROOT),
@@ -279,7 +291,9 @@ def run_step(argv: list[str], env: dict, *, stage: str, label: str,
         bufsize=1,
         **_no_window(),
     )
-    tail: list[str] = []
+    # 留够一整段 traceback 给诊断，但有上限：训练要跑几个小时，进度条每秒几十行，
+    # 全留着会一直吃内存。
+    tail: collections.deque[str] = collections.deque(maxlen=400)
     last_epoch = -1
     assert proc.stdout is not None
     for line in proc.stdout:
@@ -296,8 +310,6 @@ def run_step(argv: list[str], env: dict, *, stage: str, label: str,
             except OSError:
                 pass
         tail.append(line)
-        if len(tail) > 40:
-            del tail[0]
         if total_epoch:
             n = _epoch_of(line)
             # 只在轮数真的往前走时报一次。lightning 的进度条一秒刷几十行，
@@ -309,9 +321,9 @@ def run_step(argv: list[str], env: dict, *, stage: str, label: str,
     code = proc.wait()
     proc.stdout.close()
     if code != 0:
-        joined = "\n".join(tail[-8:])
+        joined = "\n".join(tail)
         if _looks_like_oom(joined):
-            raise Fail("oom", "out of memory", batch=str(_CURRENT.get("batch_size", "")))
+            raise Fail("oom", joined, batch=str(_CURRENT.get(f"{stage}_batch", "")), stage=stage)
         raise Fail("step_failed", f"{label} failed (exit {code})\n{joined}",
                    step=label, code=str(code))
 

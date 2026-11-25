@@ -113,9 +113,21 @@ pub(crate) fn inspect_replacement(
     }
     let output = command
         .output()
-        .map_err(|_| crate::i18n::t("s.roleErrWeightRuntime"))?;
+        .map_err(|error| crate::diagnostics::failure(fabric_diagnostics::Feature::ImportExport,
+            &error.to_string(), fabric_diagnostics::Context { operation: Some(fabric_diagnostics::Operation::ModelLoad), ..Default::default() }))?;
+    let fail = |code: &str, raw: &str| {
+        let mut e = crate::diagnostics::evidence(fabric_diagnostics::Feature::ImportExport, false);
+        e.context.operation = Some(fabric_diagnostics::Operation::ModelLoad);
+        e.context.target_disk_path = Some(source.to_string_lossy().into_owned());
+        e.exit_code = output.status.code();
+        e.source_code = Some(code.into());
+        e.text = format!("{raw}\n{}", String::from_utf8_lossy(&output.stderr));
+        let mut d = crate::diagnostics::finish(&e);
+        d.detail.text.push_str(&format!("\n[worker response]\n{}", String::from_utf8_lossy(&output.stdout)));
+        crate::diagnostics::encode(&d)
+    };
     let result: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|_| crate::i18n::t("s.roleErrWeightInvalid"))?;
+        .map_err(|error| fail("s.roleErrWeightInvalid", &error.to_string()))?;
     if !output.status.success() || result["ok"] != true {
         let key = match result["error"].as_str() {
             Some("pair") => "s.roleErrWeightPair",
@@ -123,7 +135,7 @@ pub(crate) fn inspect_replacement(
             Some("runtime") => "s.roleErrWeightRuntime",
             _ => "s.roleErrWeightInvalid",
         };
-        return Err(crate::i18n::t(key));
+        return Err(fail(key, result["detail"].as_str().unwrap_or_default()));
     }
     Ok(result)
 }

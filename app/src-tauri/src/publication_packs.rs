@@ -15,6 +15,8 @@ struct Pack {
     result: Option<PackDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(default)]
+    diagnostic: Option<fabric_diagnostics::Diagnostic>,
 }
 
 #[derive(Serialize, serde::Deserialize)]
@@ -53,8 +55,11 @@ fn details(root: &Path, path: &Path, exported: Option<&str>) -> Result<PackDetai
 
 fn record(name: String, result: Result<PackDetails, String>) -> Pack {
     match result {
-        Ok(result) => Pack { name, result: Some(result), error: None },
-        Err(error) => Pack { name, result: None, error: Some(error) },
+        Ok(result) => Pack { name, result: Some(result), error: None, diagnostic: None },
+        Err(error) => {
+            let diagnostic = crate::diagnostics::from_error(fabric_diagnostics::Feature::ImportExport, &error, false);
+            Pack { name, result: None, error: Some(crate::diagnostics::encode(&diagnostic)), diagnostic: Some(diagnostic) }
+        },
     }
 }
 
@@ -66,7 +71,8 @@ pub(crate) fn publication_pick_cover_path(window: tauri::WebviewWindow) -> Optio
 #[tauri::command]
 pub(crate) async fn publication_read_packs(
     window: tauri::WebviewWindow, state: State<'_, Mutex<AppState>>,
-) -> Result<Value, String> {
+) -> Result<Value, crate::diagnostics::CommandError> {
+    let result: Result<Value, String> = async {
     let root = root_clone(&state)?;
     let files = characters::pick_pack(Some(&window));
     tauri::async_runtime::spawn_blocking(move || {
@@ -76,10 +82,13 @@ pub(crate) async fn publication_read_packs(
         }).collect();
         serde_json::to_value(records).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::new("publication_read_packs", error))
 }
 
 #[tauri::command]
-pub(crate) async fn publication_read_manifest(window: tauri::WebviewWindow) -> Result<Value, String> {
+pub(crate) async fn publication_read_manifest(window: tauri::WebviewWindow) -> Result<Value, crate::diagnostics::CommandError> {
+    let result: Result<Value, String> = async {
     let Some(path) = shell_extras::dialog_on(Some(&window)).add_filter("JSON", &["json"]).pick_file() else {
         return Ok(Value::Null);
     };
@@ -100,12 +109,15 @@ pub(crate) async fn publication_read_manifest(window: tauri::WebviewWindow) -> R
         };
         serde_json::to_value(records).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::new("publication_read_manifest", error))
 }
 
 #[tauri::command]
 pub(crate) async fn publication_export_packs(
     window: tauri::WebviewWindow, state: State<'_, Mutex<AppState>>, ids: Vec<String>,
-) -> Result<Value, String> {
+) -> Result<Value, crate::diagnostics::CommandError> {
+    let result: Result<Value, String> = async {
     let root = root_clone(&state)?;
     if ids.is_empty() {
         return Ok(Value::Null);
@@ -115,6 +127,8 @@ pub(crate) async fn publication_export_packs(
     };
     tauri::async_runtime::spawn_blocking(move || export(&root, &dest, ids))
         .await.map_err(|e| e.to_string())?
+    }.await;
+    result.map_err(|error| crate::diagnostics::CommandError::new("publication_export_packs", error))
 }
 
 fn export(root: &Path, dest: &Path, ids: Vec<String>) -> Result<Value, String> {

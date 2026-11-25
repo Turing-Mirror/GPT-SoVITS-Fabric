@@ -1,3 +1,5 @@
+import { ErrorNote } from "./ErrorNote";
+import { errorWithTitle } from "../lib/diagnostics";
 import { useEffect, useRef, useState } from "react";
 import { Field, Pane, Panes, PopupSelect as Select, SearchBox, SegmentControl, TextArea, TextInput, useNotify, usePaged } from "trm-ui";
 import { useI18n } from "../i18n";
@@ -5,7 +7,7 @@ import { chooseManifest, choosePacks, newBatch, readBatch, resolveBatchDraft, sa
   batchRequest, matchesSnapshot, uniqueMatches, suggestedTitle, fillPackDetails, type BatchDraft, type BatchRow, type Pack } from "../lib/communityBatch";
 import { AUTHOR_URL_LABEL_LIMIT, authorLinkName, characterBaseVersions, draftBaseVersion, isSha256, newDraft, prepareSubmission, providerHash, publication,
   publicationError, validUrl, type Draft, type Source, type SourceFile, type Submission, type PublisherRole } from "../lib/communityPublication";
-import { Btn, PageHead, PagePad, Warn } from "./ui";
+import { Btn, PageHead, PagePad } from "./ui";
 import { CatalogTransition } from "./CatalogTransition";
 import { CommunityCategories } from "./CommunityCategories";
 import { CommunityCover } from "./CommunityCover";
@@ -71,8 +73,8 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
         setStep("source");
         setActive("");
       }
-    }).catch(() => {
-      if (mounted) setError(t("publication.saveFailed"));
+    }).catch((cause) => {
+      if (mounted) setError(errorWithTitle(cause, "publication.saveFailed", "store"));
     }).finally(() => {
       if (mounted) setLoadedFor(account);
     });
@@ -103,7 +105,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
         else if (file && matchesSnapshot(item.draft, next, file)) {
           selected[id] = { draft: setBatchFile(item.draft, next, file, account) };
         } else if (item.draft.selection) {
-          selected[id] = { draft: { ...item.draft, selection: undefined, checksum: "" }, error: t("publication.sourceChanged") };
+          selected[id] = { draft: { ...item.draft, selection: undefined, checksum: "" }, error: errorWithTitle(t("publication.sourceChanged"), "publication.sourceChanged", "store") };
         }
       }
       update({
@@ -154,7 +156,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
         const pack = packs.length === 1 ? packs[0].result : undefined;
         if (!file || !pack || file.sizeBytes !== pack.sizeBytes
           || (providerHash(file) && providerHash(file)?.toLowerCase() !== pack.sha256.toLowerCase())) {
-          setError(t("publication.hashMismatch")); return;
+          setError(errorWithTitle(t("publication.hashMismatch"), "publication.hashMismatch", "store")); return;
         }
         put(manual, { draft: fillPackDetails(item.draft, pack) });
         return;
@@ -167,9 +169,9 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
         next[file.id] = { draft: fillPackDetails(draft, pack) };
       }
       update({ rows: next });
-      if (!matched.size) setError(t("publication.noMatches"));
+      if (!matched.size) setError(errorWithTitle(t("publication.noMatches"), "publication.noMatches", "store"));
       else tip(t("publication.matchedCount", { v0: matched.size }));
-    } catch { setError(t("publication.packReadError")); }
+    } catch (cause) { setError(errorWithTitle(cause, "publication.packReadError", "importexport")); }
     finally { setBusy(undefined); }
   }
 
@@ -179,7 +181,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
       await saveBatch(account, batch);
       if (leave) onBack();
       else tip(t("publication.saved"));
-    } catch { setError(t("publication.saveFailed")); }
+    } catch (cause) { setError(errorWithTitle(cause, "publication.saveFailed", "store")); }
     finally { setBusy(undefined); }
   }
 
@@ -232,7 +234,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
         setBatch(snapshot);
         setSubmitProgress(Object.values(snapshot.rows).filter((item) => item.submitted).length);
         if (results.items.some((item) => item.error?.code === "rate_limited")) {
-          setError(t("publication.retryQueued"));
+          setError(errorWithTitle(t("publication.retryQueued"), "publication.retryQueued", "store"));
           break;
         }
       }
@@ -267,7 +269,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
     </>} />
     <SegmentControl value={step} options={steps.map((id) => ({ id, label: labels[id], disabled: id !== "source" && !rows.length }))}
       onChange={(value) => { if (!busy) setStep(value as Step); }} />
-    {error && <Warn className="my-3">{error}</Warn>}
+    {error && <ErrorNote feature="store" text={error} />}
     <Panes value={step} order={steps} transition="slide" className="mt-4" keepScroll>
       <Pane id="source">
         <div className="space-y-4 py-3">
@@ -366,7 +368,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
               <CommunityCover value={row.draft.cover} original={row.draft.coverPath} name={row.draft.title}
                 onChange={(cover, coverPath) => updateRow(active, { cover, coverPath })} disabled={Boolean(busy)} />
             </>}
-            {row?.error && <Warn>{row.error}</Warn>}
+            {row?.error && <ErrorNote feature="store" text={row.error} />}
             {details && (row?.submitted || row?.draft.pending) && <p className="text-[13px]">{t(row.submitted ? "publication.sent" : "publication.retryQueued")}</p>}
           </div>
         </div>
@@ -386,7 +388,7 @@ export function CommunityBatchPublisher({ auth, sourceLink = "", onBack, onSubmi
                   <div className="text-[var(--help)]">{[draft.originalAuthor, draft.label, draftBaseVersion(draft), draft.license.id].filter(Boolean).join("  ")}</div>
                   {draft.publisherRole !== "original_author" && draft.authorUrl && <div className="break-words text-[var(--help)]"
                     title={draft.authorUrl}>{authorLinkName(draft.authorUrl, draft.authorUrlLabel)}</div>}
-                  {item.error && <div className="text-[var(--warn)]">{item.error}</div>}
+                  {item.error && <ErrorNote feature="store" text={item.error} />}
                 </div>
                 {item.submitted ? <span className="text-[var(--help)]">{t("publication.pending")}</span> :
                   <Btn disabled={Boolean(busy)} onClick={() => { setActive(id); setStep("details"); }}>

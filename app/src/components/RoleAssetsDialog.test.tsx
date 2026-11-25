@@ -227,6 +227,9 @@ describe("RoleAssetsDialog model versions", () => {
     await flush();
 
     const alert = document.body.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain(t("diag.title.importexport"));
+    expect(alert?.textContent).not.toContain("apply failed");
+    await act(async () => [...alert!.querySelectorAll("button")].find(button => button.textContent === "Show details")!.click());
     expect(alert?.textContent).toContain("apply failed");
   });
 });

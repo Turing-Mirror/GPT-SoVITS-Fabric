@@ -10,7 +10,7 @@
  *   const { t, tMsg, locale, setLocale } = useI18n();
  */
 import { useMemo, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import {
   I18nProvider as TrmI18nProvider,
   useI18n as useTrmI18n,

@@ -1,10 +1,12 @@
+import { registerTrainingEditor } from "../lib/diagnosticActions";
+import type { TrainJob } from "../lib/trainQueue";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextInput } from "trm-ui";
 import { PagePad, PageHead, Btn } from "../components/ui";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { Icon, useDir } from "../trm";
 import { Field, Select, Slider, Toggle } from "../components/controls";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { activeJob, latestExperimentJob, trainPercent, useTrainingQueue } from "../lib/trainQueue";
 import { TrainingQueue } from "../components/TrainingQueue";
 import { openTool } from "../components/ToolWindow";
@@ -210,6 +212,34 @@ export function TrainPage() {
     apply();
     return onHandoff(apply);
   }, [applyDataset]);
+
+  useEffect(() => {
+    registerTrainingEditor(async ({ job_id, stage }) => {
+      // Read the failed task, never borrow values from the user's later form edits.
+      const snapshot = await invoke<{ jobs: TrainJob[] }>("train_queue_list");
+      const job = snapshot.jobs.find(item => item.id === job_id);
+      if (!job) throw new Error("training task no longer exists");
+      const req = job.req;
+      appliedFor.current = req.version;
+      setVersion(req.version); setExp(req.exp); setDataset(req.dataset); setOutDir(req.output_dir);
+      setSovits({ epochs: req.sovits_epoch, batch: req.sovits_batch, saveEvery: req.sovits_save_every });
+      setGpt({ epochs: req.gpt_epoch, batch: req.gpt_batch, saveEvery: req.gpt_save_every });
+      setLr(req.learning_rate); setLoraRank(req.lora_rank); setResume(req.resume); setSaveEveryWeights(req.save_every_weights);
+      setStep(2);
+      await new Promise<void>((resolve, reject) => {
+        const until = performance.now() + 2500;
+        const focus = () => {
+          const field = document.querySelector<HTMLElement>(`[data-training-stage="${stage}"][data-training-batch] input[type="range"]`);
+          if (field && field.getBoundingClientRect().width > 0) {
+            field.scrollIntoView({ block: "center" }); field.focus(); resolve();
+          } else if (performance.now() < until) requestAnimationFrame(focus);
+          else reject(new Error("training batch field unavailable"));
+        };
+        requestAnimationFrame(focus);
+      });
+    });
+    return () => registerTrainingEditor(null);
+  }, []);
 
   const pickOutput = useCallback(async () => {
     const p = await invoke<string | null>("train_pick_output_dir").catch(() => null);
@@ -419,7 +449,7 @@ export function TrainPage() {
     <div key="h" className="flex flex-col gap-[10px]">
       <div className="text-[12.5px] text-[var(--meta)] px-1">{t("train.sovitsTitle")}</div>
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-        <PartFields part={sovits} defaults={sd} minEpochs={1} onChange={setSovits} />
+        <PartFields stage="sovits" part={sovits} defaults={sd} minEpochs={1} onChange={setSovits} />
         <Field
           label={t("train.lr")}
           control={
@@ -451,7 +481,7 @@ export function TrainPage() {
 
       <div className="text-[12.5px] text-[var(--meta)] px-1 mt-2">{t("train.gptTitle")}</div>
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 flex flex-col gap-[16px]">
-        <PartFields part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
+        <PartFields stage="gpt" part={gpt} defaults={gd} minEpochs={gd?.min_epochs ?? 1} onChange={setGpt} />
       </div>
 
       <div className="rounded-[var(--r)] bg-[var(--group)] p-4 mt-2 flex flex-col gap-[16px]">
@@ -508,7 +538,7 @@ export function TrainPage() {
       </div>
       {err ? (
         <div className="mt-3">
-          <ErrorNote text={err} />
+          <ErrorNote feature="training" text={err} />
         </div>
       ) : null}
     </div>,
@@ -623,11 +653,13 @@ export function TrainPage() {
 
 /** 一段微调的三个参数。范围与默认值来自所选版本，滑杆上标出默认值。 */
 function PartFields({
+  stage,
   part,
   defaults,
   minEpochs,
   onChange,
 }: {
+  stage: "sovits" | "gpt";
   part: Part;
   defaults?: PartDefaults;
   minEpochs: number;
@@ -650,6 +682,7 @@ function PartFields({
           />
         }
       />
+      <div data-training-stage={stage} data-training-batch>
       <Field
         label={t("train.batch")}
         control={
@@ -663,6 +696,7 @@ function PartFields({
           />
         }
       />
+      </div>
       <Field
         label={t("train.saveEvery")}
         tip={t("train.saveEveryTip")}

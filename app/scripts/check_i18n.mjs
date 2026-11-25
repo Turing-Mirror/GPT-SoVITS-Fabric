@@ -152,6 +152,7 @@ const files = [...DATA_FILES];
 for (const dir of SCAN_DIRS) walk(dir, files);
 
 const refs = new Map();
+// The host emits these keys at runtime. Validate the pinned crate's complete contract.
 for (const file of files) {
   const raw = readFileSync(file, "utf-8");
   const pat = DATA_EXT.test(file) ? DATA_REF : REF;
@@ -177,6 +178,8 @@ for (const [key, file] of refs) {
 // 少数 key 是运行时拼出来的，literal 永远不会出现在代码里 —— 白名单在此，
 // 加前缀之前先确认它真的有 `${...}` 拼接的取用点。
 const DYNAMIC_PREFIXES = [
+  // Rendered from diagnostics the shell sends; kept in sync with the crate by sync_diag_locales.
+  "diag.",
   "meta.",
   "locale.",
   "msg.",

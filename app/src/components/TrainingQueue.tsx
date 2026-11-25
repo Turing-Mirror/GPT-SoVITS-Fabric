@@ -25,7 +25,7 @@ export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
       <h3 className="text-[15px] font-semibold m-0">{t("train.queueTitle")}</h3>
       {jobs.some(terminalJob) ? <Btn disabled={pending.includes("")} onClick={() => void action("", "clear")}>{t("train.queueClear")}</Btn> : null}
     </div>
-    {error ? <ErrorNote text={error} /> : null}
+    {error ? <ErrorNote feature="training" text={error} /> : null}
     <div className="rounded-[var(--r)] bg-[var(--group)] p-3.5 min-h-0 overflow-y-auto">
       <QueueList scope="training" page={paged.page} items={paged.slice} keyOf={job => job.id}
         className="flex flex-col gap-4"
@@ -50,7 +50,7 @@ export function TrainingQueue({ jobs, loaded = true, error, onAction }: {
                   <div className="h-full bg-[var(--accent)] transition-[width] duration-200" style={{ width: `${trainPercent(job)}%` }} />
                 </div>
               </> : null}
-              {job.state === "failed" && job.error ? <ErrorNote text={job.error} code={job.progress?.message_code} /> : null}
+              {(job.state === "failed" || job.state === "paused") && (job.error || job.diagnostic) ? <ErrorNote feature="training" text={job.error} diagnostic={job.diagnostic} code={job.progress?.message_code} /> : null}
               <div className="flex items-center gap-2 flex-wrap">
                 {running ? <Btn disabled={disabled || job.state === "cancelling"} onClick={() => void action(job.id, "cancel")}>{t("train.cancel")}</Btn> : <>
                   {terminalJob(job) || job.state === "paused" ? <Btn disabled={disabled} onClick={() => void action(job.id, "retry")}>{t(job.state === "paused" ? "train.queueContinue" : "train.queueRetry")}</Btn> : null}

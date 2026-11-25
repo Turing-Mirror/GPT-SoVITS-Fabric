@@ -1,5 +1,6 @@
 import { DockableModal, TransferProgress } from "trm-ui";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
+import { diagnosticContent, errorWithTitle, isCancelled, readDiagnostic } from "../lib/diagnostics";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -104,6 +105,7 @@ export function ProvisionGate({
     let unlisten: (() => void) | undefined;
     void listen<ProvisionProgress>("provision-progress", event => {
       setProgress(event.payload);
+      if (event.payload.diagnostic) setError(JSON.stringify(event.payload.diagnostic));
     }).then(un => {
       if (disposed) un();
       else unlisten = un;
@@ -144,7 +146,11 @@ export function ProvisionGate({
     try {
       if (step === "runtime") {
         const result = await startProvision(variant, false);
-        if (!result.ok) throw new Error(result.message || t("s.44c7946c76"));
+        if (!result.ok) {
+          throw result.message === t("engine.browserNoDownload")
+            ? errorWithTitle(result.message, "engine.browserNoDownload", "provision")
+            : new Error(result.message || t("s.44c7946c76"));
+        }
         const [assets, vcrInstalled] = await Promise.all([
           getAssetsStatus(),
           invoke<boolean>("vcredist_installed").catch(() => true),
@@ -179,10 +185,10 @@ export function ProvisionGate({
       }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      if (step === "runtime" && isCancelError(message, t("s.a5ffdc95ee"))) {
+      if (step === "runtime" && (isCancelled(cause) || isCancelError(message, t("s.a5ffdc95ee")))) {
         onDismiss?.();
       } else {
-        setError(message);
+        setError(readDiagnostic(cause) ? String(cause) : message);
       }
     } finally {
       setBusy(false);
@@ -220,7 +226,7 @@ export function ProvisionGate({
   const attention = error && !busy ? "error" : !busy && pending.length > 0 ? "ready" : "idle";
   const tooltip = joinClauses([
     title,
-    busy ? message : error ? error : pending.length > 0 ? t("s.setupNextStep") : "",
+    busy ? message : error ? diagnosticContent(error, "provision").title : pending.length > 0 ? t("s.setupNextStep") : "",
     percent !== undefined ? `${Math.round(percent)}%` : "",
     busy && downloading && progress?.speed_bps ? progress.speed_label : "",
   ]);
@@ -312,7 +318,7 @@ export function ProvisionGate({
             detail={downloading && done > 0 ? (total > 1 ? formatBytes(done) + " / " + formatBytes(total) : formatBytes(done)) : undefined}
           />
         ) : null}
-        {!busy && error ? <ErrorNote text={error} compact /> : null}
+        {!busy && error ? <ErrorNote feature="provision" text={error} compact /> : null}
         <div className="flex items-center gap-2 justify-end mt-5">
           {busy ? (
             <>

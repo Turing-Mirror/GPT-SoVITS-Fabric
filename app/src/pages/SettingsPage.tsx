@@ -1,5 +1,7 @@
+import { readDiagnostic } from "../lib/diagnostics";
+import { ErrorNote } from "../components/ErrorNote";
 import { useEffect, useMemo, useState, memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { TextInput } from "trm-ui";
 import { CatalogTransition } from "../components/CatalogTransition";
 import { SegmentControl } from "../components/SegmentControl";
@@ -133,7 +135,7 @@ function SettingsPageImpl({
 
       <PagePad>
         {c.error ? (
-          <p className="text-[12.5px] text-[var(--danger-text)] mt-4 mb-0">{c.error}</p>
+          <ErrorNote feature="settings" text={c.error} />
         ) : null}
 
         {c.restartKeys.length ? (
@@ -494,7 +496,7 @@ function SettingsPageImpl({
               />
               <Field
                 label={t("s.a6df38586d")}
-                desc={updateLine || t("s.1fd4658c44")}
+                desc={readDiagnostic(updateLine) ? undefined : updateLine || t("s.1fd4658c44")}
                 inline
                 control={
                   <Btn onClick={onCheckUpdate} disabled={updateBusy}>
@@ -502,6 +504,7 @@ function SettingsPageImpl({
                   </Btn>
                 }
               />
+              {readDiagnostic(updateLine) ? <ErrorNote feature="update" text={updateLine} /> : null}
               <p className="text-xs text-[var(--help)] m-0 leading-[1.75]">{t("s.5fe7a5211b")}<br />{t("s.6c26ecbfb3")}</p>
             </div>
           </Block>

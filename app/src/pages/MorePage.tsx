@@ -1,6 +1,8 @@
+import { readDiagnostic, errorWithTitle } from "../lib/diagnostics";
+import { ErrorNote } from "../components/ErrorNote";
 import { useEffect, useRef, useState } from "react";
 import { usePageLeave } from "trm-ui";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { Block, Btn, Group, ListItem, PageHead, PagePad } from "../components/ui";
 import { QrDialog } from "../components/QrDialog";
 import { MainGpuPicker, MAIN_GPU_AUTO, mainGpuTip } from "../components/MainGpuPicker";
@@ -56,6 +58,9 @@ export function MorePage({
   const shownValue = (v: string | null) => (v === null ? t("s.valueLoading") : v || t("s.valueFailed"));
 
   const [busyMsg, setBusyMsg] = useState("");
+  const [diagErr, setDiagErr] = useState("");
+  const [cacheErr, setCacheErr] = useState("");
+  const [consultErr, setConsultErr] = useState("");
   const [diagOpen, setDiagOpen] = useState(false);
   // 主显卡。放在「补全运行时」旁边：装完运行时之后才谈得上用哪块卡算，
   // 而这一整块讲的就是「这台机器拿什么在跑」。
@@ -98,7 +103,7 @@ export function MorePage({
     setGpuMsg("");
     void invoke("config_set", { patch: { main_gpu: v } })
       .then(() => setGpuMsg(t("s.9249d39bac")))
-      .catch((e) => setGpuMsg(t("s.e0125710be", { v0: String(e) })));
+      .catch((e) => setGpuMsg(errorWithTitle(e, "s.mainGpuSaveFailed", "settings")));
   };
 
   // Both of these are 20–40s cold starts (torch/CUDA). Say so on the row
@@ -121,12 +126,13 @@ export function MorePage({
     } catch (e) {
       setLegacyMsg((m) => ({
         ...m,
-        [which]: t("s.ea582ad463", { v0: String(e) }),
+        [which]: errorWithTitle(e, "s.legacyOpenFailed", "enginestart"),
       }));
     }
   };
 
   const run = async (label: string, cmd: string, args?: Record<string, unknown>) => {
+    setConsultErr("");
     setBusyMsg(`${label}…`);
     try {
       const r = await invoke<{ path?: string; perf_note?: string }>(cmd, args);
@@ -139,7 +145,8 @@ export function MorePage({
         }),
       );
     } catch (e) {
-      setBusyMsg(t("s.179ee96e83", { v0: label, v1: String(e) }));
+      setBusyMsg("");
+      setConsultErr(errorWithTitle(e, "s.consultBuildFailed", "other"));
     }
   };
 
@@ -155,15 +162,18 @@ export function MorePage({
     "idle" | "running" | "done" | "failed"
   >("idle");
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [checkError, setCheckError] = useState("");
   const runSelfCheck = async () => {
+    setCheckError("");
     setCheckState("running");
     try {
       const v = await invoke<Finding[]>("diagnostics_self_check");
       setFindings(Array.isArray(v) ? v : []);
       setCheckState("done");
-    } catch {
+    } catch (error) {
       setFindings([]);
       setCheckState("failed");
+      setCheckError(errorWithTitle(error, "s.selfCheckFailed"));
     }
   };
 
@@ -176,13 +186,14 @@ export function MorePage({
       const text = await invoke<string>("diagnostics_summary_text");
       await navigator.clipboard.writeText(text);
       setSumMsg(t("s.sumCopied"));
-    } catch {
-      setSumMsg(t("s.sumCopyFailed"));
+    } catch (error) {
+      setSumMsg(errorWithTitle(error, "s.sumCopyFailed"));
     }
   };
 
   const runDiagnostics = async (r: DiagReport) => {
     setDiagOpen(false);
+    setDiagErr("");
     setBusyMsg(t("s.56ce781723"));
     try {
       const out = await invoke<{ path?: string; perf_note?: string }>(
@@ -198,13 +209,18 @@ export function MorePage({
       );
       setBusyMsg(t("s.ae82b8cc23", { v0: out?.path ?? "", v1: "" }));
     } catch (e) {
-      setBusyMsg(t("s.7fae0289b6", { v0: String(e) }));
+      setBusyMsg("");
+      setDiagErr(errorWithTitle(e, "s.diagBuildFailed", "other"));
     }
   };
   // 页面常驻，每次回来副作用都会重新执行：已处理过的请求不再重复滚动。
   const communityDone = useRef(0);
   usePageLeave(() => {
     setBusyMsg("");
+    setDiagErr("");
+    setCacheErr("");
+    setConsultErr("");
+    setCheckError("");
     setSumMsg("");
     setGpuMsg("");
     setLegacyMsg({});
@@ -318,21 +334,26 @@ export function MorePage({
           />
           {/* 只有一块 N 卡时不显示：那时候「选哪块」是个假选择。 */}
           {nvGpus.length > 1 ? (
-            <ListItem
-              title={t("s.6b26feecc1")}
-              titleTip={mainGpuTip()}
-              desc={
-                gpuMsg ||
-                t("s.63d89cdb5c")
-              }
-              right={
-                <MainGpuPicker
-                  gpus={nvGpus}
-                  value={mainGpu}
-                  onChange={pickMainGpu}
-                />
-              }
-            />
+            <>
+              <ListItem
+                title={t("s.6b26feecc1")}
+                titleTip={mainGpuTip()}
+                desc={
+                  (readDiagnostic(gpuMsg) ? "" : gpuMsg) ||
+                  t("s.63d89cdb5c")
+                }
+                right={
+                  <MainGpuPicker
+                    gpus={nvGpus}
+                    value={mainGpu}
+                    onChange={pickMainGpu}
+                  />
+                }
+              />
+              {readDiagnostic(gpuMsg) ? (
+                <div className="px-4 pb-3"><ErrorNote feature="settings" text={gpuMsg} /></div>
+              ) : null}
+            </>
           ) : null}
           <ListItem
             title={t("s.computeBackend")}
@@ -362,9 +383,9 @@ export function MorePage({
                   {provision?.installed_variant || provision?.recommended_variant || t("s.notDetected")}
                 </span>
                 {onOpenProvision ? (
-                  <Btn onClick={onOpenProvision}>
+                  <span id="more-runtime"><Btn onClick={onOpenProvision}>
                     {provision?.need_provision ? t("s.d5c27cb2ba") : t("s.69f5974b47")}
-                  </Btn>
+                  </Btn></span>
                 ) : null}
               </span>
             }
@@ -379,17 +400,18 @@ export function MorePage({
         <Group>
           <ListItem
             title={t("s.sumCopyTitle")}
-            desc={sumMsg || t("s.sumCopyDesc")}
+            desc={(readDiagnostic(sumMsg) ? "" : sumMsg) || t("s.sumCopyDesc")}
             right={<Btn onClick={() => void copySummary()}>{t("s.sumCopyBtn")}</Btn>}
           />
+          {readDiagnostic(sumMsg) ? (
+            <div className="px-4 pb-3"><ErrorNote text={sumMsg} /></div>
+          ) : null}
           <ListItem
             title={t("s.selfCheckTitle")}
             desc={
-              checkState === "failed"
-                ? t("s.selfCheckFailed")
-                : checkState === "done" && findings.length === 0
-                  ? t("s.diagFindingsNone")
-                  : t("s.selfCheckDesc")
+              checkState === "done" && findings.length === 0
+                ? t("s.diagFindingsNone")
+                : t("s.selfCheckDesc")
             }
             right={
               <Btn
@@ -405,6 +427,9 @@ export function MorePage({
               </Btn>
             }
           />
+          {checkError ? (
+            <div className="px-4 pb-3"><ErrorNote text={checkError} /></div>
+          ) : null}
           {checkState === "done" && findings.length ? (
             <div className="px-4 py-3">
               <FindingList findings={findings} />
@@ -421,6 +446,9 @@ export function MorePage({
               <Btn onClick={() => setDiagOpen(true)}>{t("s.4aa2306395")}</Btn>
             }
           />
+          {diagErr ? (
+            <div className="px-4 pb-3"><ErrorNote text={diagErr} /></div>
+          ) : null}
           <ListItem
             title={t("s.a5f158e6bc")}
             right={
@@ -448,6 +476,7 @@ export function MorePage({
                 danger
                 onClick={async () => {
                   if (!(await askConfirm(t("s.cacheClearConfirm")))) return;
+                  setCacheErr("");
                   setBusyMsg(t("s.cacheClear") + "…");
                   void invoke<{ freed_mb?: string; removed_files?: number }>("cache_clear")
                     .then((r) => {
@@ -459,35 +488,52 @@ export function MorePage({
                       );
                       setCacheMb("0");
                     })
-                    .catch((e) => setBusyMsg(t("s.cacheClearFail", { v0: String(e) })));
+                    .catch((e) => {
+                      setBusyMsg("");
+                      setCacheErr(errorWithTitle(e, "s.cacheClearFailed", "other"));
+                    });
                 }}
               >
                 {t("s.cacheClear")}
               </Btn>
             }
           />
+          {cacheErr ? (
+            <div className="px-4 pb-3"><ErrorNote text={cacheErr} /></div>
+          ) : null}
           <ListItem
             title={t("s.91e6c9b862")}
-            desc={legacyMsg.panel}
+            desc={readDiagnostic(legacyMsg.panel) ? undefined : legacyMsg.panel}
             right={
               <Btn onClick={() => void openLegacy("panel")}>{t("s.65fc81e161")}</Btn>
             }
           />
+          {readDiagnostic(legacyMsg.panel) ? (
+            <div className="px-4 pb-3"><ErrorNote feature="enginestart" text={legacyMsg.panel} /></div>
+          ) : null}
           <ListItem
             title={t("s.a636b86646")}
-            desc={legacyMsg.webui}
+            desc={readDiagnostic(legacyMsg.webui) ? undefined : legacyMsg.webui}
             right={<Btn onClick={() => void openLegacy("webui")}>{t("s.65fc81e161")}</Btn>}
           />
+          {readDiagnostic(legacyMsg.webui) ? (
+            <div className="px-4 pb-3"><ErrorNote feature="enginestart" text={legacyMsg.webui} /></div>
+          ) : null}
           {/* 「申请专业优化」暂时隐藏（服务还没开）。后端 consult_build 保留，
               开放时把 SHOW_CONSULT 改成 true 就行，不要删代码。 */}
           {SHOW_CONSULT ? (
-            <ListItem
-              title={t("s.dd41f552d6")}
-              desc={busyMsg.startsWith(t("s.1a2edaedf8")) ? busyMsg : t("s.db1fdebf6f")}
-              right={
-                <Btn onClick={() => void run(t("s.1a2edaedf8"), "consult_build", { note: "" })}>{t("s.1a2edaedf8")}</Btn>
-              }
-            />
+            <>
+              <ListItem
+                title={t("s.dd41f552d6")}
+                desc={busyMsg.startsWith(t("s.1a2edaedf8")) ? busyMsg : t("s.db1fdebf6f")}
+                right={
+                  <Btn onClick={() => void run(t("s.1a2edaedf8"), "consult_build", { note: "" })}>{t("s.1a2edaedf8")}</Btn>
+                }
+              />
+              {consultErr ? (
+                <div className="px-4 pb-3"><ErrorNote text={consultErr} /></div>
+              ) : null}
+            </>
           ) : null}
           <ListItem
             title={t("s.e327258774")}

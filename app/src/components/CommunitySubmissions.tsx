@@ -1,5 +1,6 @@
+import { ErrorNote } from "./ErrorNote";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, SegmentControl, useMenu, useNotify, usePageActive, usePaneOn, type MenuItem } from "trm-ui";
+import { Modal, SegmentControl, useMenu, usePageActive, usePaneOn, type MenuItem } from "trm-ui";
 import { useI18n } from "../i18n";
 import { draftBaseVersion, PUBLICATION_PAGE_SIZE, publication, publicationError, type CatalogModel, type Draft, type ReviewState, type Submission } from "../lib/communityPublication";
 import type { CommunityAccount } from "./CommunityActions";
@@ -8,7 +9,7 @@ import { Pager } from "./Pager";
 import { CommunityModelList, useCommunityModels } from "./CommunityModelList";
 import { CommunityPublicationCard, CommunityPublicationCards, publicationGroups } from "./CommunityPublicationCard";
 import { useSubmissionCover } from "../hooks/useSubmissionCover";
-import { Btn, PageHead, PagePad, Warn } from "./ui";
+import { Btn, PageHead, PagePad } from "./ui";
 
 const states = ["draft", "pending", "rejected", "published", "withdrawn"] as const;
 type State = "draft" | ReviewState;
@@ -31,7 +32,6 @@ export function CommunitySubmissions({ auth, drafts, recent, onAuthor, onBack, o
   onOpenPublished: (item: CatalogModel) => void;
 }) {
   const { t, locale } = useI18n();
-  const { tip } = useNotify();
   const menu = useMenu();
   const paneActive = usePaneOn();
   const pageActive = usePageActive();
@@ -142,7 +142,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onAuthor, onBack, o
       setFilter("withdrawn");
       setPage(1);
     } catch (error) {
-      tip(publicationError(error, "list"));
+      setError(publicationError(error, "list"));
     } finally {
       setApplying(false);
     }
@@ -165,7 +165,7 @@ export function CommunitySubmissions({ auth, drafts, recent, onAuthor, onBack, o
       <SegmentControl className="mb-4 mt-3" value={filter} options={states.map((id) => ({ id, label: labels[id] }))}
         onChange={(next) => { setFilter(next); setPage(1); }} />
       {batch && filter !== "draft" && <Btn onClick={() => { setBatch(undefined); setPage(1); }}>{t("ui.common.clear")}</Btn>}
-      {error && account !== null && filter !== "draft" && !publishedModels && <Warn className="mb-3">{error}</Warn>}
+      {error && account !== null && filter !== "draft" && !publishedModels && <ErrorNote feature="store" text={error} />}
       <CatalogTransition scope={filter} order={states} page={current}>
         {filter !== "draft" && account === null ? (
           <div className="flex items-center gap-3">

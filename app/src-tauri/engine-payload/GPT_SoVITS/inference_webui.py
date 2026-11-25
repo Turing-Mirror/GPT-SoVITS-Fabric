@@ -125,7 +125,8 @@ from text import cleaned_text_to_sequence
 from text.cleaner import clean_text
 
 from tools.assets import css, js, top_html
-from tools.i18n.i18n import I18nAuto, scan_language_list
+from tools.i18n.i18n import I18nAuto
+from tools.fabric_errors import warn, COPY_HEAD, scan_language_list
 
 language = os.environ.get("language", "Auto")
 language = sys.argv[-1] if sys.argv[-1] in scan_language_list() else language
@@ -1266,7 +1267,7 @@ def html_left(text, label="p"):
                 </div>"""
 
 
-with gr.Blocks(title="GPT-SoVITS WebUI", analytics_enabled=False, js=js, css=css) as app:
+with gr.Blocks(title="GPT-SoVITS WebUI", analytics_enabled=False, js=js, css=css, head=COPY_HEAD) as app:
     gr.HTML(
         top_html.format(
             i18n("本软件以MIT协议开源, 作者不对软件具备任何控制力, 使用软件者、传播软件导出的声音者自负全责.")

@@ -1,6 +1,8 @@
+import { ErrorNote } from "./ErrorNote";
+import { errorWithTitle } from "../lib/diagnostics";
 import { CatalogTransition } from "./CatalogTransition";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, invokeFor } from "../lib/invoke";
 import { Block, Btn, Group, ListItem } from "./ui";
 import { askConfirm } from "trm-ui/fabric";
 import { t } from "../i18n/t";
@@ -49,6 +51,7 @@ export function StorageSection() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [failure, setFailure] = useState("");
   const [picked, setPicked] = useState<Record<string, Set<string>>>({});
   // 实验一多（每个三四个 GB 的主儿），一整列铺下去「其他」页就成了账本。
   // 每页五个，按占用从大到小排 —— 最该处理的永远在第一页。
@@ -73,9 +76,10 @@ export function StorageSection() {
   const scan = async (resetSelection = true) => {
     const current = ++request.current;
     setBusy(true);
+    setFailure("");
     setMsg("");
     const [u, r] = await Promise.allSettled([
-      invoke<Usage>("storage_usage"), invoke<Row[]>("train_cleanup_scan"),
+      invoke<Usage>("storage_usage"), invokeFor<Row[]>("other", "train_cleanup_scan"),
     ]);
     if (current !== request.current) return "";
     if (u.status === "fulfilled") setUsage(u.value);
@@ -85,9 +89,12 @@ export function StorageSection() {
       setPage(1);
     }
     const failure = [u, r].find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") setMsg(String(failure.reason));
+    const err = failure?.status === "rejected"
+      ? errorWithTitle(failure.reason, "s.storageScanFailed", "other")
+      : "";
+    if (err) setFailure(err);
     setBusy(false);
-    return failure?.status === "rejected" ? String(failure.reason) : "";
+    return err;
   };
 
   useEffect(() => {
@@ -118,6 +125,7 @@ export function StorageSection() {
   const apply = async () => {
     if (!selected.length || busy) return;
     setBusy(true);
+    setFailure("");
     const names = selected.map(row => row.exp + "（" + listText(row.kinds.map(kind => t(KINDS.find(item => item.id === kind)!.labelKey))) + "）");
     try {
       if (!(await askConfirm(t("s.cleanConfirm", { list: listText(names) })))) return;
@@ -125,16 +133,16 @@ export function StorageSection() {
       let error = "";
       try {
         for (const row of selected) {
-          const result = await invoke<{ freed_bytes?: number }>("train_cleanup_apply", row);
+          const result = await invokeFor<{ freed_bytes?: number }>("other", "train_cleanup_apply", row);
           freed += result?.freed_bytes ?? 0;
           setPicked(prev => ({ ...prev, [row.exp]: new Set() }));
         }
-      } catch (e) { error = String(e); }
+      } catch (e) { error = errorWithTitle(e, "s.storageCleanFailed", "other"); }
       const scanError = await scan(false);
+      setFailure(error || scanError);
       setMsg([
         !error || freed > 0 ? t("s.cleanupDone", { v0: human(freed) }) : "",
-        error,
-        scanError,
+
       ].filter(Boolean).join("\n"));
     } finally { setBusy(false); }
   };
@@ -142,6 +150,7 @@ export function StorageSection() {
   const clearVulkanCache = async () => {
     if (busy || vulkanCacheBytes <= 0) return;
     setBusy(true);
+    setFailure("");
     let result = "";
     try {
       if (!(await askConfirm(t("storage.vulkanCacheConfirm", { size: human(vulkanCacheBytes) })))) return;
@@ -151,7 +160,7 @@ export function StorageSection() {
       setUsage(await invoke<Usage>("storage_usage"));
       setMsg(result);
     } catch (e) {
-      setMsg([result, String(e)].filter(Boolean).join("\n"));
+      setMsg(result); setFailure(errorWithTitle(e, result ? "s.storageScanFailed" : "s.storageCleanFailed", "other"));
     } finally {
       setBusy(false);
     }
@@ -162,6 +171,7 @@ export function StorageSection() {
       <Btn onClick={() => void scan()} busy={busy}>{t("s.storageScan")}</Btn>
     }>
       <Group>
+        {failure ? <ErrorNote text={failure} /> : null}
         {msg ? <p role="status" className="px-4 pt-3 m-0 text-[12.5px] text-[var(--help)]">{msg}</p> : null}
         {usage ? (
           <div className="px-4 py-4">

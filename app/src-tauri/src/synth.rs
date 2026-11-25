@@ -329,8 +329,10 @@ fn read_line_with_deadline(r: &mut Resident, timeout: Duration) -> Result<String
     // 再 join，否则每一行都要等满整个超时窗口。
     let pid = r.child.id();
     let done = Arc::new(AtomicBool::new(false));
+    let timed_out = Arc::new(AtomicBool::new(false));
     let killer = {
         let done = done.clone();
+        let timed_out = timed_out.clone();
         let flag = cancel_flag();
         std::thread::spawn(move || {
             let step = Duration::from_millis(50);
@@ -346,20 +348,21 @@ fn read_line_with_deadline(r: &mut Resident, timeout: Duration) -> Result<String
                 waited += step;
             }
             if !done.load(Ordering::SeqCst) {
+                timed_out.store(!flag.load(Ordering::SeqCst), Ordering::SeqCst);
                 kill_pid(pid);
             }
         })
     };
     let mut line = String::new();
-    let n = r
-        .stdout
-        .read_line(&mut line)
-        .map_err(|e| e.to_string())
-        .unwrap_or(0);
+    let read = r.stdout.read_line(&mut line);
     done.store(true, Ordering::SeqCst);
     killer.join().ok();
+    let n = read.map_err(|e| e.to_string())?;
     if n == 0 {
-        return Err(crate::i18n::t("s.synthErrWorkerGone"));
+        let status = r.child.try_wait().ok().flatten();
+        return Err(if timed_out.load(Ordering::SeqCst) {
+            format!("resident worker response deadline exceeded after {timeout:?}; status={status:?}")
+        } else { format!("resident worker stdout closed; status={status:?}") });
     }
     Ok(line.trim_end().to_string())
 }
@@ -396,10 +399,10 @@ fn send(g: &mut Resident, req: &Value) -> Result<(), String> {
     line.push('\n');
     g.stdin
         .write_all(line.as_bytes())
-        .map_err(|_| crate::i18n::t("s.synthErrWorkerGone"))?;
+        .map_err(|error| error.to_string())?;
     g.stdin
         .flush()
-        .map_err(|_| crate::i18n::t("s.synthErrWorkerGone"))
+        .map_err(|error| error.to_string())
 }
 
 /// 杀掉常驻 worker（引擎强杀、设置变更时调用方决定要不要重建）。
@@ -591,10 +594,25 @@ pub fn synthesize(
             opts["owner"].as_str().map(str::to_owned);
         cancel_flag().store(false, Ordering::SeqCst);
     }
+    let job = opts["job_id"].as_str().map(str::to_owned).unwrap_or_else(crate::diagnostics::id);
+    let mut slice = crate::diagnostics::LogSlice::start(&crate::logging::daily_path(root, crate::logging::CH_SYNTH));
+    let mut evidence = crate::diagnostics::evidence(fabric_diagnostics::Feature::Synthesis, false);
+    evidence.job_id = Some(job.clone());
+    evidence.stage = Some("load".into());
+    evidence.context.operation = Some(fabric_diagnostics::Operation::ModelLoad);
+    evidence.context.backend = Backend::from_options(opts).ok().and_then(|b| serde_json::from_value(json!(b.id())).ok());
     let out = synthesize_inner(
         app, root, role_id, role_dir, version, text, ref_wav, ref_text, ref_lang, params,
-        streaming, opts,
-    );
+        streaming, opts, &job, &mut evidence, &mut slice,
+    ).map_err(|error| {
+        if evidence.text.is_empty() { evidence.text = error; }
+        slice.append(&mut evidence);
+        let d = crate::diagnostics::finish(&evidence);
+        let encoded = crate::diagnostics::encode(&d);
+        emit_progress(app, "synth-error", json!({"job": job, "message": crate::i18n::t(&d.title.key),
+            "code": d.source_code, "message_params": evidence.source_params, "diagnostic": d}));
+        encoded
+    });
     {
         let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         let _ = std::fs::remove_file(stop_file(root));
@@ -619,6 +637,9 @@ fn synthesize_inner(
     params: &Value,
     streaming: bool,
     opts: &Value,
+    job: &str,
+    evidence: &mut fabric_diagnostics::Evidence,
+    slice: &mut crate::diagnostics::LogSlice,
 ) -> Result<Value, String> {
     if !paths::runtime_ready(root) {
         return Err(crate::i18n::t("s.synthErrNoRuntime"));
@@ -633,11 +654,6 @@ fn synthesize_inner(
             ));
         }
     }
-    // 带毫秒：批量合成一秒内可能出好几条。
-    let job = opts["job_id"]
-        .as_str()
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("synth_{}", chrono::Local::now().format("%Y%m%d_%H%M%S_%3f")));
     let output = opts["output_dir"]
         .as_str()
         .map(PathBuf::from)
@@ -652,7 +668,8 @@ fn synthesize_inner(
             root, version, text, ref_text, ref_lang, params, streaming, opts,
         ) {
             let message = gsv_cpp::message(code, fallback);
-            emit_progress(app, "synth-error", json!({"job": job, "code": code, "message": message}));
+            evidence.source_code = Some(format!("synth.{code}"));
+            evidence.text = fallback.into();
             return Err(message);
         }
     }
@@ -668,6 +685,7 @@ fn synthesize_inner(
         resident,
         &json!({
             "cmd": "load",
+            "request_id": job,
             "role_id": role_id,
             "sovits": sovits.to_string_lossy(),
             "gpt": gpt.to_string_lossy(),
@@ -698,11 +716,12 @@ fn synthesize_inner(
                 *g = None;
                 return Ok(json!({"ok": true, "cancelled": true, "job": job}));
             }
-            Err(_) => return Err(crate::i18n::t("s.synthErrLoadTimeout")),
+            Err(error) => return Err(error),
         };
         let Some(v) = parse_event(&line) else {
             continue;
         };
+        if v["request_id"].as_str().is_some_and(|id| id != job) { continue; }
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "ready" => {
                 if let Some(d) = v.get("device").and_then(|x| x.as_str()) {
@@ -711,20 +730,8 @@ fn synthesize_inner(
                 break;
             }
             "error" => {
-                // worker 报文带 message_code（msg.synth.* 语言包）+ detail
-                // （异常原文）；翻译不到时 t_worker_msg 回退 message。
-                let msg = crate::i18n::t_worker_msg(&v);
-                if backend == Backend::Vulkan {
-                    emit_progress(app, "synth-error", json!({"job": job, "code": v["code"], "message": msg}));
-                    return Err(msg);
-                }
-                let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
-                let msg = if detail.is_empty() {
-                    msg
-                } else {
-                    format!("{msg}（{detail}）")
-                };
-                return Err(crate::i18n::te("s.synthErrLoadFailed", &msg));
+                crate::diagnostics::worker(evidence, &v);
+                return Err(evidence.text.clone());
             }
             _ => {}
         }
@@ -734,6 +741,10 @@ fn synthesize_inner(
         return Ok(json!({"ok": true, "cancelled": true, "job": job}));
     }
 
+    evidence.stage = Some("synth".into());
+    evidence.context.operation = None;
+    // Successful load/fallback evidence must not classify a later inference failure.
+    *slice = crate::diagnostics::LogSlice::start(&crate::logging::daily_path(root, crate::logging::CH_SYNTH));
     // 2) synth：分片经事件转发，done/error 收尾。
     let format = opts.get("format").and_then(|x| x.as_str()).unwrap_or("wav");
     let out_path = output.join(format!("{job}.{format}"));
@@ -741,6 +752,7 @@ fn synthesize_inner(
         resident,
         &json!({
             "cmd": "synth",
+            "request_id": job,
             "job": job,
             "text": text,
             "ref_wav": ref_wav,
@@ -768,7 +780,7 @@ fn synthesize_inner(
         };
         let line = match read_line_with_deadline(resident, deadline) {
             Ok(l) => l,
-            Err(_) => {
+            Err(error) => {
                 // worker 没了（看门狗杀的或崩溃）：按取消/失败收场，别把互斥卡死。
                 *g = None;
                 if backend == Backend::Vulkan {
@@ -780,12 +792,13 @@ fn synthesize_inner(
                     }
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
-                return Err(crate::i18n::t("s.synthErrWorkerGone"));
+                return Err(error);
             }
         };
         let Some(v) = parse_event(&line) else {
             continue;
         };
+        if v["request_id"].as_str().is_some_and(|id| id != job) { continue; }
         match v.get("event").and_then(|x| x.as_str()).unwrap_or("") {
             "chunk" => {
                 emit_progress(app, "synth-chunk", v);
@@ -830,19 +843,8 @@ fn synthesize_inner(
                     emit_progress(app, "synth-error", json!({"job": job, "code": "cancelled"}));
                     return Ok(json!({"ok": true, "cancelled": true, "job": job}));
                 }
-                let msg = crate::i18n::t_worker_msg(&v);
-                let detail = v.get("detail").and_then(|x| x.as_str()).unwrap_or("");
-                let msg = if detail.is_empty() {
-                    msg
-                } else {
-                    format!("{msg}（{detail}）")
-                };
-                emit_progress(
-                    app,
-                    "synth-error",
-                    json!({"job": job, "code": code, "message": msg}),
-                );
-                return Err(msg);
+                crate::diagnostics::worker(evidence, &v);
+                return Err(evidence.text.clone());
             }
             _ => {}
         }

@@ -6,11 +6,13 @@
  * Rust is still writing the file.
  */
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, invokeFor } from "./invoke";
+import { errorWithTitle } from "./diagnostics";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n/t";
 
 export type ExtraProgress = {
+  diagnostic?: import("./diagnostics").Diagnostic;
   key: string;
   phase: "run" | "done" | "error";
   done?: number;
@@ -76,7 +78,7 @@ function ensureListen() {
     if (!p?.key) return;
     progByKey = { ...progByKey, [p.key]: p };
     if (p.phase === "error") {
-      msg = p.message || t("s.e0dab22b1a");
+      msg = p.diagnostic ? JSON.stringify(p.diagnostic) : p.message || errorWithTitle(t("s.e0dab22b1a"), "s.e0dab22b1a", "download");
       hasError = true;
     }
     emit();
@@ -138,7 +140,7 @@ export function startEngineCoreDownload(): void {
   emit();
   void (async () => {
     try {
-      await invoke("assets_ensure_engine_core");
+      await invokeFor("download", "assets_ensure_engine_core");
       generation += 1;
       msg = t("s.33dadd8dd6");
       coreProg = null;
@@ -160,7 +162,7 @@ export function startVulkanDownload(): void {
   vulkanError = "";
   hasError = false;
   emit();
-  void invoke<{ ok: boolean }>("assets_ensure_gsv_cpp")
+  void invokeFor<{ ok: boolean }>("download", "assets_ensure_gsv_cpp")
     .then((result) => {
       if (result.ok) generation += 1;
     })
@@ -177,7 +179,7 @@ export function cancelVulkanDownload(): void {
   if (!vulkanBusy || vulkanCancelling) return;
   vulkanCancelling = true;
   emit();
-  void invoke("assets_cancel_gsv_cpp").catch((e) => {
+  void invokeFor("download", "assets_cancel_gsv_cpp").catch((e) => {
     vulkanCancelling = false;
     vulkanError = String(e);
     emit();

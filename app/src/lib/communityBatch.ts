@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { isSha256, newDraft, providerHash, publication, validUrl, type Draft, type Source, type SourceFile } from "./communityPublication";
 
 export type Pack = {

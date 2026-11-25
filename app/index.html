@@ -63,6 +63,9 @@
        * DOM lookups are therefore lazy: <body> does not exist yet here. */
       (function () {
         var reported = false;
+        /* diag-locales:start */
+        var diagBoot = {"zh-CN":{"title":"本次操作未能完成。","cause":"暂时无法判断原因。","steps":["回到刚才的任务处，点击「重试」再试一次。","仍然无法完成时，点击「复制完整错误」，然后到「其他」页扫码加入 QQ 群，将复制的内容发到群里求助。"],"copy":"复制完整错误","retry":"重试","details":"错误详情","copyFailed":"复制失败，请手动选中复制"},"zh-TW":{"title":"本次操作未能完成。","cause":"暫時無法判斷原因。","steps":["回到剛才的任務處，點擊「重試」再試一次。","仍然無法完成時，點擊「複製完整錯誤」，然後到「其他」頁掃碼加入 QQ 群，將複製的內容傳到群組求助。"],"copy":"複製完整錯誤","retry":"重試","details":"錯誤詳情","copyFailed":"複製失敗，請手動選取複製"},"en-US":{"title":"This operation did not finish.","cause":"The cause could not be determined at this time.","steps":["Return to the task and select Retry to try again.","If the problem continues, select Copy full error, go to the More page, scan the code to join the QQ group, and share the copied content in the group for help."],"copy":"Copy full error","retry":"Try again","details":"Error details","copyFailed":"Copy failed. Please select the text and copy it manually"},"ja-JP":{"title":"この操作を完了できませんでした。","cause":"現時点では原因を特定できません。","steps":["先ほどのタスクの場所に戻り、「再試行」をクリックしてもう一度お試しください。","解決しない場合は、「エラー全文をコピー」をクリックし、「その他」ページの QR コードから QQ グループに参加して、コピーした内容を送信し質問してください。"],"copy":"エラー全文をコピー","retry":"再試行","details":"エラーの詳細","copyFailed":"コピーできませんでした。手動で選択してコピーしてください"},"ko-KR":{"title":"이번 작업을 완료하지 못했습니다.","cause":"현재로서는 원인을 판단할 수 없습니다.","steps":["방금 전 작업 위치로 돌아가 「다시 시도」를 클릭하여 한 번 더 시도하십시오.","계속 완료할 수 없는 경우 「전체 오류 복사」를 클릭한 뒤 「기타」 페이지에서 QR 코드를 스캔하여 QQ 그룹에 참여하고 복사한 내용을 올려 도움을 요청하십시오."],"copy":"전체 오류 복사","retry":"다시 시도","details":"오류 상세","copyFailed":"복사하지 못했습니다. 직접 선택해 복사하세요"},"es-ES":{"title":"No se pudo completar esta operación.","cause":"No es posible determinar la causa por el momento.","steps":["Vuelva a la tarea anterior y haga clic en «Reintentar» para probar de nuevo.","Si sigue sin poder completarse, pulse «Copiar el error completo», vaya a la página «Más», escanee el código para unirse al grupo de QQ y envíe el contenido copiado para pedir ayuda."],"copy":"Copiar el error completo","retry":"Reintentar","details":"Detalles del error","copyFailed":"No se pudo copiar. Selecciona el texto y cópialo manualmente"},"fr-FR":{"title":"Cette opération n'a pas pu être terminée.","cause":"Il est impossible de déterminer la cause pour le moment.","steps":["Revenez à la tâche précédente et cliquez sur « Réessayer » pour tenter une nouvelle fois.","Si l'opération échoue encore, cliquez sur « Copier l'erreur complète », allez sur la page « Plus », scannez le code pour rejoindre le groupe QQ et envoyez le contenu copié pour demander de l'aide."],"copy":"Copier l'erreur complète","retry":"Réessayer","details":"Détails de l’erreur","copyFailed":"Échec de la copie. Sélectionnez le texte et copiez-le manuellement"},"ru-RU":{"title":"Эту операцию не удалось завершить.","cause":"В данный момент не удаётся определить причину.","steps":["Вернитесь к предыдущей задаче и нажмите «Повторить» ещё раз.","Если проблема сохраняется, нажмите «Скопировать полностью», перейдите на страницу «Другое», отсканируйте код для входа в группу QQ и отправьте скопированный текст в чат за помощью."],"copy":"Скопировать полностью","retry":"Повторить","details":"Подробности ошибки","copyFailed":"Не удалось скопировать. Выделите текст и скопируйте вручную"}};
+        /* diag-locales:end */
 
         function el(id) {
           return document.getElementById(id);
@@ -72,7 +75,7 @@
           try {
             var internals = window.__TAURI_INTERNALS__;
             if (internals && internals.invoke) {
-              internals.invoke("ui_log", { line: String(line) });
+              Promise.resolve(internals.invoke("ui_log", { line: String(line) })).catch(function () {});
             }
           } catch (e) {
             /* logging must never be the thing that breaks */
@@ -85,9 +88,24 @@
           toShellLog(headline + " | " + info);
           var boot = el("boot");
           if (!boot) return; // React already replaced it — nothing to paint on
-          el("boot-title").textContent = headline;
-          el("boot-msg").textContent =
-            "界面没能载入。请把 User_Data\\logs\\shell.log 发给我们。";
+          var language = navigator.language || "zh-CN";
+          var words = diagBoot[language] || diagBoot[Object.keys(diagBoot).find(function (key) { return key.split("-")[0] === language.split("-")[0]; })] || diagBoot["zh-CN"];
+          el("boot-title").textContent = words.title;
+          el("boot-msg").textContent = words.cause;
+          var list = el("boot-steps");
+          words.steps.forEach(function (step) { var li = document.createElement("li"); li.textContent = step; list.appendChild(li); });
+          el("boot-retry").textContent = words.retry;
+          el("boot-copy").textContent = words.copy;
+          el("boot-details-label").textContent = words.details;
+          el("boot-actions").hidden = false;
+          el("boot-details").hidden = false;
+          el("boot-retry").onclick = function () { window.location.reload(); };
+          el("boot-copy").onclick = function () {
+            var full = [words.title, words.cause].concat(words.steps.map(function (step, index) { return (index + 1) + ". " + step; }), [info]).join("\n");
+            Promise.resolve().then(function () { return navigator.clipboard.writeText(full); }).catch(function () {
+              el("boot-msg").textContent = words.copyFailed; el("boot-details").open = true;
+            });
+          };
           var detail = el("boot-detail");
           detail.textContent = info;
           detail.style.display = "block";
@@ -144,7 +162,9 @@
       <div id="boot">
         <div id="boot-title">正在加载界面…</div>
         <div id="boot-msg"></div>
-        <div id="boot-detail"></div>
+        <ol id="boot-steps"></ol>
+        <div id="boot-actions" hidden><button id="boot-retry" type="button"></button> <button id="boot-copy" type="button"></button></div>
+        <details id="boot-details" hidden><summary id="boot-details-label"></summary><pre id="boot-detail"></pre></details>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

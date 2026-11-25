@@ -7,7 +7,7 @@
  * - 合成台、训练台、分离窗：前置检查发现缺引擎资源 → 跳转广场「下载模型」
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ExtrasFilter } from "../components/ExtrasDialog";
 
@@ -40,7 +40,7 @@ export function registerDownloadModelsOpener(fn: ModelsOpener | null): void {
  * 是独立的 webview，没有广场也没有 App —— 那边改成把主窗口叫到
  * 前面再跳，而不是就地弹一个塞不下的框。
  */
-export function openDownloadModels(opts?: OpenDownloadModelsOpts): void {
+export async function openDownloadModels(opts?: OpenDownloadModelsOpts): Promise<void> {
   // 工具窗是独立 webview。以前只要模块里挂过 opener（或 hash 丢了误挂
   // 整棵 App）就会在小窗里 setPage("plaza")，看起来像旧的「下载分离模型」
   // 弹窗，主窗口广场根本没动。不是主窗就一律绕回主窗口。
@@ -54,11 +54,9 @@ export function openDownloadModels(opts?: OpenDownloadModelsOpts): void {
     modelsOpener(opts);
     return;
   }
-  void invoke("tools_open_downloads", {
+  await invoke("tools_open_downloads", {
     reason: opts?.reason || "",
     filter: opts?.filter || "",
-  }).catch(() => {
-    /* 浏览器预览里没有 shell */
   });
 }
 

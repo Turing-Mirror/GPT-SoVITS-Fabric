@@ -27,6 +27,8 @@ vi.mock("../lib/intent", () => ({
 
 import { TrainPage } from "./TrainPage";
 import { t, setTLocale } from "../i18n/t";
+import { diagnosticActions } from "../lib/diagnosticActions";
+import { unknownDiagnostic } from "../lib/diagnostics";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -90,6 +92,43 @@ describe("TrainPage save_every_weights toggle", () => {
     act(() => root.unmount());
     container.remove();
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.restoreAllMocks();
+  });
+
+  it.each(["sovits", "gpt"] as const)("opens the failed %s task copy, focuses its batch, and submits the user's edited value", async stage => {
+    const req = { exp: "failed-example", dataset: "C:/failed.list", version: "v2Pro",
+      sovits_epoch: 11, sovits_batch: 4, sovits_save_every: 2,
+      gpt_epoch: 19, gpt_batch: 12, gpt_save_every: 3, learning_rate: 0.0002,
+      lora_rank: 32, resume: false, save_every_weights: false, output_dir: "C:/failed-out" };
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (command, args) => command === "train_queue_list"
+      ? { jobs: [{ id: "failed-id", req, state: "failed", error: "" }] } : original(command, args));
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ width: 100 } as DOMRect);
+    Element.prototype.scrollIntoView = vi.fn();
+    await act(async () => root.render(<TrainPage />));
+    const diagnostic = unknownDiagnostic("OOM evidence", "training");
+    diagnostic.actions = [{ id: "edit_training_copy", params: { job_id: "failed-id", stage, current: req[`${stage}_batch`], suggested: req[`${stage}_batch`] / 2 } }];
+    const action = diagnosticActions(diagnostic)[0];
+    let actionResult: Promise<unknown>;
+    await act(async () => {
+      actionResult = action.run();
+      await Promise.resolve();
+    });
+    await act(async () => { await actionResult; });
+    const field = container.querySelector<HTMLInputElement>(`[data-training-stage="${stage}"] input[type="range"]`)!;
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe(String(req[`${stage}_batch`]));
+    expect(mocks.invoke.mock.calls.some(([command]) => command === "train_queue_add" || command === "train_queue_action")).toBe(false);
+    const edited = req[`${stage}_batch`] / 2;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, String(edited));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button(t("train.start")).click());
+    await act(async () => button(t("train.queueAdd")).click());
+    const call = mocks.invoke.mock.calls.find(([command]) => command === "train_queue_add");
+    expect(call?.[1]).toEqual({ req: { ...req, [`${stage}_batch`]: edited } });
   });
 
   it("defaults save_every_weights to true and passes the toggled value to train_queue_add", async () => {

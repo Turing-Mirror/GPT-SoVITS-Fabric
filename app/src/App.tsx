@@ -1,3 +1,5 @@
+import { errorWithTitle, readDiagnostic } from "./lib/diagnostics";
+import { ErrorNote } from "./components/ErrorNote";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePill, SetupGuide, type GuideStep } from "./components/SetupGuide";
 import type { ExtrasFilter } from "./components/ExtrasDialog";
@@ -19,7 +21,7 @@ import { TitleBar } from "./components/TitleBar";
 import { useEngine } from "./hooks/useEngine";
 import { usePlaza } from "./hooks/usePlaza";
 import { forceKillEngine } from "./lib/engine";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./lib/invoke";
 import { applyAppearance } from "./lib/appearance";
 import { listen } from "@tauri-apps/api/event";
 import { HomePage } from "./pages/HomePage";
@@ -179,10 +181,16 @@ export default function App() {
     setUpdateBusy(true);
     setUpdateLine(t("s.481ee2d4bc"));
     try {
-      const r = await probeUpdate();
+      let r: UpdateInfo | null;
+      try {
+        r = await probeUpdate();
+      } catch (e) {
+        setUpdateLine(errorWithTitle(e, "s.updateCheckFailed", "update"));
+        return;
+      }
       if (r) await installUpdate(r);
     } catch (e) {
-      setUpdateLine(t("s.ac3a85a9c1", { v0: String(e) }));
+      setUpdateLine(String(e));
     } finally {
       setUpdateBusy(false);
     }
@@ -228,7 +236,7 @@ export default function App() {
     try {
       await installUpdate(r);
     } catch (e) {
-      setUpdateLine(t("s.bac68ea7db", { v0: String(e) }));
+      setUpdateLine(String(e));
     } finally {
       setUpdateBusy(false);
     }
@@ -322,7 +330,7 @@ export default function App() {
     try {
       await installUpdate(r);
     } catch (e) {
-      setUpdateLine(t("s.bac68ea7db", { v0: String(e) }));
+      setUpdateLine(String(e));
     } finally {
       setUpdateBusy(false);
     }
@@ -564,6 +572,17 @@ export default function App() {
     setCommunityNonce((n) => n + 1);
     setPage("more");
   }, [setPage]);
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    const ready = listen<string>("diagnostic-navigate", ({ payload }) => {
+      if (payload === "community") openCommunity();
+      if (payload === "runtime") {
+        setPage("more");
+        window.setTimeout(() => document.getElementById("more-runtime")?.scrollIntoView({ block: "center" }), 100);
+      }
+    });
+    return () => { void ready.then(unlisten => unlisten()); };
+  }, [openCommunity, setPage]);
   const [helpFocus, setHelpFocus] = useState("");
   const [helpFocusNonce, setHelpFocusNonce] = useState(0);
   const openHelp = useCallback((section?: string) => {
@@ -905,7 +924,7 @@ export default function App() {
           }
         >
           {updateWorking
-            ? updateLine
+            ? readDiagnostic(updateLine) ? <ErrorNote feature="update" text={updateLine} /> : updateLine
             : t("s.3956a2d8bb", {
                 v0: updateOffer.local,
                 v1:

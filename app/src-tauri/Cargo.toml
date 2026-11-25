@@ -24,6 +24,8 @@ name = "catalog-check"
 path = "src/bin/catalog-check.rs"
 
 [dependencies]
+# Switch to a pinned git rev before release (local checkout: f8cf036).
+fabric-diagnostics = { path = "../../../fabric-diagnostics" }
 trm-app-protocol = { git = "https://github.com/Turing-Mirror/trm-app-protocol.git", rev = "f02269b436215a04980b0b450edf7764a5d79493" }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"

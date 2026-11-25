@@ -363,6 +363,7 @@ pub fn generate(
     let log = crate::logging::begin_run(root, crate::logging::CH_TRAIN, &json!({
         "task": "annotation", "source": source, "speaker": clean_speaker, "lang": clean_lang,
     }));
+    let slice = crate::diagnostics::LogSlice::start(&log);
     let stderr = fs::OpenOptions::new().append(true).open(&log)
         .map_err(|e| e.to_string())?;
     let device = if crate::train::is_nvidia(root) { "cuda" } else { "cpu" };
@@ -420,26 +421,18 @@ pub fn generate(
         }
     }
 
-    let known_msg = result
-        .as_ref()
-        .filter(|v| v.get("message_code").and_then(|c| c.as_str()).is_some())
-        .map(crate::i18n::t_worker_msg);
-    let error = known_msg.clone().unwrap_or_else(|| {
-        result
-            .as_ref()
-            .map(crate::i18n::t_worker_msg)
-            .unwrap_or_else(|| read_error.unwrap_or_else(|| crate::i18n::t("s.annot.generateFailed")))
-    });
+    let mut evidence = crate::diagnostics::evidence(fabric_diagnostics::Feature::Annotation, false);
+    evidence.stage = Some("prepare".into());
+    evidence.exit_code = status.code();
+    if let Some(message) = result { crate::diagnostics::worker(&mut evidence, &message); }
+    if let Some(error) = read_error { evidence.text.push_str(&error); }
+    slice.append(&mut evidence);
+    let diagnostic = crate::diagnostics::finish(&evidence);
     crate::logging::finish_run(&log, true, "error");
-    if known_msg.is_some() {
-        return Err(error);
-    }
-    let detail = crate::logging::tail_lines(&log, 8, 2048);
-    if detail.is_empty() {
-        Err(error)
-    } else {
-        Err(format!("{error}\n{detail}"))
-    }
+    let _ = window.emit_to(window.label(), "annot-error", json!({"diagnostic": diagnostic,
+        "message": crate::i18n::t(&diagnostic.title.key), "message_code": diagnostic.source_code,
+        "message_params": evidence.source_params}));
+    Err(crate::diagnostics::encode(&diagnostic))
 }
 
 /// 编辑器里选了音频目录：在那个目录下找回仍然缺失的音频。`rows` 是编辑器

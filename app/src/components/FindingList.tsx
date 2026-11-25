@@ -2,6 +2,8 @@ import { Btn } from "./ui";
 import { openDownloadModels } from "../lib/downloadModels";
 import { openHelpSection } from "../lib/helpNav";
 import { t } from "../i18n/t";
+import { useState } from "react";
+import { ErrorNote } from "./ErrorNote";
 
 /** 后端 selfcheck.rs 跑出来的一条结论。 */
 export type Finding = {
@@ -42,7 +44,7 @@ const HELP_TARGET: Record<string, string> = {
   "train.preprocess_failures": "train",
 };
 
-function actionFor(f: Finding): { label: string; run: () => void } | null {
+function actionFor(f: Finding): { label: string; run: () => Promise<void> } | null {
   if (f.code === "assets.pretrained_partial") {
     return {
       label: t("s.errActDownload"),
@@ -63,9 +65,11 @@ function actionFor(f: Finding): { label: string; run: () => void } | null {
  * 同一句话，否则「我这边写的是另一句」会变成新的一轮问答。
  */
 export function FindingList({ findings }: { findings: Finding[] }) {
+  const [error, setError] = useState("");
   if (findings.length === 0) return null;
   return (
     <ul className="m-0 list-none p-0">
+      {error ? <li><ErrorNote text={error} /></li> : null}
       {findings.map((f, i) => {
         const action = actionFor(f);
         return (
@@ -78,9 +82,9 @@ export function FindingList({ findings }: { findings: Finding[] }) {
               <span className="text-[12.5px] leading-relaxed flex-1 min-w-[180px]">
                 {f.title}
               </span>
-              {action ? <Btn onClick={action.run}>{action.label}</Btn> : null}
+              {action ? <Btn onClick={() => void action.run().catch(error => setError(String(error)))}>{action.label}</Btn> : null}
             </div>
-            {f.evidence.map((e, j) => (
+            <details><summary>{t("ui.error.details")}</summary>{f.evidence.map((e, j) => (
               <div
                 key={j}
                 className="mt-0.5 font-mono text-[11.5px] text-[var(--meta)] break-all"
@@ -88,7 +92,7 @@ export function FindingList({ findings }: { findings: Finding[] }) {
                 {e.file}
                 {e.line != null ? `:${e.line}` : ""} — {e.text}
               </div>
-            ))}
+            ))}</details>
           </li>
         );
       })}

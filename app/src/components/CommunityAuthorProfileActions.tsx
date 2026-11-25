@@ -1,10 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Field, Modal, TextInput, useNotify } from "trm-ui";
 import { useI18n } from "../i18n";
 import { AUTHOR_URL_LABEL_LIMIT, authorLinkName, validUrl } from "../lib/communityPublication";
 import { openExternal } from "../lib/plaza";
-import { Btn, Warn } from "./ui";
+import { Btn } from "./ui";
+import { ErrorNote } from "./ErrorNote";
+import { errorWithTitle } from "../lib/diagnostics";
 
 type AuthorLink = { url: string | null; label?: string | null };
 type AuthorProfile = AuthorLink & { configured: boolean };
@@ -20,7 +22,7 @@ export function CommunityAuthorProfileActions({ fallback, own, active }: {
   const [draft, setDraft] = useState({ url: "", label: "" });
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
   const reads = useRef(0);
 
   useEffect(() => {
@@ -50,15 +52,15 @@ export function CommunityAuthorProfileActions({ fallback, own, active }: {
     event.preventDefault();
     if (!canSave || busy) return;
     setBusy(true);
-    setFailed(false);
+    setFailed("");
     try {
       const saved = await invoke<AuthorProfile>("community_account_author_profile", { update: draft });
       reads.current++;
       setGlobal(saved);
       setEditing(false);
       tip(t("publication.authorProfileSaved"));
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      setFailed(errorWithTitle(error, "publication.authorProfileSaveFailed", "store"));
     } finally {
       setBusy(false);
     }
@@ -70,7 +72,7 @@ export function CommunityAuthorProfileActions({ fallback, own, active }: {
     </Btn>}
     {own && <Btn onClick={() => {
       setDraft({ url: current?.url ?? "", label: current?.label ?? "" });
-      setFailed(false);
+      setFailed("");
       setEditing(true);
     }}>{title}</Btn>}
     <Modal open={Boolean(active && own && editing)} onClose={() => { if (!busy) setEditing(false); }} width={460} label={title}>
@@ -81,7 +83,7 @@ export function CommunityAuthorProfileActions({ fallback, own, active }: {
         <Field label={t("publication.authorLinkName")} control={<TextInput aria-label={t("publication.authorLinkName")}
           value={draft.label} onChange={label => setDraft(value => ({ ...value, label }))} maxLength={AUTHOR_URL_LABEL_LIMIT} disabled={busy} />} />
         <p className="m-0 text-[12.5px] text-[var(--help)]">{t("publication.authorProfileHint")}</p>
-        {failed && <Warn>{t("publication.authorProfileSaveFailed")}</Warn>}
+        {failed && <ErrorNote feature="store" text={failed} />}
         <button type="submit" hidden aria-hidden="true" />
         <div className="flex justify-end gap-2">
           <Btn disabled={busy} onClick={() => setEditing(false)}>{t("ui.common.cancel")}</Btn>

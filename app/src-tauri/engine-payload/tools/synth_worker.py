@@ -108,7 +108,19 @@ SPLIT_METHODS = {"cut0", "cut1", "cut2", "cut3", "cut4", "cut5"}
 OUT_FORMATS = {"wav", "flac"}
 
 
+_REQUEST_ID = None
+
 def emit(**kw) -> None:
+    kw.setdefault("request_id", _REQUEST_ID)
+    if kw.get("event") == "error":
+        import traceback
+        chain = traceback.format_exc()
+        if chain != "NoneType: None\n":
+            kw.setdefault("traceback", chain)
+        exc = sys.exc_info()[1]
+        if exc is not None:
+            kw.setdefault("os_error", getattr(exc, "winerror", None))
+    sys.stderr.flush()
     # 与 sep/train worker 同一套约定：code 是机器码（壳拿它认 cancelled），
     # message_code 喂 i18n（msg.synth.<code>，壳侧 t_worker_msg 翻译，语言包
     # 没登记的码回退到 message 原文）。
@@ -479,6 +491,7 @@ def _write_wav(path: Path, chunks: list[bytes], sr: int) -> None:
 
 
 def main() -> int:
+    global _REQUEST_ID
     _ensure_stdio_utf8()
     ap = argparse.ArgumentParser(description="GPT-SoVITS Fabric resident synth worker")
     ap.add_argument("--resident", action="store_true", help="常驻模式（Rust 托管时固定传入）")
@@ -496,6 +509,7 @@ def main() -> int:
         except json.JSONDecodeError as exc:
             emit(event="error", job=None, message=f"bad json: {exc}")
             continue
+        _REQUEST_ID = req.get("request_id")
         cmd = req.get("cmd")
         if cmd == "load":
             engine.load(req)

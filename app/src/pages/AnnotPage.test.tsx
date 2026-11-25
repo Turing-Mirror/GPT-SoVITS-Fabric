@@ -86,11 +86,11 @@ it("creates annotations, opens the editor, and sends the exact generated file to
 });
 
 it("lets user customize speaker, minimize generation to orb, and cancel running generation", async () => {
-  let rejectGen!: (error: Error) => void;
+  let rejectGen!: (error: unknown) => void;
   mocks.invoke.mockImplementation(async command => {
     if (command === "annot_generate") return new Promise((_, reject) => { rejectGen = reject; });
     if (command === "annot_generate_cancel") {
-      rejectGen(new Error(t("s.annot.cancelled")));
+      rejectGen({ code: "cancelled", message: t("s.annot.cancelled") });
       return {};
     }
     return { roles: [] };
@@ -117,7 +117,8 @@ it("allows retry after generation fails", async () => {
   await act(async () => root.render(<I18nProvider><AnnotPage /></I18nProvider>));
   await startCreation();
   await act(async () => button(t("s.annot.generate")).click());
-  expect(document.body.textContent).toContain("Transcription model download failed");
+  expect(document.body.textContent).toContain(t("diag.title.annotation"));
+  expect(document.body.textContent).not.toContain("Transcription model download failed");
   expect(button(t("s.annot.generate")).disabled).toBe(false);
   mocks.invoke.mockResolvedValue(annotation);
   await act(async () => button(t("s.annot.generate")).click());

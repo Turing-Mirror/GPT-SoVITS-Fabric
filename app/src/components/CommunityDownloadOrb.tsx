@@ -1,3 +1,4 @@
+import { diagnosticContent } from "../lib/diagnostics";
 import { useEffect, useState } from "react";
 import { ProgressOrb } from "trm-ui";
 import { useI18n } from "../i18n";
@@ -74,7 +75,7 @@ export function CommunityDownloadOrb({
   const showError = offPlaza && totalActive === 0 && alertErr !== null;
   const open = offPlaza && (totalActive > 0 || showError);
   const tooltip = showError
-    ? joinClauses([t("s.communityDownloading"), alertErr.text])
+    ? joinClauses([t("s.communityDownloading"), diagnosticContent(alertErr.text, "download").title])
     : joinClauses([
         store.activeLabel || t("s.communityDownloading"),
         totalActive > 1 ? t("s.communityDownloadCount", { v0: totalActive }) : "",
