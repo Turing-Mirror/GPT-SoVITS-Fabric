@@ -154,6 +154,11 @@ fn http_get_json_ex(url: &str, timeout_secs: u64, no_cache: bool) -> Result<Valu
     serde_json::from_str(&text).map_err(|e| format!("JSON {url}: {e}"))
 }
 
+/// `http_get_json_ex` 的报错里，只有请求没发出去或没收到回应时才不带 `HTTP ` 和 `JSON `。
+fn is_transport_error(e: &str) -> bool {
+    !e.contains(": HTTP ") && !e.starts_with("JSON ")
+}
+
 /// 给 URL 加时间戳，避免 CDN 把 `index.json` 钉死在旧版本。
 fn with_cache_bust(url: &str) -> String {
     let sep = if url.contains('?') { '&' } else { '?' };
@@ -195,8 +200,14 @@ pub fn fetch_remote_catalog_cached(timeout_secs: u64) -> Result<Value, String> {
 pub fn fetch_remote_catalog(timeout_secs: u64) -> Result<Value, String> {
     let mut errors = Vec::new();
     for url in MANIFEST_URLS {
-        let u = with_cache_bust(url);
-        match http_get_json_ex(&u, timeout_secs, true) {
+        let mut got = http_get_json_ex(&with_cache_bust(url), timeout_secs, true);
+        // 连接层的失败（断线、握手超时）多是一时抖动，同一地址再试一次；
+        // 服务器已经回了状态码的就不再重试。
+        if matches!(&got, Err(e) if is_transport_error(e)) {
+            std::thread::sleep(Duration::from_millis(800));
+            got = http_get_json_ex(&with_cache_bust(url), timeout_secs, true);
+        }
+        match got {
             Ok(v) if v.is_object() => {
                 #[cfg(test)]
                 crate::logging::shell_log!(format!("catalog source {url}"));
@@ -475,6 +486,13 @@ mod tests {
                 "{variant} 的兜底带了 sha（{sha}）—— 回填之前必须先确认它是这个产品自己的包"
             );
         }
+    }
+
+    #[test]
+    fn only_transport_failures_are_retried() {
+        assert!(is_transport_error("https://x/index.json: error sending request for url"));
+        assert!(!is_transport_error("https://x/index.json: HTTP 404 Not Found"));
+        assert!(!is_transport_error("JSON https://x/index.json: expected value"));
     }
 
     #[test]

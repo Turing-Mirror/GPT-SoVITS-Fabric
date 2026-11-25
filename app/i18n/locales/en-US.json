@@ -576,7 +576,7 @@
     "179ee96e83": "{v0} failed: {v1}",
     "ae82b8cc23": "Diagnostic package generated: {v0}{v1}",
     "7fae0289b6": "Failed to generate diagnostic package: {v0}",
-    "af72a27185": "Failed to pull CNB manifest: {a0}",
+    "af72a27185": "Could not retrieve the online catalog: {a0}",
     "364fa9e6bf": "{a1} connections established. Downloading.",
     "f36aff2870": "Engine resources still missing: {a0}",
     "341bc35cbf": "Unsafe save path in the component list: {a0}",

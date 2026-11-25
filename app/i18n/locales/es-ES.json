@@ -576,7 +576,7 @@
     "179ee96e83": "Error de {v0}: {v1}",
     "ae82b8cc23": "Generación de paquete de diagnóstico completada: {v0}{v1}",
     "7fae0289b6": "Error al generar paquete de diagnóstico: {v0}",
-    "af72a27185": "No se pudo obtener el manifiesto CNB: {a0}",
+    "af72a27185": "No se pudo obtener el catálogo en línea: {a0}",
     "364fa9e6bf": "{a1} conexiones establecidas. Descargando.",
     "f36aff2870": "Aún faltan recursos del motor: {a0}",
     "341bc35cbf": "La ruta de guardado de la lista de componentes no es segura: {a0}",

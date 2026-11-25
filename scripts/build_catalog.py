@@ -496,8 +496,15 @@ def main() -> int:
 
     text = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
     if args.out:
-        Path(args.out).write_text(text, encoding="utf-8")
-        print(f"[catalog] → {args.out}", file=sys.stderr)
+        out = Path(args.out)
+        out.write_text(text, encoding="utf-8")
+        print(f"[catalog] → {out}", file=sys.stderr)
+        # manifest_urls 的最后一条备用地址。1.0.3 及更早的版本只认 CNB 上的两条，
+        # 这份副本缺失时第一条一断，检查更新就直接失败。
+        snippet = out.parent / "catalog" / "online_catalog.snippet.json"
+        snippet.parent.mkdir(parents=True, exist_ok=True)
+        snippet.write_text(text, encoding="utf-8")
+        print(f"[catalog] → {snippet}", file=sys.stderr)
     else:
         sys.stdout.write(text)
     return 0
