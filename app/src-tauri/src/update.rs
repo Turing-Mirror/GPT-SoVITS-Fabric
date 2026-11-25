@@ -435,14 +435,18 @@ pub async fn run_app_updater(app: &tauri::AppHandle) -> Result<Value, String> {
     let updater = app
         .updater()
         .map_err(|_| crate::i18n::t("s.6a3b354477"))?;
-    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+    let Some(update) = updater
+        .check()
+        .await
+        .map_err(|e| crate::download::plain_error(&e.to_string()))?
+    else {
         return Ok(json!({"available": false, "local": APP_VERSION}));
     };
     let version = update.version.clone();
     update
         .download_and_install(|_chunk, _total| {}, || {})
         .await
-        .map_err(|e| crate::i18n::te("s.90d174c86a", &(e)))?;
+        .map_err(|e| crate::download::plain_error(&e.to_string()))?;
     Ok(json!({
         "available": true,
         "installed": true,

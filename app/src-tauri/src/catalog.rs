@@ -169,6 +169,22 @@ fn with_cache_bust(url: &str) -> String {
     format!("{url}{sep}_={ms}")
 }
 
+/// 连接层的失败（断线、握手超时）多是一时抖动，同一地址再试一次；
+/// 服务器已经回了状态码或内容解析不了的，不再重试。
+pub(crate) fn get_json_retry(url: &str, timeout_secs: u64, no_cache: bool) -> Result<Value, String> {
+    let fetch = || {
+        let u = if no_cache { with_cache_bust(url) } else { url.to_string() };
+        http_get_json_ex(&u, timeout_secs, no_cache)
+    };
+    match fetch() {
+        Err(e) if is_transport_error(&e) => {
+            std::thread::sleep(Duration::from_millis(800));
+            fetch()
+        }
+        other => other,
+    }
+}
+
 /// Short-lived memo of the remote catalog.
 ///
 /// `provision_status` resolves a runtime spec, which fetches this. That command
@@ -200,14 +216,7 @@ pub fn fetch_remote_catalog_cached(timeout_secs: u64) -> Result<Value, String> {
 pub fn fetch_remote_catalog(timeout_secs: u64) -> Result<Value, String> {
     let mut errors = Vec::new();
     for url in MANIFEST_URLS {
-        let mut got = http_get_json_ex(&with_cache_bust(url), timeout_secs, true);
-        // 连接层的失败（断线、握手超时）多是一时抖动，同一地址再试一次；
-        // 服务器已经回了状态码的就不再重试。
-        if matches!(&got, Err(e) if is_transport_error(e)) {
-            std::thread::sleep(Duration::from_millis(800));
-            got = http_get_json_ex(&with_cache_bust(url), timeout_secs, true);
-        }
-        match got {
+        match get_json_retry(url, timeout_secs, true) {
             Ok(v) if v.is_object() => {
                 #[cfg(test)]
                 crate::logging::shell_log!(format!("catalog source {url}"));
@@ -219,7 +228,7 @@ pub fn fetch_remote_catalog(timeout_secs: u64) -> Result<Value, String> {
             Err(e) => errors.push(e),
         }
     }
-    Err(crate::i18n::te("s.af72a27185", &errors.into_iter().take(3).collect::<Vec<_>>().join(" | ")))
+    Err(crate::download::plain_error(&errors.join(" | ")))
 }
 
 /// Preserve catalog priority and append built-in addresses only as fallbacks.
