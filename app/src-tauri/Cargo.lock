@@ -1624,6 +1624,7 @@ dependencies = [
 [[package]]
 name = "fabric-diagnostics"
 version = "0.1.0"
+source = "git+https://github.com/Turing-Mirror/fabric-diagnostics.git?rev=f8cf0368161d31a993c4c64b81dce312f21708de#f8cf0368161d31a993c4c64b81dce312f21708de"
 dependencies = [
  "serde",
  "serde_json",
@@ -2159,7 +2160,7 @@ dependencies = [
 
 [[package]]
 name = "gpt-sovits-fabric"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "chrono",
  "fabric-diagnostics",
