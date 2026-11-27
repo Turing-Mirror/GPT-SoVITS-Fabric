@@ -1,11 +1,11 @@
-import { readDiagnostic, withFeature } from "../lib/diagnostics";
+import { errorText, readDiagnostic, withFeature } from "../lib/diagnostics";
 import { ErrorNote } from "../components/ErrorNote";
 import { peekCharacters, readCharacters } from "../lib/characters";
 import { TextInput, usePageLeave } from "trm-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportCharacterPackages } from "../components/ExportCharacterPackages";
 import { PagePad, PageHead, Block, Btn } from "../components/ui";
-import { Field } from "../components/controls";
+import { Field, Select } from "../components/controls";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "../lib/invoke";
 import { CropCoverDialog } from "../components/CropCoverDialog";
@@ -76,6 +76,7 @@ export function ModelsPage({
   const [sort, setSort] = useState<Sort>("name");
   const [editing, setEditing] = useState<Role | null>(null);
   const [managing, setManaging] = useState<Role | null>(null);
+  const [importingWeights, setImportingWeights] = useState(false);
   // 封面换过之后浏览器会按旧地址缓存，地址上带一个版本号
   const [coverVer, setCoverVer] = useState(0);
   const [coverEdit, setCoverEdit] = useState<Role | null>(null);
@@ -94,14 +95,14 @@ export function ModelsPage({
 
   useEffect(() => {
     if (active) reload();
-    else { setEditing(null); setCoverEdit(null); setManaging(null); }
+    else { setEditing(null); setCoverEdit(null); setManaging(null); setImportingWeights(false); }
     const counter = loadRequest;
     return () => { counter.current++; };
   }, [active, reload]);
 
-  // 页面消息自己消失，免得一条旧结果一直挂着。
+  // 页面消息自己消失，免得一条旧结果一直挂着。报错带着处理步骤，留到用户自己关掉或换页。
   useEffect(() => {
-    if (!msg) return;
+    if (!msg || readDiagnostic(msg)) return;
     const id = window.setTimeout(() => setMsg(""), 5000);
     return () => window.clearTimeout(id);
   }, [msg]);
@@ -127,7 +128,7 @@ export function ModelsPage({
       setMsg(t("library.importDone", { v0: String(r?.name ?? "") }));
       reload();
     } catch (e) {
-      setMsg(String(e));
+      setMsg(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -194,12 +195,14 @@ export function ModelsPage({
     <PagePad>
       <PageHead
         title={t("library.title")}
-        sub={t("library.subtitle")}
         actions={
           <>
             <Btn onClick={() => onOpenPlaza?.()}>{t("library.goPlaza")}</Btn>
             <Btn onClick={() => goTo("train")}>{t("library.goTrain")}</Btn>
             {roles.length > 0 && <Btn onClick={() => { setExportInstance((n) => n + 1); setExportOpen(true); }}>{t("publication.exportPacks")}</Btn>}
+            <Btn disabled={busy} onClick={() => (isTauri() ? setImportingWeights(true) : setMsg(t("library.demoImport")))}>
+              {t("library.importWeights")}
+            </Btn>
             <Btn primary busy={busy} onClick={() => void importPack()}>
               {t("library.import")}
             </Btn>
@@ -207,6 +210,16 @@ export function ModelsPage({
         }
       />
 
+      <Leave>{importingWeights ? (
+        <ImportWeightsDialog
+          onClose={() => setImportingWeights(false)}
+          onDone={(name) => {
+            setImportingWeights(false);
+            setMsg(t("library.importDone", { v0: name }));
+            reload();
+          }}
+        />
+      ) : null}</Leave>
       <ExportCharacterPackages key={exportInstance} open={active && exportOpen} roles={roles} onClose={() => setExportOpen(false)} />
       <AdBanner banner={banner ?? null} />
 
@@ -334,6 +347,99 @@ function EditDialog({ role, onClose, onSaved }: { role: Role; onClose: () => voi
         <div className="mt-6 flex gap-2.5 justify-end">
           <Btn onClick={onClose} disabled={busy}>{t("library.cancel")}</Btn>
           <Btn primary busy={busy} disabled={!name.trim()} onClick={() => void save()}>{t("library.save")}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+const REFERENCE_LANGS = ["zh", "ja", "en", "ko", "yue"] as const;
+const fileName = (path: string) => path.split(/[\/]/).pop() ?? path;
+const fileStem = (path: string) => fileName(path).replace(/\.[^.]+$/, "");
+
+/**
+ * 导入模型：两份权重加一条参考建成角色。给直接用原版 GPT-SoVITS 训练的用户，
+ * 他们手里是 .ckpt、.pth 和一段参考音频，而不是角色包。
+ */
+function ImportWeightsDialog({ onClose, onDone }: { onClose: () => void; onDone: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const [gpt, setGpt] = useState("");
+  const [sovits, setSovits] = useState("");
+  const [reference, setReference] = useState("");
+  const [text, setText] = useState("");
+  const [lang, setLang] = useState<string>("zh");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isList = /\.list$/i.test(reference);
+  const ready = gpt && sovits && reference && (isList || text.trim());
+
+  const pick = async (kind: "gpt" | "sovits" | "reference") => {
+    setErr("");
+    try {
+      const path = await invoke<string | null>("role_import_pick", { kind });
+      if (!path) return;
+      if (kind === "gpt") {
+        setGpt(path);
+        if (!name.trim()) setName(fileStem(path));
+      } else if (kind === "sovits") setSovits(path);
+      else setReference(path);
+    } catch (e) {
+      setErr(errorText(e));
+    }
+  };
+  const submit = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await invoke<{ name?: string }>("role_import_weights", {
+        name, gpt, sovits, reference, text: isList ? null : text, lang: isList ? null : lang,
+      });
+      onDone(String(r?.name ?? name));
+    } catch (e) {
+      setErr(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fileRow = (label: string, value: string, kind: "gpt" | "sovits" | "reference") => (
+    <Field
+      label={label}
+      control={
+        <div className="flex items-center gap-2 min-w-0">
+          {value ? <span className="min-w-0 truncate text-[12.5px] text-[var(--ink-muted)]" title={value}>{fileName(value)}</span> : null}
+          <Btn disabled={busy} onClick={() => void pick(kind)}>{t("library.iwChoose")}</Btn>
+        </div>
+      }
+    />
+  );
+  return (
+    <Modal onBackdrop={busy ? undefined : onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[520px] rounded-[var(--r)] bg-[var(--surface)] shadow-[0_22px_56px_-18px_var(--scrim)] p-6"
+      >
+        <h2 className="text-[16px] font-semibold m-0 mb-5">{t("library.importWeights")}</h2>
+        <div className="flex flex-col gap-4">
+          {fileRow(t("library.iwGpt"), gpt, "gpt")}
+          {fileRow(t("library.iwSovits"), sovits, "sovits")}
+          {fileRow(t("library.iwReference"), reference, "reference")}
+          {reference && !isList ? (
+            <>
+              <Field label={t("library.iwText")} control={<TextInput value={text} onChange={setText} className="selectable min-w-[240px]" />} />
+              <Field
+                label={t("library.iwLang")}
+                control={<Select value={lang} onChange={setLang} options={REFERENCE_LANGS.map((l) => ({ id: l, label: l.toUpperCase() }))} />}
+              />
+            </>
+          ) : null}
+          <Field label={t("library.fieldName")} control={<TextInput value={name} onChange={setName} className="selectable" />} />
+        </div>
+        {err ? <ErrorNote feature="importexport" text={err} /> : null}
+        <div className="mt-6 flex gap-2.5 justify-end">
+          <Btn onClick={onClose} disabled={busy}>{t("library.cancel")}</Btn>
+          <Btn primary busy={busy} disabled={!ready} onClick={() => void submit()}>{t("library.iwImport")}</Btn>
         </div>
       </div>
     </Modal>

@@ -4,6 +4,7 @@ import os
 if "_CUDA_VISIBLE_DEVICES" in os.environ:
     os.environ["CUDA_VISIBLE_DEVICES"] = os.environ["_CUDA_VISIBLE_DEVICES"]
 import argparse
+import inspect
 import logging
 import platform
 from pathlib import Path
@@ -145,7 +146,12 @@ def main(args):
     except Exception:
         ckpt_path = None
     print("ckpt_path:", ckpt_path)
-    trainer.fit(model, data_module, ckpt_path=ckpt_path)
+    # 续训读的是本机自己存下的进度文件，里面带 pathlib 路径；新版 Lightning 默认
+    # weights_only=True 会拒绝它，所以续训时明确按完整格式读取。
+    fit_kwargs = {"ckpt_path": ckpt_path}
+    if ckpt_path is not None and "weights_only" in inspect.signature(trainer.fit).parameters:
+        fit_kwargs["weights_only"] = False
+    trainer.fit(model, data_module, **fit_kwargs)
 
 
 # srun --gpus-per-node=1 --ntasks-per-node=1 python train.py --path-to-configuration configurations/default.yaml

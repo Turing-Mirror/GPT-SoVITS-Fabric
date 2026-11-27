@@ -740,7 +740,6 @@
     "kiUpdate": "{v0}(으)로 업데이트",
     "kiNoUpdateYet": "현재 최신 버전입니다. 이 문제의 수정은 아직 배포되지 않았습니다. 다음 버전을 기다려 주십시오.",
     "annot.title": ".list 주석 관리",
-    "annot.sub": "같은 주석이 학습에도, 「합성」의 참조 후보에도 쓰입니다.",
     "annot.open": ".list 열기",
     "annot.create": ".list 만들기",
     "annot.chooseSource": "오디오 폴더 선택",
@@ -887,7 +886,14 @@
     "cacheClearFailed": "캐시를 지우지 못했습니다.",
     "consultBuildFailed": "상담 팩을 생성하지 못했습니다.",
     "storageScanFailed": "저장 공간 사용량을 측정하지 못했습니다.",
-    "storageCleanFailed": "저장 공간을 정리하지 못했습니다."
+    "storageCleanFailed": "저장 공간을 정리하지 못했습니다.",
+    "updateInstallFailed": "업데이트를 완료하지 못했습니다.",
+    "roleImportErrReference": "참조 파일은 오디오 파일(WAV, MP3, FLAC, OGG, M4A) 또는 .list 주석이어야 합니다.",
+    "roleImportErrReferenceText": "참조 오디오를 사용할 때는 참조 텍스트를 입력하고 언어를 선택하십시오.",
+    "roleImportPickGpt": "GPT 모델 선택",
+    "roleImportPickSovits": "SoVITS 모델 선택",
+    "roleImportPickReference": "참조 오디오 또는 .list 주석 선택",
+    "roleImportReference": "참조 오디오 또는 .list 주석"
   },
   "extras": {
     "engineTitle": "엔진 리소스",
@@ -1266,7 +1272,6 @@
   "more": {},
   "library": {
     "title": "라이브러리",
-    "subtitle": "캐릭터 팩 가져오기, 관리, 공유",
     "goPlaza": "커뮤니티 열기",
     "import": "팩 가져오기",
     "demoImport": "브라우저 미리 보기에서는 가져올 수 없습니다. 데스크톱 앱에서 사용하십시오.",
@@ -1314,7 +1319,15 @@
     "epochSourceRemoved": "{v0} 에폭(원본 파일 삭제됨)",
     "weightSourceRemoved": "원본 파일 삭제됨",
     "weightExternal": "외부 파일",
-    "selectEpoch": "에폭 선택"
+    "selectEpoch": "에폭 선택",
+    "importWeights": "모델 가져오기",
+    "iwGpt": "GPT 모델(.ckpt)",
+    "iwSovits": "SoVITS 모델(.pth)",
+    "iwReference": "참조 오디오 또는 .list 주석",
+    "iwText": "참조 텍스트",
+    "iwLang": "언어",
+    "iwChoose": "파일 선택",
+    "iwImport": "가져오기"
   },
   "sep": {
     "title": "보컬 분리",

@@ -740,7 +740,6 @@
     "kiUpdate": "Update to {v0}",
     "kiNoUpdateYet": "This is the latest version. The fix for this problem has not been released yet; please wait for the next version.",
     "annot.title": ".list annotations",
-    "annot.sub": "The same annotation is used for training and as reference candidates in Synthesis.",
     "annot.open": "Open .list",
     "annot.create": "Create .list",
     "annot.chooseSource": "Choose audio folder",
@@ -887,7 +886,14 @@
     "cacheClearFailed": "The cache could not be cleared.",
     "consultBuildFailed": "The consultation package could not be generated.",
     "storageScanFailed": "Storage usage could not be measured.",
-    "storageCleanFailed": "Storage space could not be cleaned."
+    "storageCleanFailed": "Storage space could not be cleaned.",
+    "updateInstallFailed": "The update failed.",
+    "roleImportErrReference": "The reference file must be an audio file (WAV, MP3, FLAC, OGG, or M4A) or a .list annotation.",
+    "roleImportErrReferenceText": "When using reference audio, enter the reference text and select a language.",
+    "roleImportPickGpt": "Select GPT model",
+    "roleImportPickSovits": "Select SoVITS model",
+    "roleImportPickReference": "Select reference audio or .list annotation",
+    "roleImportReference": "Reference audio or .list annotation"
   },
   "extras": {
     "engineTitle": "Engine resources",
@@ -1266,7 +1272,6 @@
   "more": {},
   "library": {
     "title": "Library",
-    "subtitle": "Import, manage and share character packs",
     "goPlaza": "Open Community",
     "import": "Import pack",
     "demoImport": "Importing is not available in the browser preview. Use the desktop app.",
@@ -1314,7 +1319,15 @@
     "epochSourceRemoved": "Epoch {v0} (source file deleted)",
     "weightSourceRemoved": "Source file deleted",
     "weightExternal": "External file",
-    "selectEpoch": "Select epoch"
+    "selectEpoch": "Select epoch",
+    "importWeights": "Import model",
+    "iwGpt": "GPT model (.ckpt)",
+    "iwSovits": "SoVITS model (.pth)",
+    "iwReference": "Reference audio or .list annotation",
+    "iwText": "Reference text",
+    "iwLang": "Language",
+    "iwChoose": "Choose file",
+    "iwImport": "Import"
   },
   "sep": {
     "title": "Vocal separation",

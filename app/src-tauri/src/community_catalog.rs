@@ -82,19 +82,22 @@ pub(crate) fn publication_base(root: &Path) -> ApiResult<Url> {
     Ok(base)
 }
 
+/// 社区服务要几秒才开始回应，慢网络下读到一半可能断开；连接或读取出错时再试一次，
+/// 服务明确拒绝（HTTP 状态码）时不重试。
 fn request(client: &Client, url: Url) -> Result<Value, String> {
-    let body = client
-        .get(url)
-        .send()
-        .and_then(|r| r.error_for_status())
-        .and_then(|r| r.text())
-        .map_err(|e| e.to_string())?;
+    let once = || client.get(url.clone()).send().and_then(|r| r.error_for_status()).and_then(|r| r.text());
+    let body = match once() {
+        Err(e) if e.status().is_none() => once(),
+        other => other,
+    }
+    .map_err(|e| e.to_string())?;
     serde_json::from_str(&body).map_err(|e| e.to_string())
 }
 
 fn client() -> Result<Client, String> {
     Client::builder()
-        .timeout(Duration::from_secs(20))
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(45))
         .build()
         .map_err(|e| e.to_string())
 }

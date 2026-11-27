@@ -740,7 +740,6 @@
     "kiUpdate": "Actualizar a {v0}",
     "kiNoUpdateYet": "Esta es la versión más reciente. La corrección de este problema aún no se ha publicado; espere a la próxima versión.",
     "annot.title": "Anotaciones .list",
-    "annot.sub": "La misma anotación se usa para el entrenamiento y como referencias candidatas en Síntesis.",
     "annot.open": "Abrir .list",
     "annot.create": "Crear .list",
     "annot.chooseSource": "Elegir carpeta de audio",
@@ -887,7 +886,14 @@
     "cacheClearFailed": "No se pudo vaciar la caché.",
     "consultBuildFailed": "No se pudo generar el paquete de consulta.",
     "storageScanFailed": "No se pudo calcular el uso de almacenamiento.",
-    "storageCleanFailed": "No se pudo limpiar el espacio de almacenamiento."
+    "storageCleanFailed": "No se pudo limpiar el espacio de almacenamiento.",
+    "updateInstallFailed": "No se pudo completar la actualización.",
+    "roleImportErrReference": "El archivo de referencia debe ser un archivo de audio (WAV, MP3, FLAC, OGG o M4A) o una anotación .list.",
+    "roleImportErrReferenceText": "Al usar un audio de referencia, escriba el texto de referencia y seleccione el idioma.",
+    "roleImportPickGpt": "Seleccionar modelo GPT",
+    "roleImportPickSovits": "Seleccionar modelo SoVITS",
+    "roleImportPickReference": "Seleccionar audio de referencia o anotación .list",
+    "roleImportReference": "Audio de referencia o anotación .list"
   },
   "extras": {
     "engineTitle": "Recursos del motor",
@@ -1266,7 +1272,6 @@
   "more": {},
   "library": {
     "title": "Biblioteca",
-    "subtitle": "Importar, gestionar y compartir paquetes",
     "goPlaza": "Abrir Comunidad",
     "import": "Importar paquete",
     "demoImport": "La importación no está disponible en la vista previa del navegador. Use la aplicación de escritorio.",
@@ -1314,7 +1319,15 @@
     "epochSourceRemoved": "Época {v0} (archivo fuente eliminado)",
     "weightSourceRemoved": "Archivo fuente eliminado",
     "weightExternal": "Archivo externo",
-    "selectEpoch": "Seleccionar época"
+    "selectEpoch": "Seleccionar época",
+    "importWeights": "Importar modelo",
+    "iwGpt": "Modelo GPT (.ckpt)",
+    "iwSovits": "Modelo SoVITS (.pth)",
+    "iwReference": "Audio de referencia o anotación .list",
+    "iwText": "Texto de referencia",
+    "iwLang": "Idioma",
+    "iwChoose": "Elegir archivo",
+    "iwImport": "Importar"
   },
   "sep": {
     "title": "Separación de voz",

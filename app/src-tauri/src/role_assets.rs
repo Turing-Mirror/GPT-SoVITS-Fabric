@@ -318,6 +318,118 @@ pub fn associate(root: &Path, id: &str, src: &Path) -> Result<Value, String> {
     })
 }
 
+/// 参考音频接受的格式。原版 GPT-SoVITS 的参考音频多是 wav，其余格式合成时同样能读。
+pub const REFERENCE_AUDIO: &[&str] = &["wav", "mp3", "flac", "ogg", "m4a"];
+
+/// 「模型」页 → 导入模型：用一份 GPT 权重、一份 SoVITS 权重和一条参考建成新角色。
+///
+/// 面向直接用原版 GPT-SoVITS 训练的用户：他们手里是 `GPT_weights/*.ckpt`、
+/// `SoVITS_weights/*.pth` 和一段参考音频，而不是角色包。参考可以是一段音频
+/// （同时给出它说的内容和语种），也可以是现成的 .list 标注。
+pub fn import_weights(
+    root: &Path,
+    name: &str,
+    gpt: &Path,
+    sovits: &Path,
+    reference: &Path,
+    text: &str,
+    lang: &str,
+) -> Result<Value, String> {
+    import_weights_with(root, name, gpt, sovits, reference, text, lang, inspect_replacement)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn import_weights_with(
+    root: &Path,
+    name: &str,
+    gpt: &Path,
+    sovits: &Path,
+    reference: &Path,
+    text: &str,
+    lang: &str,
+    inspect: impl FnOnce(&Path, &str, &Path, Option<&Path>, Option<&str>) -> Result<Value, String>,
+) -> Result<Value, String> {
+    for (kind, path) in [("gpt", gpt), ("sovits", sovits)] {
+        let ext = weight_extension(kind)?;
+        if !has_extension(path, ext)
+            || !path.is_file()
+            || std::fs::metadata(path).map_err(|e| e.to_string())?.len() == 0
+        {
+            return Err(crate::i18n::t("s.roleErrWeightType"));
+        }
+    }
+    let is_list = has_extension(reference, "list");
+    let is_audio = REFERENCE_AUDIO.iter().any(|ext| has_extension(reference, ext));
+    if !reference.is_file() || !(is_list || is_audio) {
+        return Err(crate::i18n::t("s.roleImportErrReference"));
+    }
+    // .list 一行用 | 分隔，换行分行：参考文本里的这两种字符换成空格。
+    let text = text.replace(['|', '\r', '\n'], " ");
+    let text = text.trim();
+    if is_audio && (text.is_empty() || lang.trim().is_empty()) {
+        return Err(crate::i18n::t("s.roleImportErrReferenceText"));
+    }
+    let stem = |p: &Path| p.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let name = match name.trim() {
+        "" => stem(gpt),
+        given => given.to_owned(),
+    };
+    // 两份权重必须是同一套：校验和版本识别都在装进去之前做完。
+    let detected = inspect(root, "sovits", sovits, Some(gpt), None)?;
+
+    let base = crate::paths::user_data(root).join("characters");
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let safe = crate::characters::safe_id(&name);
+    let id = (1..)
+        .map(|n| if n == 1 { safe.clone() } else { format!("{safe}-{n}") })
+        .find(|id| !base.join(id).exists())
+        .unwrap_or_default();
+    let stage = base.join(format!(".import-{}", unique()));
+    let dest = base.join(&id);
+    let built = (|| {
+        let models = stage.join("models");
+        std::fs::create_dir_all(&models).map_err(|e| e.to_string())?;
+        std::fs::copy(gpt, models.join("gpt.ckpt")).map_err(|e| e.to_string())?;
+        std::fs::copy(sovits, models.join("sovits.pth")).map_err(|e| e.to_string())?;
+        let cfg = json!({
+            "id": id,
+            "name": name,
+            "author": "",
+            "source": "imported",
+            "version": detected["version"],
+            "weight_info": {"gpt": detected["gpt"], "sovits": detected["sovits"]},
+            "weight_validation": "verified",
+            "lists": [],
+        });
+        write_cfg(&stage, &cfg)?;
+        std::fs::rename(&stage, &dest).map_err(|e| e.to_string())
+    })();
+    if let Err(e) = built {
+        let _ = std::fs::remove_dir_all(&stage);
+        return Err(e);
+    }
+
+    // 一段音频先写成一行 .list，再走与「关联 .list」相同的复制和校验。
+    let scratch = base.join(format!(".reference-{}", unique()));
+    let list = if is_audio {
+        let file = scratch.join(format!("{}.list", stem(reference)));
+        let line = format!("{}|{}|{}|{}\n", reference.to_string_lossy(), name, lang.trim(), text);
+        std::fs::create_dir_all(&scratch)
+            .and_then(|_| std::fs::write(&file, line))
+            .map_err(|e| e.to_string())
+            .map(|_| file)
+    } else {
+        Ok(reference.to_path_buf())
+    };
+    let linked = list.and_then(|list| associate(root, &id, &list));
+    let _ = std::fs::remove_dir_all(&scratch);
+    if let Err(e) = linked {
+        let _ = std::fs::remove_dir_all(&dest);
+        return Err(e);
+    }
+    Ok(json!({"id": id, "name": name, "version": detected["version"]}))
+}
+
 pub fn unlink(
     root: &Path,
     id: &str,
@@ -347,6 +459,60 @@ pub fn unlink(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn detected(_: &Path, _: &str, _: &Path, _: Option<&Path>, _: Option<&str>) -> Result<Value, String> {
+        Ok(json!({"version":"v2ProPlus","gpt":{"kind":"gpt"},"sovits":{"kind":"sovits"}}))
+    }
+    #[test]
+    fn original_gui_weights_and_one_reference_clip_become_a_role() {
+        let root = crate::testutil::scratch("role-import-weights");
+        let src = root.join("from-gui");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("alice-e15.ckpt"), b"gpt").unwrap();
+        std::fs::write(src.join("alice_e8_s200.pth"), b"sovits").unwrap();
+        std::fs::write(src.join("ref.wav"), b"audio").unwrap();
+        let made = import_weights_with(&root, "", &src.join("alice-e15.ckpt"), &src.join("alice_e8_s200.pth"),
+            &src.join("ref.wav"), "Hello|there
+", " en ", detected).unwrap();
+        assert_eq!(made["id"], "alice-e15");
+        assert_eq!(made["name"], "alice-e15");
+        let dir = root.join("User_Data/characters/alice-e15");
+        assert_eq!(std::fs::read(dir.join("models/gpt.ckpt")).unwrap(), b"gpt");
+        assert_eq!(std::fs::read(dir.join("models/sovits.pth")).unwrap(), b"sovits");
+        let cfg = read_cfg(&dir).unwrap();
+        assert_eq!(cfg["version"], "v2ProPlus");
+        assert_eq!(cfg["source"], "imported");
+        let detail = details(&root, "alice-e15").unwrap();
+        let list = crate::annot::load(detail["lists"][0]["path"].as_str().unwrap()).unwrap();
+        assert_eq!(list["rows"][0]["text"], "Hello there");
+        assert_eq!(list["rows"][0]["lang"], "en");
+        assert_eq!(list["rows"][0]["exists"], true);
+        // The same name again gets its own folder instead of replacing the first role.
+        let again = import_weights_with(&root, "alice-e15", &src.join("alice-e15.ckpt"), &src.join("alice_e8_s200.pth"),
+            &src.join("ref.wav"), "Hi", "en", detected).unwrap();
+        assert_eq!(again["id"], "alice-e15-2");
+        // No leftovers from staging.
+        let names: Vec<String> = std::fs::read_dir(root.join("User_Data/characters")).unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        assert!(names.iter().all(|n| !n.starts_with('.')), "{names:?}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn import_rejects_missing_reference_text_and_leaves_nothing_behind() {
+        let root = crate::testutil::scratch("role-import-reject");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.ckpt"), b"gpt").unwrap();
+        std::fs::write(root.join("a.pth"), b"sovits").unwrap();
+        std::fs::write(root.join("ref.wav"), b"audio").unwrap();
+        std::fs::write(root.join("broken.list"), "absent.wav|s|en|hi
+").unwrap();
+        assert!(import_weights_with(&root, "a", &root.join("a.ckpt"), &root.join("a.pth"), &root.join("ref.wav"), " ", "en", detected).is_err());
+        assert!(import_weights_with(&root, "a", &root.join("a.pth"), &root.join("a.ckpt"), &root.join("ref.wav"), "hi", "en", detected).is_err());
+        // A .list whose audio is missing fails after the role folder was built; it must be removed again.
+        assert!(import_weights_with(&root, "a", &root.join("a.ckpt"), &root.join("a.pth"), &root.join("broken.list"), "", "", detected).is_err());
+        let left = std::fs::read_dir(root.join("User_Data/characters")).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(left, 0);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     fn fixture(label: &str) -> (PathBuf, PathBuf) {
         let root = crate::testutil::scratch(label);
         let dir = root.join("User_Data/characters/voice");

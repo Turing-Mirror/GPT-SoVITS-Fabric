@@ -740,7 +740,6 @@
     "kiUpdate": "Обновить до {v0}",
     "kiNoUpdateYet": "Это последняя версия. Исправление этой проблемы ещё не выпущено; дождитесь следующей версии.",
     "annot.title": "Разметка .list",
-    "annot.sub": "Одна и та же разметка используется для обучения и как варианты образцов в «Синтезе».",
     "annot.open": "Открыть .list",
     "annot.create": "Создать .list",
     "annot.chooseSource": "Выбрать папку с аудио",
@@ -887,7 +886,14 @@
     "cacheClearFailed": "Не удалось очистить кэш.",
     "consultBuildFailed": "Не удалось создать консультационный пакет.",
     "storageScanFailed": "Не удалось подсчитать использование диска.",
-    "storageCleanFailed": "Не удалось очистить хранилище."
+    "storageCleanFailed": "Не удалось очистить хранилище.",
+    "updateInstallFailed": "Не удалось выполнить обновление.",
+    "roleImportErrReference": "Эталонный файл должен быть аудиофайлом (WAV, MP3, FLAC, OGG или M4A) или разметкой .list.",
+    "roleImportErrReferenceText": "При использовании эталонного аудио укажите эталонный текст и выберите язык.",
+    "roleImportPickGpt": "Выбор модели GPT",
+    "roleImportPickSovits": "Выбор модели SoVITS",
+    "roleImportPickReference": "Выбор эталонного аудио или разметки .list",
+    "roleImportReference": "Эталонное аудио или разметка .list"
   },
   "extras": {
     "engineTitle": "Ресурсы движка",
@@ -1266,7 +1272,6 @@
   "more": {},
   "library": {
     "title": "Библиотека",
-    "subtitle": "Импорт, управление и обмен пакетами",
     "goPlaza": "Открыть Сообщество",
     "import": "Импорт пакета",
     "demoImport": "Импорт недоступен в предварительном просмотре браузера. Используйте настольное приложение.",
@@ -1314,7 +1319,15 @@
     "epochSourceRemoved": "Эпоха {v0} (исходный файл удалён)",
     "weightSourceRemoved": "Исходный файл удалён",
     "weightExternal": "Внешний файл",
-    "selectEpoch": "Выбрать эпоху"
+    "selectEpoch": "Выбрать эпоху",
+    "importWeights": "Импорт модели",
+    "iwGpt": "Модель GPT (.ckpt)",
+    "iwSovits": "Модель SoVITS (.pth)",
+    "iwReference": "Эталонное аудио или разметка .list",
+    "iwText": "Эталонный текст",
+    "iwLang": "Язык",
+    "iwChoose": "Выбрать файл",
+    "iwImport": "Импортировать"
   },
   "sep": {
     "title": "Разделение вокала",

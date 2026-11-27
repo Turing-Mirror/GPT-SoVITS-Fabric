@@ -740,7 +740,6 @@
     "kiUpdate": "{v0} に更新",
     "kiNoUpdateYet": "現在のバージョンが最新です。この問題の修正はまだ公開されていません。次のバージョンをお待ちください。",
     "annot.title": ".list 注釈の管理",
-    "annot.sub": "同じアノテーションを学習にも、「合成」の参照候補にも使います。",
     "annot.open": ".list を開く",
     "annot.create": ".list を作成",
     "annot.chooseSource": "音声フォルダーを選択",
@@ -887,7 +886,14 @@
     "cacheClearFailed": "キャッシュの削除に失敗しました。",
     "consultBuildFailed": "相談パックの生成に失敗しました。",
     "storageScanFailed": "ストレージ使用量の集計に失敗しました。",
-    "storageCleanFailed": "ストレージの整理に失敗しました。"
+    "storageCleanFailed": "ストレージの整理に失敗しました。",
+    "updateInstallFailed": "更新に失敗しました。",
+    "roleImportErrReference": "参照ファイルは音声ファイル（WAV、MP3、FLAC、OGG、M4A）または .list 注釈である必要があります。",
+    "roleImportErrReferenceText": "参照音声を使用する場合は、参照テキストを入力し、言語を選択してください。",
+    "roleImportPickGpt": "GPT モデルを選択",
+    "roleImportPickSovits": "SoVITS モデルを選択",
+    "roleImportPickReference": "参照音声または .list 注釈を選択",
+    "roleImportReference": "参照音声または .list 注釈"
   },
   "extras": {
     "engineTitle": "エンジンリソース",
@@ -1266,7 +1272,6 @@
   "more": {},
   "library": {
     "title": "ライブラリ",
-    "subtitle": "キャラクターパックの導入・管理・共有",
     "goPlaza": "コミュニティを開く",
     "import": "パックを導入",
     "demoImport": "ブラウザーのプレビューでは読み込めません。デスクトップアプリで操作してください。",
@@ -1314,7 +1319,15 @@
     "epochSourceRemoved": "エポック {v0}（元ファイル削除済み）",
     "weightSourceRemoved": "元ファイル削除済み",
     "weightExternal": "外部ファイル",
-    "selectEpoch": "エポックを選択"
+    "selectEpoch": "エポックを選択",
+    "importWeights": "モデルを導入",
+    "iwGpt": "GPT モデル（.ckpt）",
+    "iwSovits": "SoVITS モデル（.pth）",
+    "iwReference": "参照音声または .list 注釈",
+    "iwText": "参照テキスト",
+    "iwLang": "言語",
+    "iwChoose": "ファイルを選択",
+    "iwImport": "導入"
   },
   "sep": {
     "title": "ボーカル分離",

@@ -740,7 +740,6 @@
     "kiUpdate": "更新到 {v0}",
     "kiNoUpdateYet": "目前已是最新版本。此問題的修正尚未發佈，請等待下一個版本。",
     "annot.title": ".list 標註管理",
-    "annot.sub": "同一份標註既用於訓練，也作為「合成」的參考候選。",
     "annot.open": "開啟 .list",
     "annot.create": "建立 .list",
     "annot.chooseSource": "選擇音訊資料夾",
@@ -887,7 +886,14 @@
     "cacheClearFailed": "清理快取失敗。",
     "consultBuildFailed": "產生諮詢包失敗。",
     "storageScanFailed": "統計儲存空間佔用失敗。",
-    "storageCleanFailed": "清理儲存空間失敗。"
+    "storageCleanFailed": "清理儲存空間失敗。",
+    "updateInstallFailed": "更新失敗。",
+    "roleImportErrReference": "參考檔案須為音訊檔案（WAV、MP3、FLAC、OGG、M4A）或 .list 標註。",
+    "roleImportErrReferenceText": "使用參考音訊時，請填寫參考文字並選擇語種。",
+    "roleImportPickGpt": "選擇 GPT 模型",
+    "roleImportPickSovits": "選擇 SoVITS 模型",
+    "roleImportPickReference": "選擇參考音訊或 .list 標註",
+    "roleImportReference": "參考音訊或 .list 標註"
   },
   "extras": {
     "engineTitle": "引擎資源",
@@ -1266,7 +1272,6 @@
   "more": {},
   "library": {
     "title": "模型",
-    "subtitle": "角色包的匯入、管理與分享",
     "goPlaza": "前往社群",
     "import": "匯入角色包",
     "demoImport": "瀏覽器預覽中無法匯入，請在桌面用戶端中操作。",
@@ -1314,7 +1319,15 @@
     "epochSourceRemoved": "第 {v0} 輪（來源檔案已刪除）",
     "weightSourceRemoved": "來源檔案已刪除",
     "weightExternal": "外部檔案",
-    "selectEpoch": "選擇輪次"
+    "selectEpoch": "選擇輪次",
+    "importWeights": "匯入模型",
+    "iwGpt": "GPT 模型（.ckpt）",
+    "iwSovits": "SoVITS 模型（.pth）",
+    "iwReference": "參考音訊或 .list 標註",
+    "iwText": "參考文字",
+    "iwLang": "語種",
+    "iwChoose": "選擇檔案",
+    "iwImport": "匯入"
   },
   "sep": {
     "title": "人聲分離",

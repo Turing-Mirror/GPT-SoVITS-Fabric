@@ -1297,6 +1297,57 @@ async fn role_weight_replace(window: tauri::WebviewWindow, app: tauri::AppHandle
     result.map_err(|error| diagnostics::CommandError::new("role_weight_replace", error))
 }
 
+/// 「导入模型」对话框里的选文件：gpt、sovits 或 reference（参考音频或 .list）。取消返回 null。
+#[tauri::command]
+fn role_import_pick(window: tauri::WebviewWindow, kind: String) -> Option<String> {
+    let dialog = crate::shell_extras::dialog_on(Some(&window));
+    let dialog = match kind.as_str() {
+        "gpt" => dialog.set_title(&crate::i18n::t("s.roleImportPickGpt")).add_filter("GPT", &["ckpt"]),
+        "sovits" => dialog.set_title(&crate::i18n::t("s.roleImportPickSovits")).add_filter("SoVITS", &["pth"]),
+        _ => {
+            let mut exts = role_assets::REFERENCE_AUDIO.to_vec();
+            exts.push("list");
+            dialog.set_title(&crate::i18n::t("s.roleImportPickReference")).add_filter(&crate::i18n::t("s.roleImportReference"), &exts)
+        }
+    };
+    dialog.pick_file().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// 「模型」页 → 导入模型。直接用原版 GPT-SoVITS 训练出的权重建角色，不需要角色包。
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn role_import_weights(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    name: String,
+    gpt: String,
+    sovits: String,
+    reference: String,
+    text: Option<String>,
+    lang: Option<String>,
+) -> Result<Value, diagnostics::CommandError> {
+    let result: Result<Value, String> = async {
+        let root = root_clone(&state)?;
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            role_assets::import_weights(
+                &root,
+                &name,
+                std::path::Path::new(&gpt),
+                std::path::Path::new(&sovits),
+                std::path::Path::new(&reference),
+                text.as_deref().unwrap_or_default(),
+                lang.as_deref().unwrap_or_default(),
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let _ = app.emit("roles-changed", ());
+        Ok(result)
+    }
+    .await;
+    result.map_err(|error| diagnostics::CommandError::new("role_import_weights", error))
+}
+
 #[tauri::command]
 async fn role_list_associate(window: tauri::WebviewWindow, app: tauri::AppHandle, state: State<'_, Mutex<AppState>>, id: String, src: Option<String>) -> Result<Option<Value>, diagnostics::CommandError> {
     let result: Result<Option<Value>, String> = async {
@@ -2017,6 +2068,8 @@ pub fn run() {
             annot_save,
             annot_relocate,
             role_import_pack,
+            role_import_pick,
+            role_import_weights,
             role_assets_get,
             model_versions_list,
             model_version_apply,

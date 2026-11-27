@@ -464,7 +464,6 @@ function AnnotPageImpl() {
       <PagePad>
         <PageHead
           title={t("s.annot.title")}
-          sub={t("s.annot.sub")}
           back={path ? () => void close() : undefined}
           actions={
             <>
@@ -473,7 +472,8 @@ function AnnotPageImpl() {
                   {t("s.annot.openWindow")}
                 </Btn>
               ) : null}
-              {!path ? (
+              {/* 页面空着时这两个按钮在下面的引导卡片里，标题栏不再重复一遍。 */}
+              {!path && roleLists.length ? (
                 <>
                   <Btn onClick={() => void open()} disabled={busy}>{t("s.annot.open")}</Btn>
                   <Btn primary disabled={busy} onClick={openCreate}>{t("s.annot.create")}</Btn>

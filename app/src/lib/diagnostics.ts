@@ -25,6 +25,17 @@ export function readDiagnostic(value: unknown): Diagnostic | null {
 }
 
 const message = (key: string, params: Record<string, string | number | null> = {}): Message => ({ key, params });
+/** Same as readDiagnostic, with undefined for "none" (shared update flow code expects this shape). */
+export function diagnosticOf(value: unknown): Diagnostic | undefined {
+  return readDiagnostic(value) ?? undefined;
+}
+/** Keeps structured evidence through existing string state without [object Object]. */
+export function errorText(value: unknown): string {
+  const d = readDiagnostic(value);
+  if (d) return JSON.stringify({ diagnostic: d });
+  if (value instanceof Error) return value.stack || value.message;
+  return typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+}
 /** Existing, explicit business messages can name the failed operation without discarding its evidence. */
 export function errorWithTitle(
   value: unknown,
