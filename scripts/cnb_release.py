@@ -130,7 +130,8 @@ def prepare_catalog(repo: Path, version: str, signed: dict, notes: list[str]) ->
     gui = read_json(repo / "index.json")["app"]
     if (gui["version"], gui["sha256"], gui["size_bytes"]) != (version, signed["sha256"], signed["size_bytes"]):
         raise ValueError("The compiled index.json does not match the signed Setup.")
-    return ["catalog/sources.json", "assets/setup", "changelog.json", "updater.json", "index.json"]
+    return ["catalog/sources.json", "catalog/online_catalog.snippet.json", "assets/setup",
+            "changelog.json", "updater.json", "index.json"]
 
 
 def mirror_setup(directory: Path, version: str, signed: dict) -> None:
