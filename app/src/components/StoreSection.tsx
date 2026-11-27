@@ -45,6 +45,8 @@ import {
   voiceGroupRaw,
   voiceParentSeries,
   voiceSearchText,
+  voiceOtherNames,
+  formatLocalizedList,
 } from "../lib/voiceDisplay";
 import { askConfirm } from "trm-ui/fabric";
 import { formatDate, openExternal } from "../lib/plaza";
@@ -871,6 +873,7 @@ function VoiceCard({
   progressDoneRef.current = progress?.done ?? 0;
   const loc = getTLocale();
   const title = displayVoiceName(v, loc);
+  const otherNames = voiceOtherNames(v, title);
   const remote = (v.cover_url || v.cover || "").trim();
   const local = (v.cover_local || "").trim();
   const legacy = (v.cover || "").trim();
@@ -1008,6 +1011,7 @@ function VoiceCard({
             ? <Btn text onClick={onAuthor}>{author}</Btn>
             : <p className="m-0 text-[15px] font-semibold">{author}</p>)}
           {meta && <p className="m-0 break-words text-[13px] text-[var(--help)]">{meta}</p>}
+          {otherNames.length ? <p className="m-0 break-words text-[13px] text-[var(--help)]">{t("store.otherNames", { v0: formatLocalizedList(otherNames, loc) })}</p> : null}
           {v.description && <p className="m-0 whitespace-pre-wrap break-words text-[15px]">{v.description}</p>}
           {license && <p className="m-0 whitespace-pre-wrap break-words text-[12.5px] text-[var(--help)]">{license}</p>}
           {actions}

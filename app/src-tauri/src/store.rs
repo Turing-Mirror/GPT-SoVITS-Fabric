@@ -518,7 +518,10 @@ fn resolve_cover_url(root: &Path, url: &str) -> Result<String, String> {
         return Ok(dest.to_string_lossy().into_owned());
     }
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(8)) // 封面几十 KB，8 秒足够；挂了快速失败交给前端重试
+        // 封面只有几十 KB，但国内连到社区服务要先等几秒握手；连接最多 10 秒，整体 30 秒，
+        // 挂了仍交给前端重试。
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
     let mut last_err = String::new();

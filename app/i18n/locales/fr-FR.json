@@ -30,7 +30,8 @@
     "searchHint": "Rechercher voix / séries / clubs / auteurs…",
     "confirmInstall": "Confirmer l'installation",
     "unpublished": "Aucun pack de personnage n’a encore été publié.",
-    "downloadFailedNamed": "Le téléchargement de « {name} » a échoué."
+    "downloadFailedNamed": "Le téléchargement de « {name} » a échoué.",
+    "otherNames": "Autres noms : {v0}"
   },
   "settings": {
     "tabs": {
@@ -1612,6 +1613,11 @@
     "noFiles": "Aucun fichier ZIP correspondant.",
     "next": "Suivant",
     "name": "Nom du personnage",
+    "names": "Noms par langue",
+    "namesNote": "Le premier nom de chaque langue s'affiche sur les cartes. Tous les noms peuvent être recherchés.",
+    "otherNames": "Autres noms",
+    "addName": "Ajouter",
+    "removeName": "Retirer",
     "description": "Description",
     "author": "Auteur d’origine",
     "publisherRole": "Publier en tant que",
